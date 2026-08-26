@@ -9,6 +9,14 @@ Nova experiência mobile-first do projeto JOVI, construída sobre React + Vite e
 - `/notes` — notas geradas e salvas.
 - `/profile` — Google Sign-In, plano gratuito, trial e integração opcional com checkout real.
 
+## IA
+
+A análise de imagem usa a API do OpenRouter com um modelo multimodal gratuito da Google DeepMind:
+
+`google/gemma-4-26b-a4b-it:free`
+
+O modelo recebe a imagem e devolve OCR, título, resumo, pontos-chave e categoria em uma única chamada.
+
 ## Rodar localmente
 
 ```bash
@@ -18,7 +26,15 @@ npm run dev
 
 ## Variáveis Vercel
 
-Copie `.env.example` e configure as variáveis no projeto Vercel. `GEMINI_API_KEY` é server-only e nunca deve usar prefixo `VITE_`.
+Copie `.env.example` e configure as variáveis no projeto Vercel. `OPENROUTER_API_KEY` é server-only e nunca deve usar prefixo `VITE_`.
+
+Principais variáveis:
+
+```text
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=google/gemma-4-26b-a4b-it:free
+OPENROUTER_APP_URL=
+```
 
 ## Produção
 
