@@ -11,8 +11,14 @@ Retorne SOMENTE JSON válido, sem markdown, exatamente com este formato:
 Não invente texto que não esteja visível. Se não houver texto legível, use text="" e resuma apenas o conteúdo visual de forma breve.`;
 
 function jsonFromModelText(text) {
-  const cleaned = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  try { return JSON.parse(cleaned); } catch {
+  const cleaned = String(text || '')
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
     const match = cleaned.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('Resposta da IA não estava em JSON.');
     return JSON.parse(match[0]);
@@ -20,45 +26,98 @@ function jsonFromModelText(text) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(503).json({ code: 'GEMINI_NOT_CONFIGURED', message: 'Gemini ainda não está configurado neste ambiente.' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    return res.status(503).json({
+      code: 'OPENROUTER_NOT_CONFIGURED',
+      message: 'OpenRouter ainda não está configurado neste ambiente.',
+    });
+  }
 
   const { image, mimeType = 'image/jpeg' } = req.body || {};
-  if (!image || typeof image !== 'string') return res.status(400).json({ message: 'Imagem inválida.' });
-  if (image.length > 8_000_000) return res.status(413).json({ message: 'Imagem grande demais para análise.' });
 
-  const model = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
+  if (!image || typeof image !== 'string') {
+    return res.status(400).json({ message: 'Imagem inválida.' });
+  }
+
+  if (image.length > 8_000_000) {
+    return res.status(413).json({ message: 'Imagem grande demais para análise.' });
+  }
+
+  const model = process.env.OPENROUTER_MODEL || 'google/gemma-4-26b-a4b-it:free';
+  const appUrl = process.env.OPENROUTER_APP_URL || req.headers.origin || '';
+
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    const headers = {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'X-OpenRouter-Title': 'JOVI Lens Mobile',
+    };
+
+    if (appUrl) headers['HTTP-Referer'] = appUrl;
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      headers,
       body: JSON.stringify({
-        contents: [{ parts: [{ inline_data: { mime_type: mimeType, data: image } }, { text: PROMPT }] }],
-        generationConfig: { responseMimeType: 'application/json' },
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: PROMPT,
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${image}`,
+                },
+              },
+            ],
+          },
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: 1200,
       }),
     });
 
-    const payload = await response.json();
+    const payload = await response.json().catch(() => ({}));
+
     if (!response.ok) {
-      const message = payload?.error?.message || 'Falha ao consultar Gemini.';
+      const message = payload?.error?.message || 'Falha ao consultar o modelo pelo OpenRouter.';
       return res.status(response.status).json({ message });
     }
 
-    const modelText = payload?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
-    if (!modelText) return res.status(502).json({ message: 'Gemini não retornou conteúdo analisável.' });
+    const modelText = payload?.choices?.[0]?.message?.content;
+
+    if (!modelText) {
+      return res.status(502).json({ message: 'O modelo não retornou conteúdo analisável.' });
+    }
+
     const result = jsonFromModelText(modelText);
+
     return res.status(200).json({
       text: String(result.text || ''),
       language: String(result.language || 'auto'),
       title: String(result.title || 'Conteúdo identificado'),
-      summary: String(result.summary || 'Imagem analisada com Google Gemini.'),
-      keyPoints: Array.isArray(result.keyPoints) ? result.keyPoints.slice(0, 5).map(String) : [],
+      summary: String(result.summary || 'Imagem analisada com Google Gemma via OpenRouter.'),
+      keyPoints: Array.isArray(result.keyPoints)
+        ? result.keyPoints.slice(0, 5).map(String)
+        : [],
       category: String(result.category || 'Outros'),
-      provider: 'google-gemini',
+      provider: 'openrouter',
+      modelVendor: 'google',
       model,
     });
   } catch (error) {
-    return res.status(500).json({ message: error?.message || 'Erro interno ao analisar a imagem.' });
+    return res.status(500).json({
+      message: error?.message || 'Erro interno ao analisar a imagem.',
+    });
   }
 }
