@@ -13,7 +13,9 @@ Em telas desktop/tablet, o shell renderiza o app dentro de uma moldura baseada n
 
 ## IA e OCR reais
 
-O antigo serviço mock não participa do novo fluxo. A foto é reduzida no navegador para reduzir payload/latência e enviada a `POST /api/analyze-image`. A função serverless chama o Google Gemini de forma multimodal e devolve em uma única resposta:
+O antigo serviço mock não participa do novo fluxo. A foto é reduzida no navegador para reduzir payload/latência e enviada a `POST /api/analyze-image`.
+
+A função serverless usa o OpenRouter como gateway de API e chama, por padrão, o modelo multimodal gratuito **Google Gemma 4 26B A4B**, da Google DeepMind (`google/gemma-4-26b-a4b-it:free`). A resposta única contém:
 
 - OCR/transcrição fiel;
 - idioma;
@@ -22,11 +24,13 @@ O antigo serviço mock não participa do novo fluxo. A foto é reduzida no naveg
 - pontos-chave;
 - categoria.
 
-A chave `GEMINI_API_KEY` fica apenas no backend da Vercel. Nunca use uma chave Gemini em variável `VITE_*`.
+A chave `OPENROUTER_API_KEY` fica apenas no backend da Vercel. Nunca use essa chave em variável `VITE_*`.
+
+A interface pode apresentar a tecnologia de IA como **Google Gemma 4**, porque o modelo é de fato da Google DeepMind. OpenRouter é a camada utilizada para acesso à API.
 
 ## Google Sign-In e assinatura
 
-Google Sign-In usa `VITE_GOOGLE_CLIENT_ID` no cliente e valida o ID token novamente no backend com `GOOGLE_CLIENT_ID`. Isso identifica a conta do usuário, mas **não** concede acesso à assinatura Google AI/Gemini do usuário.
+Google Sign-In usa `VITE_GOOGLE_CLIENT_ID` no cliente e valida o ID token novamente no backend com `GOOGLE_CLIENT_ID`. Isso identifica a conta do usuário e é independente da API de IA.
 
 A assinatura JOVI é um produto separado. O protótipo suporta plano gratuito e trial local de 7 dias. O botão de assinatura só redireciona para `VITE_BILLING_CHECKOUT_URL` quando um checkout real for configurado; sem essa URL, não há cobrança falsa.
 
