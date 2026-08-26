@@ -1,0 +1,10 @@
+{
+  "rewrites": [
+    { "source": "/camera", "destination": "/" },
+    { "source": "/gallery", "destination": "/" },
+    { "source": "/notes", "destination": "/" },
+    { "source": "/profile", "destination": "/" },
+    { "source": "/history", "destination": "/" },
+    { "source": "/login", "destination": "/" }
+  ]
+}
