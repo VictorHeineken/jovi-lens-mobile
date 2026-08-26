@@ -94,7 +94,7 @@ export default function Profile() {
       {!user && (
         <section className="google-signin-card">
           <h2>Continuar com Google</h2>
-          <p>O login identifica o usuário. Ele não compartilha assinatura Gemini/Google AI nem credenciais da API.</p>
+          <p>O login identifica o usuário. Ele é independente do modelo de IA usado pelo aplicativo.</p>
           {clientId ? <div ref={googleButtonRef} className="google-button-slot" /> : <div className="config-pill"><Icon name="lock" size={16} /> Configure VITE_GOOGLE_CLIENT_ID</div>}
         </section>
       )}
@@ -111,11 +111,11 @@ export default function Profile() {
         </div>
         {!trialActive && plan.type !== 'pro' && <button className="primary-wide" onClick={startTrial}>Testar grátis por 7 dias</button>}
         <button className="secondary-wide" onClick={subscribe}>Assinar JOVI Plus</button>
-        <small>A cobrança do app é independente do Google Sign-In e da Gemini API.</small>
+        <small>A cobrança do app é independente do Google Sign-In e do serviço de IA.</small>
       </section>
 
       <section className="settings-card">
-        <div><span>IA</span><strong>Google Gemini</strong></div>
+        <div><span>IA</span><strong>Google Gemma 4</strong></div>
         <div><span>Armazenamento local</span><strong>IndexedDB</strong></div>
         <div><span>Experiência</span><strong>PWA mobile-first</strong></div>
       </section>
