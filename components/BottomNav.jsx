@@ -5,6 +5,7 @@ const items = [
   { to: '/camera', label: 'Câmera', icon: 'camera' },
   { to: '/gallery', label: 'Galeria', icon: 'gallery' },
   { to: '/notes', label: 'Notas', icon: 'note' },
+  { to: '/copilot', label: 'Copilot', icon: 'sparkle' },
   { to: '/profile', label: 'Perfil', icon: 'user' },
 ];
 

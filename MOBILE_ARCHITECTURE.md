@@ -1,45 +1,58 @@
 # JOVI Lens — arquitetura mobile
 
-Esta versão transforma o protótipo React existente em uma experiência mobile-first centrada no fluxo **foto → entendimento → ação**.
+Esta versão transforma o protótipo React existente em uma experiência mobile-first centrada no fluxo **foto → visualização → ação escolhida**.
 
 ## Entradas de apresentação
 
 - `/camera`: abre diretamente a experiência de câmera.
-- `/gallery`: abre diretamente a galeria.
+- `/gallery`: abre diretamente a galeria, com Fotos, Álbuns, Notas, Histórico e Copilot na navegação inferior.
 - `/notes`: histórico de notas inteligentes salvas.
-- `/profile`: conta Google, trial e assinatura.
+- `/copilot`: aba demonstrativa do modelo avançado e seus caminhos de acesso.
+- `/profile`: conta de demonstração, trial fictício e acesso demonstrativo ao Copilot.
 
-Em telas desktop/tablet, o shell renderiza o app dentro de uma moldura baseada no viewport lógico do iPhone 16 (393 × 852). Em um telefone real, a moldura e os botões físicos desaparecem e o app ocupa `100dvh` com safe areas.
+Em telas desktop/tablet, o shell renderiza o app dentro de uma moldura baseada na proporção do JOVI X300 Ultra (393 × 852 lógico), com punch-hole central e acabamento verde-sálvia inspirado na referência atual da marca. Em um telefone real, a moldura e os botões físicos desaparecem e o app ocupa `100dvh` com safe areas.
 
 ## IA e OCR reais
 
-O antigo serviço mock não participa do novo fluxo. A foto é reduzida no navegador para reduzir payload/latência e enviada a `POST /api/analyze-image`.
+Ao abrir uma captura, o frontend mostra a imagem em um visualizador completo, com ações para copiar o texto, pesquisar o texto no Google ou iniciar a IA educacional. A leitura de texto só é solicitada quando uma dessas ações é usada; a análise de estudo não começa automaticamente.
 
-A função serverless usa o OpenRouter como gateway de API e chama, por padrão, o modelo multimodal gratuito **Google Gemma 4 26B A4B**, da Google DeepMind (`google/gemma-4-26b-a4b-it:free`). A resposta única contém:
+O frontend reduz a foto no navegador para reduzir payload/latência e envia a `POST /api/analyze-image`.
+
+A API local Node chama Azure OpenAI por meio de uma camada de serviço/provider. O fluxo é `frontend → proxy Vite → server/local-api.js → api/analyze-image.js → api/_lib/ai/service.js → providers/azureOpenAI.js → Azure OpenAI`. A resposta contém:
 
 - OCR/transcrição fiel;
 - idioma;
 - título;
 - resumo;
 - pontos-chave;
-- categoria.
+- categoria;
+- trilha Entender → Resolver → Praticar;
+- perguntas sugeridas e flashcards.
 
-A chave `OPENROUTER_API_KEY` fica apenas no backend da Vercel. Nunca use essa chave em variável `VITE_*`.
+Para copiar ou pesquisar texto sem abrir a sessão educacional, a mesma rota aceita `action: "extract"` e retorna somente a transcrição normalizada.
 
-A interface pode apresentar a tecnologia de IA como **Google Gemma 4**, porque o modelo é de fato da Google DeepMind. OpenRouter é a camada utilizada para acesso à API.
+A chave `AZURE_OPENAI_API_KEY` fica apenas no processo Node local. Nunca use essa chave em variável `VITE_*`.
 
-## Google Sign-In e assinatura
+O endpoint valida tipo/tamanho/base64 da imagem, limita requisições por janela, trata timeout, rate limit, resposta vazia e resposta inválida. As mensagens públicas são genéricas; detalhes do erro não são expostos.
 
-Google Sign-In usa `VITE_GOOGLE_CLIENT_ID` no cliente e valida o ID token novamente no backend com `GOOGLE_CLIENT_ID`. Isso identifica a conta do usuário e é independente da API de IA.
+## Demo Mode
 
-A assinatura JOVI é um produto separado. O protótipo suporta plano gratuito e trial local de 7 dias. O botão de assinatura só redireciona para `VITE_BILLING_CHECKOUT_URL` quando um checkout real for configurado; sem essa URL, não há cobrança falsa.
+`services/demoResponses.js` mantém respostas realistas para análise inicial, explicar, resolver, perguntar, quiz e flashcards. `VITE_JOVI_LENS_DEMO_MODE=true` evita a chamada de rede no cliente; `JOVI_LENS_DEMO_MODE=true` também habilita o provider demo no backend. Para usar Azure OpenAI, defina ambos como `false` e configure `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` e `AZURE_OPENAI_API_VERSION`.
+
+## Conta e Copilot demonstrativos
+
+O perfil não dispara login externo. O botão de entrada cria a estudante fictícia Ana Beatriz e persiste a sessão no `localStorage`, para que o fluxo de apresentação seja repetível mesmo sem rede.
+
+O trial de 7 dias e a ativação do Copilot também são estados locais e explicitamente identificados como demo. Não existe checkout, assinatura ou cobrança neste protótipo; uma integração real pode ser adicionada depois sem misturar essa experiência com a camada visual.
+
+A aba Copilot permite iniciar o trial de 7 dias ou simular que a pessoa já possui uma assinatura paga. Ambos os caminhos atualizam o plano local e exibem o modelo avançado como selecionado. O CTA de câmera apenas conduz à experiência existente; a troca de modelo real continua fora do escopo desta demonstração.
 
 ## Persistência
 
 - Fotos capturadas/importadas e análises: IndexedDB.
-- Notas, plano e sessão de demonstração: localStorage.
+- Notas, plano e sessão de demonstração: localStorage, com conteúdo inicial de exemplo sem sobrescrever notas do usuário.
 - Imagens originais do projeto continuam sendo reutilizadas como conteúdo inicial da galeria.
 
-## Vercel
+## Execução local
 
-Configure as variáveis de `.env.example`. As rotas SPA têm rewrites explícitos em `vercel.json`. As funções em `/api` permanecem server-side.
+`npm run dev` inicia `scripts/dev.js`, que abre o servidor Node em `127.0.0.1:8787` e o Vite em `127.0.0.1:5173`. O proxy do Vite mantém o contrato `/api/analyze-image` sem expor a chave ao navegador. Também é possível iniciar apenas a API com `npm run dev:api`.

@@ -1,5 +1,30 @@
-const CACHE = 'jovi-lens-v1';
-const CORE = ['/', '/camera', '/gallery', '/notes', '/profile', '/manifest.webmanifest', '/favicon.svg'];
+const CACHE = 'jovi-lens-v3';
+const CORE = [
+  '/',
+  '/camera',
+  '/gallery',
+  '/notes',
+  '/history',
+  '/copilot',
+  '/profile',
+  '/manifest.webmanifest',
+  '/favicon.svg',
+  '/demo-assets/demo-default-photo.jpg',
+  '/demo-assets/demo-resultado-encontrado.jpg',
+  '/demo-assets/demo-buscando-texto.jpg',
+  '/demo-assets/history-factory.jpg',
+  '/demo-assets/history-workers.jpg',
+  '/demo-assets/history-railway.jpg',
+  '/demo-assets/programming-code.jpg',
+  '/demo-assets/programming-javascript.jpg',
+  '/demo-assets/programming-frontend.jpg',
+  '/demo-assets/books-library.jpg',
+  '/demo-assets/books-open.jpg',
+  '/demo-assets/books-shelves.jpg',
+  '/demo-assets/camera-vintage.jpg',
+  '/demo-assets/camera-collection.jpg',
+  '/demo-assets/photography-film.jpg',
+];
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)).catch(() => {})));
 self.addEventListener('activate', (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))));
 self.addEventListener('fetch', (event) => {

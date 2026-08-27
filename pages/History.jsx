@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import Icon from '../components/Icon.jsx';
-import SubjectNotes from '../components/SubjectNotes.jsx';
+import NotesTimeline from '../components/NotesTimeline.jsx';
 import SmartImageSheet from '../components/SmartImageSheet.jsx';
 import { useAppData } from '../context/AppDataContext.jsx';
 
-export default function Notes() {
-  const { notes, records, removeNote, toggleNoteFavorite } = useAppData();
+export default function History() {
+  const { notes, aiHistory, records } = useAppData();
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
 
@@ -17,16 +17,10 @@ export default function Notes() {
   return (
     <main className="light-page notes-page">
       <header className="mobile-header">
-        <div><div className="eyebrow"><Icon name="note" size={13} /> Memória da IA</div><h1>Notas</h1></div>
-        <div className="header-count"><strong>{notes.length}</strong><span>salvas</span></div>
+        <div><div className="eyebrow"><Icon name="history" size={13} /> Uso da IA</div><h1>Histórico</h1></div>
+        <div className="header-count"><strong>{notes.length + aiHistory.length}</strong><span>registros</span></div>
       </header>
-      <SubjectNotes
-        notes={notes}
-        records={records}
-        onOpen={openRecord}
-        onFavorite={toggleNoteFavorite}
-        onRemove={removeNote}
-      />
+      <NotesTimeline notes={notes} aiHistory={aiHistory} records={records} onOpen={openRecord} />
       {selected && <SmartImageSheet record={{ ...(records.find((item) => item.id === selected.id) || {}), ...selected }} initialView={selectedView} onClose={() => { setSelected(null); setSelectedView('viewer'); }} />}
     </main>
   );

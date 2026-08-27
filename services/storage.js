@@ -1,7 +1,8 @@
 const DB_NAME = 'jovi-mobile';
 const DB_VERSION = 1;
 const STORE = 'media';
-const NOTES_KEY = 'jovi_mobile_notes_v1';
+const NOTES_KEY = 'jovi_mobile_notes_v2';
+const HISTORY_KEY = 'jovi_mobile_ai_history_v1';
 const PLAN_KEY = 'jovi_mobile_plan_v1';
 const USER_KEY = 'jovi_mobile_user_v1';
 
@@ -62,6 +63,8 @@ function readJson(key, fallback) {
 
 export const getNotes = () => readJson(NOTES_KEY, []);
 export const setNotes = (notes) => localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+export const getHistory = () => readJson(HISTORY_KEY, []);
+export const setHistory = (history) => localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
 export const getPlan = () => readJson(PLAN_KEY, { type: 'free' });
 export const setPlan = (plan) => localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
 export const getUser = () => readJson(USER_KEY, null);

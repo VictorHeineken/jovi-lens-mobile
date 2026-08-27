@@ -1,123 +1,76 @@
-const PROMPT = `Você é o motor visual do aplicativo JOVI Lens. Analise a imagem com foco em texto visível e utilidade para estudo.
-Retorne SOMENTE JSON válido, sem markdown, exatamente com este formato:
-{
-  "text": "transcrição fiel de todo texto legível, preservando quebras importantes",
-  "language": "idioma principal em código curto, ex: pt, en",
-  "title": "título curto e útil",
-  "summary": "resumo claro em português do Brasil, de 2 a 4 frases",
-  "keyPoints": ["ponto 1", "ponto 2", "ponto 3"],
-  "category": "uma categoria curta, por exemplo Estudos, Documento, Produto, Livro, Trabalho ou Outros"
+import { runStudyAI } from './_lib/ai/service.js';
+
+const MAX_IMAGE_LENGTH = 8_000_000;
+const VALID_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const rateBuckets = new Map();
+
+function clientKey(req) {
+  return String(req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || 'unknown').split(',')[0].trim().slice(0, 80);
 }
-Não invente texto que não esteja visível. Se não houver texto legível, use text="" e resuma apenas o conteúdo visual de forma breve.`;
 
-function jsonFromModelText(text) {
-  const cleaned = String(text || '')
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('Resposta da IA não estava em JSON.');
-    return JSON.parse(match[0]);
+function isRateLimited(req) {
+  const now = Date.now();
+  const key = clientKey(req);
+  const bucket = rateBuckets.get(key);
+  if (!bucket || now - bucket.startedAt > 60_000) {
+    rateBuckets.set(key, { startedAt: now, count: 1 });
+    return false;
   }
+  bucket.count += 1;
+  return bucket.count > 12;
+}
+
+function hasKnownImageSignature(image, mimeType) {
+  try {
+    const bytes = Buffer.from(image, 'base64');
+    if (mimeType === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8;
+    if (mimeType === 'image/png') return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    if (mimeType === 'image/webp') return bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP';
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function safeInput(body) {
+  const image = typeof body?.image === 'string' ? body.image : '';
+  const mimeType = typeof body?.mimeType === 'string' ? body.mimeType : 'image/jpeg';
+  const action = ['analyze', 'extract', 'explain', 'solve', 'quiz', 'flashcards', 'ask'].includes(body?.action) ? body.action : 'analyze';
+  const question = typeof body?.question === 'string' ? body.question.trim().slice(0, 500) : '';
+  const context = body?.context && typeof body.context === 'object' ? body.context : null;
+
+  const invalidImage = image && (image.length > MAX_IMAGE_LENGTH || !/^[A-Za-z0-9+/=]+$/.test(image) || !VALID_MIME_TYPES.has(mimeType) || !hasKnownImageSignature(image, mimeType));
+  if ((action !== 'ask' && !image) || invalidImage) {
+    return { error: { status: 400, message: 'Imagem inválida ou grande demais.' } };
+  }
+  if (action === 'ask' && (!question || question.length < 2)) return { error: { status: 400, message: 'Escreva uma pergunta para continuar.' } };
+  return { image, mimeType, action, question, context };
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    return res.status(405).json({ message: 'Método não permitido.' });
   }
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    return res.status(503).json({
-      code: 'OPENROUTER_NOT_CONFIGURED',
-      message: 'OpenRouter ainda não está configurado neste ambiente.',
-    });
-  }
+  if (isRateLimited(req)) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas análises em sequência. Tente novamente em instantes.' });
 
-  const { image, mimeType = 'image/jpeg' } = req.body || {};
-
-  if (!image || typeof image !== 'string') {
-    return res.status(400).json({ message: 'Imagem inválida.' });
-  }
-
-  if (image.length > 8_000_000) {
-    return res.status(413).json({ message: 'Imagem grande demais para análise.' });
-  }
-
-  const model = process.env.OPENROUTER_MODEL || 'google/gemma-4-26b-a4b-it:free';
-  const appUrl = process.env.OPENROUTER_APP_URL || req.headers.origin || '';
+  const input = safeInput(req.body || {});
+  if (input.error) return res.status(input.error.status).json({ message: input.error.message });
 
   try {
-    const headers = {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'X-OpenRouter-Title': 'JOVI Lens Mobile',
-    };
-
-    if (appUrl) headers['HTTP-Referer'] = appUrl;
-
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: PROMPT,
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${mimeType};base64,${image}`,
-                },
-              },
-            ],
-          },
-        ],
-        response_format: { type: 'json_object' },
-        max_tokens: 1200,
-      }),
-    });
-
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      const message = payload?.error?.message || 'Falha ao consultar o modelo pelo OpenRouter.';
-      return res.status(response.status).json({ message });
-    }
-
-    const modelText = payload?.choices?.[0]?.message?.content;
-
-    if (!modelText) {
-      return res.status(502).json({ message: 'O modelo não retornou conteúdo analisável.' });
-    }
-
-    const result = jsonFromModelText(modelText);
-
-    return res.status(200).json({
-      text: String(result.text || ''),
-      language: String(result.language || 'auto'),
-      title: String(result.title || 'Conteúdo identificado'),
-      summary: String(result.summary || 'Imagem analisada com Google Gemma via OpenRouter.'),
-      keyPoints: Array.isArray(result.keyPoints)
-        ? result.keyPoints.slice(0, 5).map(String)
-        : [],
-      category: String(result.category || 'Outros'),
-      provider: 'openrouter',
-      modelVendor: 'google',
-      model,
-    });
+    const imageDataUrl = input.image ? `data:${input.mimeType};base64,${input.image}` : undefined;
+    const result = await runStudyAI({ ...input, imageDataUrl });
+    return res.status(200).json(result);
   } catch (error) {
-    return res.status(500).json({
-      message: error?.message || 'Erro interno ao analisar a imagem.',
-    });
+    const status = error?.code === 'AI_NOT_CONFIGURED' ? 503 : error?.code === 'AI_RATE_LIMITED' ? 429 : error?.code === 'AI_TIMEOUT' ? 504 : 502;
+    const messages = {
+      AI_NOT_CONFIGURED: 'A análise ao vivo ainda não está configurada. Ative o modo demonstração ou configure o serviço de IA.',
+      AI_TIMEOUT: 'A análise demorou mais que o esperado. Tente novamente.',
+      AI_EMPTY_RESPONSE: 'A IA não encontrou uma resposta utilizável. Tente enquadrar melhor o conteúdo.',
+      AI_INVALID_RESPONSE: 'Recebemos uma resposta que não pôde ser organizada. Tente novamente.',
+      AI_RATE_LIMITED: 'O serviço de IA está temporariamente ocupado. Tente novamente em instantes.',
+    };
+    console.error('JOVI Lens AI request failed', { code: error?.code || 'UNKNOWN', status: error?.status });
+    return res.status(status).json({ code: error?.code || 'AI_UNAVAILABLE', message: messages[error?.code] || 'Não foi possível analisar agora. Tente novamente.' });
   }
 }

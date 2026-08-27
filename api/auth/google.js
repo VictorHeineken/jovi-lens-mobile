@@ -3,7 +3,7 @@ export default async function handler(req, res) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) return res.status(503).json({ message: 'Google Sign-In ainda não está configurado no servidor.' });
   const credential = req.body?.credential;
-  if (!credential) return res.status(400).json({ message: 'Credencial Google ausente.' });
+  if (typeof credential !== 'string' || credential.length < 20 || credential.length > 6000) return res.status(400).json({ message: 'Credencial Google inválida.' });
 
   try {
     const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);

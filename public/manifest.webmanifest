@@ -1,11 +1,11 @@
 {
   "name": "JOVI Lens",
   "short_name": "JOVI Lens",
-  "description": "Transforme fotos em texto, pesquisa e notas inteligentes.",
+  "description": "Transforme a câmera do seu smartphone em uma ferramenta inteligente de aprendizagem.",
   "start_url": "/camera",
   "display": "standalone",
-  "background_color": "#111014",
-  "theme_color": "#111014",
+  "background_color": "#10181b",
+  "theme_color": "#10181b",
   "orientation": "portrait-primary",
   "icons": [
     { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
