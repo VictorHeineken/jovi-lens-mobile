@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import StudyModeContent from './StudyModeContent.jsx';
 import { analyzeImage, copyText, extractText, googleSearch, requestStudyAction } from '../services/imageAnalysis.js';
+import { startVoiceInput, voiceInputAvailable } from '../services/speechInput.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 
 const MODES = [
@@ -291,7 +292,35 @@ function AskPanel({ analysis, conversation, question, setQuestion, onSubmit, dis
       <div className="mode-intro"><span className="mode-kicker">Conversa com contexto</span><h3>Pergunte sobre esta imagem</h3><p>A conversa continua ligada ao conteúdo que você capturou.</p></div>
       {!!analysis.suggestedQuestions?.length && <div className="suggested-questions">{analysis.suggestedQuestions.map((item) => <button key={item} onClick={(event) => onSubmit(event, item)} disabled={disabled}>{item}<Icon name="arrow-up-right" size={14} /></button>)}</div>}
       {!!conversation.length && <div className="conversation-list">{conversation.map((item, index) => <div className="conversation-turn" key={`${item.question}-${index}`}><div className="question-bubble">{item.question}</div><div className="answer-bubble"><span>JOVI AI</span>{item.reply}</div></div>)}</div>}
-      <form className="question-form" onSubmit={onSubmit}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Digite uma pergunta..." aria-label="Pergunta sobre a imagem" maxLength={500} /><button type="submit" disabled={disabled || !question.trim()} aria-label="Enviar pergunta"><Icon name="send" size={17} /></button></form>
+      <form className="question-form" onSubmit={onSubmit}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Digite ou fale uma pergunta..." aria-label="Pergunta sobre a imagem" maxLength={500} /><VoiceButton onText={setQuestion} disabled={disabled} /><button type="submit" disabled={disabled || !question.trim()} aria-label="Enviar pergunta"><Icon name="send" size={17} /></button></form>
     </div>
+  );
+}
+
+function VoiceButton({ onText, disabled }) {
+  const [state, setState] = useState('idle'); // idle | recording | transcribing
+  const controllerRef = useRef(null);
+
+  useEffect(() => () => controllerRef.current?.stop?.(), []);
+
+  if (!voiceInputAvailable()) return null;
+
+  function toggle() {
+    if (state !== 'idle') { controllerRef.current?.stop?.(); return; }
+    setState('recording');
+    controllerRef.current = startVoiceInput({
+      onPartial: (text) => onText(text),
+      onFinal: (text) => { if (text) onText(text); },
+      onState: (next) => setState(next),
+      onError: () => setState('idle'),
+      onEnd: () => setState('idle'),
+    });
+  }
+
+  const active = state !== 'idle';
+  return (
+    <button type="button" className={`voice-button ${state}`} onClick={toggle} disabled={disabled && !active} aria-pressed={active} aria-label={active ? 'Parar gravação' : 'Falar pergunta'}>
+      <Icon name={state === 'transcribing' ? 'sparkle' : 'mic'} size={17} />
+    </button>
   );
 }

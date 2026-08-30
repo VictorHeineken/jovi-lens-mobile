@@ -5,13 +5,16 @@ import {
   getHistory,
   getNotes,
   getPlan,
+  getSubjectArtifacts,
   getUser,
   saveMediaRecord,
   setHistory as persistHistory,
   setNotes as persistNotes,
   setPlan as persistPlan,
+  setSubjectArtifacts as persistSubjectArtifacts,
   setUser as persistUser,
 } from '../services/storage.js';
+import { aggregateSubjects } from '../services/subjectStudy.js';
 
 const AppDataContext = createContext(null);
 
@@ -318,6 +321,7 @@ export function AppDataProvider({ children }) {
   const [aiHistory, setAiHistory] = useState(() => getHistory());
   const [plan, setPlanState] = useState(() => getPlan());
   const [user, setUserState] = useState(() => getUser());
+  const [subjectArtifacts, setSubjectArtifactsState] = useState(() => getSubjectArtifacts());
 
   useEffect(() => {
     getAllMediaRecords().then((stored) => setRecords([...stored, ...samples]));
@@ -416,9 +420,25 @@ export function AppDataProvider({ children }) {
     persistUser(next);
   }, []);
 
+  // Matérias derived from saved notes (category → subthemes + note bodies).
+  // Uncategorized notes fall under "Outros", matching how SubjectNotes groups them.
+  const subjects = useMemo(() => aggregateSubjects(notes), [notes]);
+
+  // Persists one generated artifact (plan/exam/script/examResult) for a matéria.
+  const saveSubjectArtifact = useCallback((subjectName, key, data) => {
+    setSubjectArtifactsState((current) => {
+      const next = { ...current, [subjectName]: { ...(current[subjectName] || {}), [key]: { data, savedAt: new Date().toISOString() } } };
+      persistSubjectArtifacts(next);
+      return next;
+    });
+  }, []);
+
+  const getSubjectArtifact = useCallback((subjectName, key) => subjectArtifacts[subjectName]?.[key] || null, [subjectArtifacts]);
+
   const value = useMemo(() => ({
-    records, notes, aiHistory, plan, user, addRecord, updateRecord, removeRecord, saveNote, removeNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser,
-  }), [records, notes, aiHistory, plan, user, addRecord, updateRecord, removeRecord, saveNote, removeNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser]);
+    records, notes, aiHistory, plan, user, subjects, subjectArtifacts,
+    addRecord, updateRecord, removeRecord, saveNote, removeNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, saveSubjectArtifact, getSubjectArtifact,
+  }), [records, notes, aiHistory, plan, user, subjects, subjectArtifacts, addRecord, updateRecord, removeRecord, saveNote, removeNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, saveSubjectArtifact, getSubjectArtifact]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }

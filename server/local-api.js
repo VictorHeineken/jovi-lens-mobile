@@ -1,5 +1,22 @@
 import http from 'node:http';
-import handler from '../api/analyze-image.js';
+import analyzeImage from '../api/analyze-image.js';
+import subjectAI from '../api/subject-ai.js';
+import tts from '../api/tts.js';
+import transcribe from '../api/transcribe.js';
+import videoLesson from '../api/video-lesson.js';
+
+const POST_ROUTES = {
+  '/api/analyze-image': analyzeImage,
+  '/api/subject-ai': subjectAI,
+  '/api/tts': tts,
+  '/api/transcribe': transcribe,
+  '/api/video-lesson': videoLesson,
+};
+
+// GET routes (video-lesson doubles as a polling endpoint).
+const GET_ROUTES = {
+  '/api/video-lesson': videoLesson,
+};
 
 const HOST = process.env.JOVI_API_HOST || '127.0.0.1';
 const PORT = Number(process.env.JOVI_API_PORT || 8787);
@@ -75,14 +92,25 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
-  if (request.method !== 'POST' || request.url !== '/api/analyze-image') {
+  const path = (request.url || '').split('?')[0];
+  const handler = request.method === 'POST' ? POST_ROUTES[path] : request.method === 'GET' ? GET_ROUTES[path] : null;
+  if (!handler) {
     sendJson(response, 404, { message: 'Rota local não encontrada.' });
     return;
   }
 
+  // Reject non-JSON bodies: blocks the no-preflight cross-origin ("simple
+  // request") vector that could fire paid actions without reading the response.
+  const contentType = String(request.headers['content-type'] || '');
+  if (request.method === 'POST' && contentType && !contentType.includes('application/json')) {
+    sendJson(response, 415, { message: 'Tipo de conteúdo não suportado.' });
+    return;
+  }
+
   try {
-    const body = await readJson(request);
-    await handler({ method: request.method, headers: request.headers, body }, createResponseAdapter(response));
+    const body = request.method === 'POST' ? await readJson(request) : {};
+    // ip comes from the socket, not a spoofable header — used as the rate-limit key.
+    await handler({ method: request.method, headers: request.headers, url: request.url, ip: request.socket?.remoteAddress, body }, createResponseAdapter(response));
   } catch (error) {
     const statusCode = error?.statusCode === 413 ? 413 : error?.statusCode === 400 ? 400 : 500;
     sendJson(response, statusCode, { message: statusCode === 413 ? 'Imagem grande demais.' : statusCode === 400 ? 'Requisição inválida.' : 'Erro interno na API local.' });

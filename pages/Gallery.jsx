@@ -4,6 +4,7 @@ import Copilot from './Copilot.jsx';
 import Icon from '../components/Icon.jsx';
 import NotesTimeline from '../components/NotesTimeline.jsx';
 import SubjectNotes from '../components/SubjectNotes.jsx';
+import SubjectStudio from '../components/SubjectStudio.jsx';
 import SmartImageSheet from '../components/SmartImageSheet.jsx';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { fileToDataUrl } from '../services/imageAnalysis.js';
@@ -43,13 +44,14 @@ function groupRecords(records) {
 
 export default function Gallery() {
   const navigate = useNavigate();
-  const { records, notes, aiHistory, addRecord } = useAppData();
+  const { records, notes, aiHistory, subjects, addRecord } = useAppData();
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
   const [isUploading, setIsUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState('photos');
   const [activeAlbum, setActiveAlbum] = useState(null);
+  const [studioSubject, setStudioSubject] = useState(null);
   const inputRef = useRef(null);
 
   const orderedRecords = useMemo(() => [...records].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), [records]);
@@ -119,7 +121,7 @@ export default function Gallery() {
 
         {activeTab === 'photos' && <PhotosView groups={recordGroups} isUploading={isUploading} onImport={() => inputRef.current?.click()} onOpen={openRecord} />}
         {activeTab === 'albums' && (selectedAlbum ? <AlbumDetail album={selectedAlbum} onBack={() => setActiveAlbum(null)} onOpen={openRecord} /> : <AlbumsView albums={albums} onOpen={openAlbum} />)}
-        {activeTab === 'notes' && <SubjectNotes notes={notes} records={orderedRecords} onOpen={openRecord} />}
+        {activeTab === 'notes' && <SubjectNotes notes={notes} records={orderedRecords} onOpen={openRecord} onOpenStudio={(name) => setStudioSubject(subjects.find((subject) => subject.name === name) || null)} />}
         {activeTab === 'history' && <NotesTimeline notes={notes} aiHistory={aiHistory} records={orderedRecords} onOpen={openRecord} />}
         {activeTab === 'copilot' && <Copilot embedded />}
       </div>
@@ -131,6 +133,7 @@ export default function Gallery() {
       <input ref={inputRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={onFiles} />
       {message && <div className="page-toast" role="status"><Icon name={isUploading ? 'sparkle' : 'check'} size={15} /> {message}</div>}
       {selected && <SmartImageSheet record={{ ...(records.find((item) => item.id === selected.id) || {}), ...selected }} initialView={selectedView} onClose={() => { setSelected(null); setSelectedView('viewer'); }} />}
+      {studioSubject && <SubjectStudio subject={studioSubject} onClose={() => setStudioSubject(null)} />}
     </main>
   );
 }

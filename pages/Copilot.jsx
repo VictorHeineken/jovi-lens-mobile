@@ -80,6 +80,7 @@ export default function Copilot({ embedded = false }) {
           <div><span><Icon name="scan" size={16} /></span><p><strong>Entende imagens complexas</strong><small>Exercícios, textos, gráficos e anotações no mesmo contexto.</small></p></div>
           <div><span><Icon name="question" size={16} /></span><p><strong>Explica no seu ritmo</strong><small>Você pode pedir exemplos, simplificar ou aprofundar a resposta.</small></p></div>
           <div><span><Icon name="cards" size={16} /></span><p><strong>Transforma conteúdo em prática</strong><small>Gera questões e feedback para reforçar o que foi aprendido.</small></p></div>
+          <div><span><Icon name="layers" size={16} /></span><p><strong>Estúdio da matéria</strong><small>Simulado, podcast, vídeo aula e plano de estudos a partir de todas as suas notas — em Notas, abra uma matéria.</small></p></div>
         </div>
       </section>
 

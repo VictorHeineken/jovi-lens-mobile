@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
+import { narration, noteToSpeech } from '../services/audio.js';
 
 const THEME_META = {
   'História': { icon: 'history', description: 'Linha do tempo, indústria e transporte da Revolução Industrial.' },
@@ -64,7 +65,7 @@ function formatNoteDate(value) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
 }
 
-export default function SubjectNotes({ notes = [], records = [], onOpen, onFavorite, onRemove }) {
+export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenStudio, onFavorite, onRemove }) {
   const [openSubject, setOpenSubject] = useState(null);
   const [activeSubtheme, setActiveSubtheme] = useState({});
   const subjects = useMemo(() => groupBySubject(notes), [notes]);
@@ -113,6 +114,16 @@ export default function SubjectNotes({ notes = [], records = [], onOpen, onFavor
 
             {isOpen && (
               <div className="origin-subject-children">
+                {onOpenStudio && (
+                  <button className="subject-studio-entry" onClick={() => onOpenStudio(subject.subject)}>
+                    <span className="subject-studio-entry-icon"><Icon name="layers" size={16} /></span>
+                    <span className="subject-studio-entry-copy">
+                      <strong>Estúdio da matéria</strong>
+                      <small>Perguntas, simulado, podcast, vídeo aula e plano de {subject.subject}</small>
+                    </span>
+                    <Icon name="arrow-up-right" size={15} />
+                  </button>
+                )}
                 <div className="origin-subtheme-tabs" role="tablist" aria-label={`Subtemas de ${subject.subject}`}>
                   {subject.subthemes.map((item) => (
                     <button
@@ -206,10 +217,40 @@ function NoteDetail({ note, record, onConversation, onViewImage, onFavorite, onR
 
       <div className="origin-note-actions">
         <button className="origin-note-chat" onClick={onConversation}><Icon name="send" size={14} /><span>Conversar com IA</span></button>
+        <NoteAudioButton note={note} />
         {onFavorite && <button onClick={onFavorite}><Icon name="bookmark" size={14} /> {note.favorite ? 'Desfavoritar' : 'Favoritar'}</button>}
         {onRemove && <button className="origin-note-delete" onClick={onRemove}><Icon name="trash" size={14} /> Excluir</button>}
       </div>
     </article>
+  );
+}
+
+function NoteAudioButton({ note }) {
+  const [state, setState] = useState('idle');
+  const activeRef = useRef(false);
+
+  useEffect(() => { activeRef.current = state !== 'idle'; }, [state]);
+  // Stop playback if the note is unmounted (accordion collapsed / tab switched)
+  // while THIS button owns the shared narrator.
+  useEffect(() => () => { if (activeRef.current) narration.stop(); }, []);
+
+  function toggle() {
+    if (state === 'playing' || state === 'paused') {
+      narration.stop();
+      setState('idle');
+      return;
+    }
+    narration.start([{ speaker: 'narrator', text: noteToSpeech(note) }], {
+      onUpdate: (update) => setState(update.superseded ? 'idle' : update.state),
+      onEnd: () => setState('idle'),
+    });
+  }
+
+  const active = state === 'playing' || state === 'paused';
+  return (
+    <button className={`origin-note-audio${active ? ' active' : ''}`} onClick={toggle} aria-pressed={active}>
+      <Icon name={active ? 'stop' : 'play'} size={14} /> {active ? 'Parar' : 'Ouvir'}
+    </button>
   );
 }
 
