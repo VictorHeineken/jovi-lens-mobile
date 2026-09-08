@@ -108,7 +108,14 @@ export async function runStudyAI({ action = 'analyze', question = '', context = 
   const content = [{ type: 'text', text: action === 'analyze' ? buildAnalysisPrompt() : action === 'extract' ? buildTextExtractionPrompt() : buildActionPrompt({ action, question, context }) }];
   if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl } });
   const provider = getProvider(imageDataUrl ? 'vision' : 'chat');
-  const completion = await provider.complete({ messages: [{ role: 'user', content }] });
+  // 'analyze'/'extract' transcribe + fully break down whatever's in the image
+  // (verbatim text + the full learning object) — a dense photo (a handwritten
+  // page of notes, say) can easily need more than the 1400-token default sized
+  // for lighter follow-up actions, and a truncated response is invalid JSON,
+  // not just short. Give vision calls a bigger budget and a bit more time.
+  const completion = imageDataUrl
+    ? await provider.complete({ messages: [{ role: 'user', content }], maxTokens: 3200, timeoutMs: 30000 })
+    : await provider.complete({ messages: [{ role: 'user', content }] });
   const result = parseJson(completion.text);
   return action === 'analyze'
     ? normalizeAnalysis(result, completion)
