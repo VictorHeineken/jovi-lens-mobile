@@ -15,14 +15,14 @@ const DEFAULT_CHAT_MODEL = 'MiniMax-M3';
 const DEFAULT_TTS_MODEL = 'speech-2.8-hd';
 const DEFAULT_VIDEO_MODEL = 'MiniMax-Hailuo-02';
 
-// Only a couple of voice IDs are confirmed from MiniMax's public docs — the
-// full catalog wasn't available to verify, so these are a best-effort
-// starting point. Override MINIMAX_VOICE_A/B/NARRATOR once you've checked
-// your account's actual voice list (and pt-BR support) in the MiniMax console.
+// Confirmed live via /v1/get_voice against the account's own key — MiniMax's
+// "Portuguese" voice pool has no separate Brazilian/European variant (same
+// for language_boost below), so this is the closest the API can target, not
+// a guaranteed BR accent.
 const ROLE_VOICE = {
-  A: process.env.MINIMAX_VOICE_A || 'English_Graceful_Lady',
-  B: process.env.MINIMAX_VOICE_B || 'English_Insightful_Speaker',
-  narrator: process.env.MINIMAX_VOICE_NARRATOR || 'English_expressive_narrator',
+  A: process.env.MINIMAX_VOICE_A || 'Portuguese_ChattyGirl',
+  B: process.env.MINIMAX_VOICE_B || 'Portuguese_WiseScholar',
+  narrator: process.env.MINIMAX_VOICE_NARRATOR || 'Portuguese_Narrator',
 };
 
 // T2A allows up to 10,000 chars/request (vs. Azure's 4096) — larger chunks,
@@ -112,6 +112,9 @@ export async function speak({ text, voice = 'narrator', format = 'mp3', timeoutM
         text,
         voice_setting: { voice_id: voiceId, speed: 1, vol: 1, pitch: 0 },
         audio_setting: { sample_rate: 32000, format, channel: 1 },
+        // No Brazilian-specific enum value exists — 'Portuguese' is the
+        // closest hint T2A's language_boost accepts.
+        language_boost: 'Portuguese',
       }),
       signal: controller.signal,
     });
