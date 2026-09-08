@@ -132,7 +132,7 @@ export default function Gallery() {
 
       <input ref={inputRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={onFiles} />
       {message && <div className="page-toast" role="status"><Icon name={isUploading ? 'sparkle' : 'check'} size={15} /> {message}</div>}
-      {selected && <SmartImageSheet record={{ ...(records.find((item) => item.id === selected.id) || {}), ...selected }} initialView={selectedView} onClose={() => { setSelected(null); setSelectedView('viewer'); }} />}
+      {selected && <SmartImageSheet record={{ ...selected, ...(records.find((item) => item.id === selected.id) || {}) }} initialView={selectedView} onClose={() => { setSelected(null); setSelectedView('viewer'); }} />}
       {studioSubject && <SubjectStudio subject={studioSubject} onClose={() => setStudioSubject(null)} />}
     </main>
   );

@@ -324,7 +324,18 @@ export function AppDataProvider({ children }) {
   const recordsRef = useRef(samples);
   const recordsLoadVersionRef = useRef(0);
   const [notes, setNotesState] = useState(getInitialNotes);
-  const [aiHistory, setAiHistory] = useState(() => getHistory());
+  const [aiHistory, setAiHistory] = useState(() => {
+    const stored = getHistory();
+    // Older entries embedded the full captured photo (a data: URL) per event —
+    // enough of those exhausts localStorage's whole per-origin quota, which
+    // then silently breaks every OTHER write (notes included, via writeJson's
+    // catch). Strip any leftover image field once and re-persist the cleaned
+    // history so quota is freed up even for data saved before this fix.
+    if (!stored.some((entry) => entry.image)) return stored;
+    const cleaned = stored.map(({ image, ...rest }) => rest);
+    persistHistory(cleaned);
+    return cleaned;
+  });
   const [plan, setPlanState] = useState(() => getPlan());
   const [user, setUserState] = useState(() => getUser());
   const [subjectArtifacts, setSubjectArtifactsState] = useState(() => getSubjectArtifacts());
@@ -401,8 +412,11 @@ export function AppDataProvider({ children }) {
       createdAt: new Date().toISOString(),
     };
     const next = [note, ...notes];
+    // Only commit the optimistic state update if the write actually landed —
+    // otherwise a quota-exceeded failure leaves the note visible for this
+    // session but silently gone on reload, with the UI still claiming success.
+    if (!persistNotes(next)) return null;
     setNotesState(next);
-    persistNotes(next);
     return note;
   }, [notes]);
 
@@ -425,10 +439,14 @@ export function AppDataProvider({ children }) {
   }, [notes]);
 
   const addHistoryEntry = useCallback((entry) => {
+    // recordId is enough to resolve the source photo later (NotesTimeline
+    // already falls back to it via `records`) — embedding the full image
+    // here is what exhausts localStorage's quota after enough entries.
+    const { image, ...rest } = entry;
     const historyEntry = {
       id: `history-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       createdAt: new Date().toISOString(),
-      ...entry,
+      ...rest,
     };
     setAiHistory((current) => {
       const next = [historyEntry, ...current].slice(0, 60);

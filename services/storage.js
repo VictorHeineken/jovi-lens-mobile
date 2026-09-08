@@ -98,8 +98,10 @@ function readJson(key, fallback) {
 }
 
 // Guarded writer: quota-exceeded or private-mode throws must not crash the app.
+// Returns whether the write actually landed, so callers doing an optimistic
+// state update (e.g. saveNote) can tell a real success from a silent failure.
 function writeJson(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* keep app usable when storage is unavailable */ }
+  try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
 }
 
 export const getNotes = () => readJson(NOTES_KEY, []);
