@@ -9,25 +9,50 @@ import {
   buildTextExtractionPrompt,
   buildYouTubeSearchPrompt,
 } from './prompts.js';
-import {
-  completeWithAzure,
-  createVideoJob,
-  getVideoContent,
-  getVideoJob,
-  speakWithAzure,
-  transcribeWithAzure,
-} from './providers/azureOpenAI.js';
+import { getProvider, getProviderByName } from './providers/index.js';
 import { completeSubjectWithDemo, completeWithDemo } from './providers/demo.js';
 import { fallbackYouTubeQuery, isYouTubeConfigured, searchYouTubeVideos, styleMatchReason } from '../youtube.js';
+
+// Scans for the first balanced top-level {...} object, skipping over quoted
+// strings — unlike a greedy /\{[\s\S]*\}/ match, this can't overrun into
+// trailing prose from a more preamble-prone provider (e.g. Claude) whose
+// commentary after the JSON happens to contain brace characters.
+function extractFirstJsonObject(text) {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (ch === '\\') escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
 
 const parseJson = (text) => {
   const cleaned = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   try {
     return JSON.parse(cleaned);
   } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) throw Object.assign(new Error('Resposta da IA não estava em JSON.'), { code: 'AI_INVALID_RESPONSE' });
-    return JSON.parse(match[0]);
+    const extracted = extractFirstJsonObject(cleaned);
+    if (!extracted) throw Object.assign(new Error('Resposta da IA não estava em JSON.'), { code: 'AI_INVALID_RESPONSE' });
+    try {
+      return JSON.parse(extracted);
+    } catch {
+      throw Object.assign(new Error('Resposta da IA não estava em JSON.'), { code: 'AI_INVALID_RESPONSE' });
+    }
   }
 };
 
@@ -82,7 +107,8 @@ export async function runStudyAI({ action = 'analyze', question = '', context = 
 
   const content = [{ type: 'text', text: action === 'analyze' ? buildAnalysisPrompt() : action === 'extract' ? buildTextExtractionPrompt() : buildActionPrompt({ action, question, context }) }];
   if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl } });
-  const completion = await completeWithAzure({ messages: [{ role: 'user', content }] });
+  const provider = getProvider(imageDataUrl ? 'vision' : 'chat');
+  const completion = await provider.complete({ messages: [{ role: 'user', content }] });
   const result = parseJson(completion.text);
   return action === 'analyze'
     ? normalizeAnalysis(result, completion)
@@ -191,7 +217,7 @@ export async function runSubjectAI({ action = 'questions', subject = {} } = {}) 
   }
 
   // Longer budget than a single-image action: subject scripts are the biggest outputs.
-  const completion = await completeWithAzure({ messages: [{ role: 'user', content: buildSubjectPrompt(action, subject) }], maxTokens: 2600, timeoutMs: 45000 });
+  const completion = await getProvider('chat').complete({ messages: [{ role: 'user', content: buildSubjectPrompt(action, subject) }], maxTokens: 2600, timeoutMs: 45000 });
   const result = parseJson(completion.text);
   return normalizeSubject(action, result, subjectName, completion);
 }
@@ -249,9 +275,9 @@ export async function runYouTubeRecommendations({ subject = {}, preferences = {}
 // Audio + video services (live only; Demo Mode uses the browser's Web Speech).
 // ---------------------------------------------------------------------------
 
-const TTS_CHUNK = 4000; // Azure /audio/speech caps input at 4096 chars.
+const DEFAULT_TTS_CHUNK = 4000; // Azure/OpenAI /audio/speech caps input at 4096 chars.
 
-function chunkText(text, max = TTS_CHUNK) {
+function chunkText(text, max = DEFAULT_TTS_CHUNK) {
   const clean = String(text || '').trim();
   if (!clean) return [];
   if (clean.length <= max) return [clean];
@@ -274,31 +300,40 @@ function chunkText(text, max = TTS_CHUNK) {
   return chunks;
 }
 
-export async function synthesizeSpeech({ text, voice = 'alloy', format = 'mp3' }) {
-  const chunks = chunkText(text);
+export async function synthesizeSpeech({ text, voice = 'narrator', format = 'mp3' }) {
+  const provider = getProvider('tts');
+  const chunks = chunkText(text, provider.ttsChunkLimit || DEFAULT_TTS_CHUNK);
   if (!chunks.length) throw Object.assign(new Error('Texto vazio para áudio.'), { code: 'AI_INVALID_RESPONSE' });
   const results = [];
   for (const chunk of chunks) {
-    // eslint-disable-next-line no-await-in-loop -- Azure TTS is per-chunk sequential.
-    const audio = await speakWithAzure({ text: chunk, voice, format });
+    // eslint-disable-next-line no-await-in-loop -- providers speak one chunk at a time, sequentially.
+    const audio = await provider.speak({ text: chunk, voice, format });
     results.push(audio.buffer.toString('base64'));
   }
   return { parts: results, mimeType: format === 'mp3' ? 'audio/mpeg' : `audio/${format}`, voice };
 }
 
 export async function transcribeAudio({ buffer, mimeType, filename }) {
-  return transcribeWithAzure({ buffer, mimeType, filename });
+  return getProvider('stt').transcribe({ buffer, mimeType, filename });
 }
 
+// jobId is prefixed with the provider name (e.g. "azure-openai:abc123") so a
+// later poll always targets whichever provider actually created the job,
+// independent of what AI_VIDEO_PROVIDER resolves to by the time it's polled.
 export async function startVideoLesson({ prompt, seconds, width, height }) {
-  const job = await createVideoJob({ prompt, seconds, width, height });
-  return { jobId: job.id, status: job.status };
+  const provider = getProvider('video');
+  const job = await provider.createVideoJob({ prompt, seconds, width, height });
+  return { jobId: `${provider.name}:${job.id}`, status: job.status };
 }
 
 export async function pollVideoLesson({ jobId }) {
-  const job = await getVideoJob(jobId);
+  const sep = String(jobId || '').indexOf(':');
+  if (sep <= 0) throw Object.assign(new Error('jobId inválido.'), { code: 'AI_INVALID_RESPONSE' });
+  const provider = getProviderByName(jobId.slice(0, sep));
+  const rawJobId = jobId.slice(sep + 1);
+  const job = await provider.getVideoJob(rawJobId);
   if (job.status === 'succeeded' && job.generationId) {
-    const content = await getVideoContent(job.generationId);
+    const content = await provider.getVideoContent(job.generationId);
     return { status: 'succeeded', video: content.buffer.toString('base64'), mimeType: content.mimeType };
   }
   return { status: job.status, failure: job.failure };

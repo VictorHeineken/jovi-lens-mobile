@@ -1,15 +1,15 @@
 import { isDemoMode } from './imageAnalysis.js';
 
-// Azure voices per role; browser pitch differentiates speakers when only one
-// pt-BR voice exists in speechSynthesis.
-export const AZURE_VOICES = { A: 'nova', B: 'onyx', narrator: 'alloy' };
+// Browser pitch differentiates speakers when only one pt-BR voice exists in
+// speechSynthesis. The live path sends the role itself ('A'/'B'/'narrator')
+// to /api/tts — the active provider maps it to a real voice ID server-side.
 const BROWSER_PITCH = { A: 1.12, B: 0.9, narrator: 1 };
 
 let liveTtsAvailable = null; // null unknown | true | false (not configured / failed)
 
 export function ttsMode() {
   if (isDemoMode()) return 'browser';
-  return liveTtsAvailable === false ? 'browser' : 'azure';
+  return liveTtsAvailable === false ? 'browser' : 'live';
 }
 
 export function noteToSpeech(note) {
@@ -25,7 +25,7 @@ function pickBrowserVoice() {
 
 // Returns an array of playable data: URLs for one text chunk, or null when the
 // server reports TTS is not configured (caller then falls back to the browser).
-async function fetchAzureTts(text, voice) {
+async function fetchLiveTts(text, voice) {
   let response;
   try {
     response = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
@@ -60,7 +60,7 @@ class Narration {
   }
 
   emit(extra = {}) {
-    this.handlers.onUpdate?.({ index: this.index, state: this.state, total: this.segments.length, mode: this.usingBrowser ? 'browser' : 'azure', ...extra });
+    this.handlers.onUpdate?.({ index: this.index, state: this.state, total: this.segments.length, mode: this.usingBrowser ? 'browser' : 'live', ...extra });
   }
 
   start(segments, handlers = {}, startIndex = 0) {
@@ -90,7 +90,7 @@ class Narration {
     if (!this.usingBrowser) {
       let urls;
       try {
-        urls = await fetchAzureTts(segment.text, AZURE_VOICES[segment.speaker] || 'alloy');
+        urls = await fetchLiveTts(segment.text, segment.speaker || 'narrator');
       } catch (error) {
         if (this.stale(token)) return;
         this.state = 'idle';

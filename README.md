@@ -28,7 +28,21 @@ detecção de bordas ou sincronização em nuvem.
 
 ## IA
 
-O fluxo real usa Azure OpenAI atrás de uma camada de serviço em `api/_lib/ai/`. O navegador nunca recebe a chave: a imagem passa por `POST /api/analyze-image`, que valida o payload, aplica timeout e normaliza a resposta para o contrato educacional do produto.
+O fluxo real usa um provedor de IA plugável atrás de uma camada de serviço em `api/_lib/ai/`. O navegador nunca recebe nenhuma chave: a imagem passa por `POST /api/analyze-image`, que valida o payload, aplica timeout e normaliza a resposta para o contrato educacional do produto — esse contrato é o mesmo não importa qual provedor esteja ativo.
+
+Cada provedor vive em `api/_lib/ai/providers/<nome>.js` e implementa a mesma interface (`complete`, `speak`, `transcribe`, `createVideoJob`/`getVideoJob`/`getVideoContent`, mais um objeto `capabilities`). O provedor ativo é escolhido pela variável `AI_PROVIDER` no `.env` (veja abaixo); `api/_lib/ai/providers/index.js` resolve qual módulo atende cada recurso. Hoje `azure-openai` e `minimax` estão registrados — `openai`, `anthropic` e `gemini` chegam em fases seguintes desta refatoração.
+
+Nem todo provedor cobre todos os recursos — é uma limitação real das APIs, não uma lacuna de implementação:
+
+| Provedor | Chat/Visão | TTS | STT | Vídeo |
+|---|---|---|---|---|
+| Azure OpenAI | ✅ | ✅ | ✅ | ✅ (Sora) |
+| MiniMax | ✅ | ✅ | ❌ (não confirmado) | ✅ (Hailuo) |
+| OpenAI (planejado) | ✅ | ✅ | ✅ | ✅ (Sora) |
+| Anthropic (planejado) | ✅ | ❌ | ❌ | ❌ |
+| Google Gemini (planejado) | ✅ | ✅ | ✅ | ✅ (Veo) |
+
+Se `AI_PROVIDER` não cobre um recurso, use a variável de override desse recurso (`AI_TTS_PROVIDER`, `AI_STT_PROVIDER`, `AI_VIDEO_PROVIDER`, ou `AI_CHAT_PROVIDER`/`AI_VISION_PROVIDER`) para apontá-lo a outro provedor configurado. Sem override, o recurso simplesmente fica indisponível (erro `AI_NOT_CONFIGURED`), do mesmo jeito que hoje acontece quando um deployment opcional da Azure não está configurado.
 
 Para uma apresentação sem dependência de rede, ative o Demo Mode. O mock fica separado em `services/demoResponses.js` e reproduz análise, explicação, resolução, pergunta, quiz e flashcards.
 
@@ -51,11 +65,12 @@ O comando inicia o frontend Vite em `http://127.0.0.1:5173` e a API local Node e
 
 ## Variáveis locais
 
-Copie `.env.example` para `.env` e configure os valores localmente. `AZURE_OPENAI_API_KEY` é server-only e nunca deve usar prefixo `VITE_`. O arquivo de exemplo deve permanecer sem valores reais.
+Copie `.env.example` para `.env` e configure os valores localmente. Toda chave de provedor é server-only e nunca deve usar prefixo `VITE_`. O arquivo de exemplo deve permanecer sem valores reais.
 
 Principais variáveis:
 
 ```text
+AI_PROVIDER=azure-openai
 AZURE_OPENAI_ENDPOINT=
 AZURE_OPENAI_API_KEY=
 AZURE_OPENAI_DEPLOYMENT=
@@ -66,7 +81,7 @@ VITE_JOVI_LENS_DEMO_MODE=false
 JOVI_WEB_URL=http://127.0.0.1:5173
 ```
 
-Para uma apresentação sem rede, defina os dois flags como `true`. Para usar a Azure localmente, mantenha os dois como `false` e reinicie `npm run dev` depois de alterar o `.env`.
+`AI_PROVIDER` é obrigatória para o modo ao vivo — sem ela, cada chamada de IA falha com `AI_NOT_CONFIGURED` apontando para o `.env.example`. Para uma apresentação sem rede, defina os dois flags de Demo Mode como `true` (o provedor de IA não importa nesse caso). Para usar um provedor ao vivo localmente, mantenha os dois `false`, configure o bloco de variáveis do provedor escolhido e reinicie `npm run dev` depois de alterar o `.env`.
 
 As APIs locais aplicam rate limit por janela curta e limite diário por recurso. Esses limites protegem o
 protótipo contra bursts e consumo acidental; em produção devem ser substituídos por quotas por usuário

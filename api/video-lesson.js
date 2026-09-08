@@ -9,7 +9,8 @@ export default async function handler(req, res) {
   if (isRateLimited(req, { scope: 'video-poll', max: 60 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas consultas em sequência. Aguarde um momento.' });
     if (isDailyLimited(req, { scope: 'video-poll', max: 300 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de consultas de vídeo foi atingido.' });
     const jobId = new URLSearchParams((req.url || '').split('?')[1] || '').get('jobId');
-    if (!jobId || !/^[A-Za-z0-9_-]{1,128}$/.test(jobId)) return res.status(400).json({ message: 'jobId inválido.' });
+    // "<provider-name>:<raw job id>" — see startVideoLesson/pollVideoLesson in service.js.
+    if (!jobId || !/^[a-z0-9-]{1,32}:[A-Za-z0-9_-]{1,128}$/.test(jobId)) return res.status(400).json({ message: 'jobId inválido.' });
     try {
       const result = await pollVideoLesson({ jobId });
       return res.status(200).json(result);
