@@ -1,4 +1,5 @@
-import { isDemoMode } from './imageAnalysis.js';
+import { isDemoMode } from './env.js';
+import { apiUrl } from './apiClient.js';
 
 const DEMO_STYLE_LABELS = {
   animated: 'animada e visual',
@@ -32,7 +33,7 @@ export async function findYouTubeLessons(subject, preferences) {
 
   let response;
   try {
-    response = await fetch('/api/youtube-recommendations', {
+    response = await fetch(apiUrl('/api/youtube-recommendations'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subject, preferences }),

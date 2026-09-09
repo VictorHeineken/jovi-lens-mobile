@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "JOVI Lens",
+    "slug": "jovi-lens-native",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "jovilens",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jovilens.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "O JOVI Lens usa a câmera para fotografar e filmar o conteúdo que você quer estudar.",
+        "NSPhotoLibraryUsageDescription": "O JOVI Lens acessa suas fotos para importar imagens para análise."
+      }
+    },
+    "android": {
+      "package": "com.jovilens.app",
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "O JOVI Lens usa o microfone para gravar sua voz e transcrever perguntas."
+        }
+      ],
+      "expo-video",
+      "expo-sharing",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "O JOVI Lens usa o microfone para ditado por voz.",
+          "speechRecognitionPermission": "O JOVI Lens usa reconhecimento de fala para transcrever sua voz em tempo real."
+        }
+      ],
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O JOVI Lens acessa suas fotos para importar imagens para análise."
+        }
+      ]
+    ],
+    "experiments": {}
+  }
+}

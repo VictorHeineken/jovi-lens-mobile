@@ -1,12 +1,30 @@
-const DB_NAME = 'jovi-mobile';
-const DB_VERSION = 1;
-const STORE = 'media';
+import * as FileSystem from 'expo-file-system';
+import { MMKV } from 'react-native-mmkv';
+
+// Same key/value interface as the web app's services/storage.js (backed by
+// localStorage + IndexedDB there). MMKV is used instead of AsyncStorage
+// because it's synchronous, like localStorage — that lets every getX()/setX()
+// below keep the exact same synchronous signature, so context/AppDataContext.jsx
+// ports with no async refactor. It's a native module either way (not available
+// in Expo Go), which this project already accepts for the camera/dictation
+// libraries — see react-native-migration-plan.md.
+
+const storage = new MMKV({ id: 'jovi-lens' });
+
 const NOTES_KEY = 'jovi_mobile_notes_v2';
 const HISTORY_KEY = 'jovi_mobile_ai_history_v1';
 const PLAN_KEY = 'jovi_mobile_plan_v1';
 const USER_KEY = 'jovi_mobile_user_v1';
 const SUBJECT_KEY = 'jovi_mobile_subject_artifacts_v1';
 const LEARNING_PREFERENCES_KEY = 'jovi_mobile_learning_preferences_v1';
+const MEDIA_INDEX_KEY = 'jovi_mobile_media_index_v1';
+
+export const MEDIA_DIR = `${FileSystem.documentDirectory}jovi-media/`;
+
+export async function ensureMediaDirExists() {
+  const info = await FileSystem.getInfoAsync(MEDIA_DIR);
+  if (!info.exists) await FileSystem.makeDirectoryAsync(MEDIA_DIR, { intermediates: true });
+}
 
 export const DEFAULT_LEARNING_PREFERENCES = {
   videoStyle: 'animated',
@@ -15,54 +33,66 @@ export const DEFAULT_LEARNING_PREFERENCES = {
   sort: 'relevance',
 };
 
-function openDb() {
-  return new Promise((resolve, reject) => {
-    if (!('indexedDB' in window)) return reject(new Error('IndexedDB unavailable'));
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+function readJson(key, fallback) {
+  try {
+    const raw = storage.getString(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
-async function withStore(mode, action) {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, mode);
-    const store = tx.objectStore(STORE);
-    const request = action(store);
-    let result;
-    let settled = false;
-    const close = () => db.close();
-    const fail = (error) => {
-      if (settled) return;
-      settled = true;
-      close();
-      reject(error || new Error('IndexedDB transaction failed.'));
-    };
+// Guarded writer, mirroring the web version's contract: callers doing an
+// optimistic state update (e.g. saveNote) can tell a real success from a
+// silent failure (disk full, MMKV unavailable) via the boolean return.
+function writeJson(key, value) {
+  try {
+    storage.set(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-    request.onsuccess = () => {
-      result = request.result;
-    };
-    request.onerror = () => fail(request.error);
-    tx.onerror = () => fail(tx.error);
-    tx.onabort = () => fail(tx.error || new Error('IndexedDB transaction aborted.'));
-    tx.oncomplete = () => {
-      if (settled) return;
-      settled = true;
-      close();
-      resolve(result);
-    };
-  });
+function extensionForMediaType(mediaType) {
+  return mediaType === 'video' ? 'mp4' : 'jpg';
+}
+
+// A freshly captured record's `src` arrives as a data: URI (base64, same
+// shape the web camera/upload flow produces). Anything already a file://
+// URI (previously persisted) or a bundled/remote asset (samples, http)
+// passes through untouched.
+async function persistMediaFile(record) {
+  if (!record?.src || !record.src.startsWith('data:')) return record;
+  const match = /^data:([^;]+);base64,(.*)$/s.exec(record.src);
+  if (!match) return record;
+  await ensureMediaDirExists();
+  const path = `${MEDIA_DIR}${record.id}.${extensionForMediaType(record.mediaType)}`;
+  await FileSystem.writeAsStringAsync(path, match[2], { encoding: FileSystem.EncodingType.Base64 });
+  return { ...record, src: path };
+}
+
+async function deleteMediaFile(src) {
+  if (!src || !src.startsWith(MEDIA_DIR)) return;
+  try {
+    await FileSystem.deleteAsync(src, { idempotent: true });
+  } catch {
+    // Ignore storage failures in prototype mode.
+  }
+}
+
+function readMediaIndex() {
+  return readJson(MEDIA_INDEX_KEY, []);
+}
+
+function writeMediaIndex(records) {
+  return writeJson(MEDIA_INDEX_KEY, records);
 }
 
 export async function getAllMediaRecords() {
   try {
-    const result = await withStore('readonly', (store) => store.getAll());
-    return (result || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const stored = readMediaIndex();
+    return [...stored].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   } catch {
     return [];
   }
@@ -70,16 +100,22 @@ export async function getAllMediaRecords() {
 
 export async function saveMediaRecord(record) {
   try {
-    await withStore('readwrite', (store) => store.put(record));
+    const persisted = await persistMediaFile(record);
+    const index = readMediaIndex();
+    writeMediaIndex([persisted, ...index.filter((item) => item.id !== persisted.id)]);
+    return persisted;
   } catch {
-    // The app stays usable even when private browsing blocks IndexedDB.
+    // The app stays usable even when the filesystem write fails.
+    return record;
   }
-  return record;
 }
 
 export async function deleteMediaRecord(id) {
   try {
-    await withStore('readwrite', (store) => store.delete(id));
+    const index = readMediaIndex();
+    const target = index.find((item) => item.id === id);
+    writeMediaIndex(index.filter((item) => item.id !== id));
+    if (target) await deleteMediaFile(target.src);
   } catch {
     // Ignore storage failures in prototype mode.
   }
@@ -87,21 +123,12 @@ export async function deleteMediaRecord(id) {
 
 export async function clearMediaRecords() {
   try {
-    await withStore('readwrite', (store) => store.clear());
+    const index = readMediaIndex();
+    await Promise.all(index.map((item) => deleteMediaFile(item.src)));
+    writeMediaIndex([]);
   } catch {
     // Ignore storage failures in prototype mode.
   }
-}
-
-function readJson(key, fallback) {
-  try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); } catch { return fallback; }
-}
-
-// Guarded writer: quota-exceeded or private-mode throws must not crash the app.
-// Returns whether the write actually landed, so callers doing an optimistic
-// state update (e.g. saveNote) can tell a real success from a silent failure.
-function writeJson(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
 }
 
 export const getNotes = () => readJson(NOTES_KEY, []);
@@ -111,7 +138,14 @@ export const setHistory = (history) => writeJson(HISTORY_KEY, history);
 export const getPlan = () => readJson(PLAN_KEY, { type: 'free' });
 export const setPlan = (plan) => writeJson(PLAN_KEY, plan);
 export const getUser = () => readJson(USER_KEY, null);
-export const setUser = (user) => { try { user ? localStorage.setItem(USER_KEY, JSON.stringify(user)) : localStorage.removeItem(USER_KEY); } catch { /* storage unavailable */ } };
+export const setUser = (user) => {
+  try {
+    if (user) storage.set(USER_KEY, JSON.stringify(user));
+    else storage.delete(USER_KEY);
+  } catch {
+    // storage unavailable
+  }
+};
 
 // Subject artifacts: generated plan/exam/scripts + last exam result, keyed by matéria.
 export const getSubjectArtifacts = () => readJson(SUBJECT_KEY, {});

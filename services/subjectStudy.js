@@ -1,5 +1,6 @@
 import { getSubjectDemo } from './demoResponses.js';
-import { isDemoMode } from './imageAnalysis.js';
+import { isDemoMode } from './env.js';
+import { apiUrl } from './apiClient.js';
 
 // A "matéria" is note.category; its subthemes come from topicPath[0]/subcategory.
 export function subthemeOf(note) {
@@ -41,13 +42,13 @@ export async function generateSubjectContent(subject, { action, format } = {}) {
   const payloadSubject = { name: subject.name, notes: subject.notes, ...(format ? { format } : {}) };
 
   if (isDemoMode()) {
-    await new Promise((resolve) => window.setTimeout(resolve, 700));
+    await new Promise((resolve) => setTimeout(resolve, 700));
     return { ...getSubjectDemo({ action, subject: payloadSubject }), provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' };
   }
 
   let response;
   try {
-    response = await fetch('/api/subject-ai', {
+    response = await fetch(apiUrl('/api/subject-ai'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, subject: payloadSubject }),

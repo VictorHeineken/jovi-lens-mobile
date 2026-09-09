@@ -1,8 +1,12 @@
-import { isDemoMode } from './imageAnalysis.js';
+import { createAudioPlayer } from 'expo-audio';
+import * as Speech from 'expo-speech';
+import { isDemoMode } from './env.js';
+import { apiUrl } from './apiClient.js';
 
-// Browser pitch differentiates speakers when only one pt-BR voice exists in
-// speechSynthesis. The live path sends the role itself ('A'/'B'/'narrator')
-// to /api/tts — the active provider maps it to a real voice ID server-side.
+// "Browser" pitch differentiates speakers when only one pt-BR voice exists for
+// the on-device fallback (expo-speech, RN's equivalent of speechSynthesis).
+// The live path sends the role itself ('A'/'B'/'narrator') to /api/tts — the
+// active provider maps it to a real voice ID server-side.
 const BROWSER_PITCH = { A: 1.12, B: 0.9, narrator: 1 };
 
 let liveTtsAvailable = null; // null unknown | true | false (not configured / failed)
@@ -17,18 +21,24 @@ export function noteToSpeech(note) {
   return parts.join('. ').slice(0, 3000);
 }
 
-function pickBrowserVoice() {
-  const synth = window.speechSynthesis;
-  const voices = synth?.getVoices?.() || [];
-  return voices.find((v) => /pt.BR/i.test(v.lang)) || voices.find((v) => /^pt/i.test(v.lang)) || null;
+let cachedVoiceId; // undefined = not looked up yet, null = none found
+function ensureVoiceLookup() {
+  if (cachedVoiceId !== undefined) return;
+  cachedVoiceId = null;
+  Speech.getAvailableVoicesAsync()
+    .then((voices) => {
+      const voice = voices.find((v) => /pt.BR/i.test(v.language)) || voices.find((v) => /^pt/i.test(v.language));
+      cachedVoiceId = voice?.identifier || null;
+    })
+    .catch(() => { cachedVoiceId = null; });
 }
 
 // Returns an array of playable data: URLs for one text chunk, or null when the
-// server reports TTS is not configured (caller then falls back to the browser).
+// server reports TTS is not configured (caller then falls back to on-device speech).
 async function fetchLiveTts(text, voice) {
   let response;
   try {
-    response = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
+    response = await fetch(apiUrl('/api/tts'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
   } catch {
     liveTtsAvailable = false;
     return null;
@@ -47,15 +57,22 @@ async function fetchLiveTts(text, voice) {
 // Single shared narrator: only one narration plays at a time across the app.
 class Narration {
   constructor() {
-    this.audio = typeof Audio !== 'undefined' ? new Audio() : null;
+    this.player = createAudioPlayer(null);
+    // A single persistent listener, guarded by activeToken (set right before
+    // each play()) rather than reassigned per segment like the web version's
+    // audio.onended — expo-audio's AudioPlayer has no per-call onended hook.
+    this.player.addListener('playbackStatusUpdate', (status) => {
+      if (status.didJustFinish && !this.stale(this.activeToken)) this.playParts(this.activeToken);
+    });
     this.segments = [];
     this.index = 0;
     this.partQueue = [];
     this.state = 'idle'; // idle | playing | paused | done
     this.handlers = {};
-    this.usingBrowser = false;
+    this.usingBrowser = false; // true = on-device (expo-speech) fallback, matching ttsMode()'s 'browser' value
     this.cancelled = false;
     this.token = 0; // bumped on every start(); stale async continuations bail out.
+    this.activeToken = null; // token the player is currently playing audio for
     this.pendingResume = null; // set when paused while a segment's audio was still fetching.
   }
 
@@ -104,56 +121,60 @@ class Narration {
       if (this.state === 'paused') { this.pendingResume = () => this.playParts(token); return; }
       return this.playParts(token);
     }
-    return this.speakBrowser(segment, token);
+    return this.speakDevice(segment, token);
   }
 
   playParts(token) {
-    if (this.stale(token) || !this.audio) return;
+    if (this.stale(token)) return;
     if (!this.partQueue.length) { this.index += 1; return this.playSegment(token); }
     const url = this.partQueue.shift();
-    this.audio.src = url;
-    this.audio.onended = () => this.playParts(token);
-    this.audio.onerror = () => this.playParts(token);
-    this.audio.play().catch(() => { if (this.stale(token)) return; this.state = 'paused'; this.emit(); });
+    try {
+      this.activeToken = token;
+      this.player.replace(url);
+      this.player.play();
+    } catch {
+      if (this.stale(token)) return;
+      this.state = 'paused';
+      this.emit();
+    }
   }
 
-  speakBrowser(segment, token) {
-    const synth = window.speechSynthesis;
-    if (!synth) { this.index += 1; return this.playSegment(token); }
-    const utterance = new SpeechSynthesisUtterance(segment.text);
-    utterance.lang = 'pt-BR';
-    const voice = pickBrowserVoice();
-    if (voice) utterance.voice = voice;
-    utterance.pitch = BROWSER_PITCH[segment.speaker] ?? 1;
-    utterance.rate = 1;
-    utterance.onend = () => { if (!this.stale(token)) { this.index += 1; this.playSegment(token); } };
-    utterance.onerror = () => { if (!this.stale(token)) { this.index += 1; this.playSegment(token); } };
-    synth.speak(utterance);
+  speakDevice(segment, token) {
+    ensureVoiceLookup();
+    Speech.speak(segment.text, {
+      language: 'pt-BR',
+      voice: cachedVoiceId || undefined,
+      pitch: BROWSER_PITCH[segment.speaker] ?? 1,
+      rate: 1,
+      onDone: () => { if (!this.stale(token)) { this.index += 1; this.playSegment(token); } },
+      onError: () => { if (!this.stale(token)) { this.index += 1; this.playSegment(token); } },
+    });
   }
 
   pause() {
     if (this.state !== 'playing') return;
     this.state = 'paused';
-    if (this.usingBrowser) window.speechSynthesis?.pause();
-    else this.audio?.pause();
+    // expo-speech's pause()/resume() only work on iOS — Android has no native
+    // pause, so a device-mode pause on Android is closer to a stop-in-place.
+    if (this.usingBrowser) Speech.pause();
+    else { try { this.player.pause(); } catch { /* no-op */ } }
     this.emit();
   }
 
   resume() {
     if (this.state !== 'paused') return;
     this.state = 'playing';
-    if (this.usingBrowser) { window.speechSynthesis?.resume(); this.emit(); return; }
+    if (this.usingBrowser) { Speech.resume(); this.emit(); return; }
     // A segment finished fetching while paused — start it now.
     if (this.pendingResume) { const run = this.pendingResume; this.pendingResume = null; this.emit(); run(); return; }
-    const token = this.token;
-    this.audio?.play().catch(() => { if (this.stale(token)) return; this.state = 'paused'; this.emit(); });
+    try { this.player.play(); } catch { this.state = 'paused'; }
     this.emit();
   }
 
   stopMedia() {
     this.pendingResume = null;
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
-    if (this.audio) { this.audio.pause(); this.audio.onended = null; this.audio.onerror = null; this.audio.src = ''; }
+    Speech.stop();
+    try { this.player.pause(); } catch { /* no-op */ }
   }
 
   stop() {

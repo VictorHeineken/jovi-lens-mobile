@@ -1,3 +1,9 @@
+import { SvgXml } from 'react-native-svg';
+
+// Path data ported verbatim from components/Icon.jsx (web) — same dictionary,
+// rendered here via react-native-svg's SvgXml instead of a raw <svg> +
+// dangerouslySetInnerHTML, so the path/circle/rect markup itself needed no
+// hand transcription.
 const paths = {
   camera: '<path d="M14.5 6 13 4H7L5.5 6H3a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4.5Z"/><circle cx="10" cy="12.5" r="3.5"/>',
   gallery: '<rect x="2" y="3" width="18" height="16" rx="3"/><circle cx="7" cy="8" r="1.5"/><path d="m4.5 17 4.7-4.8a2 2 0 0 1 2.8 0l1.4 1.4 1.1-1.1a2 2 0 0 1 2.8 0L19.5 15"/>',
@@ -42,20 +48,11 @@ const paths = {
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/>',
 };
 
-export default function Icon({ name, size = 22, strokeWidth = 1.9, className = '' }) {
-  return (
-    <svg
-      className={className}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={strokeWidth}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      dangerouslySetInnerHTML={{ __html: paths[name] || paths.sparkle }}
-    />
-  );
+// Web's version relies on CSS `currentColor` to pick up ambient text color
+// (e.g. an active nav item's `color:` also tints its icon for free). RN has
+// no such cascade, so every call site here passes `color` explicitly instead.
+export default function Icon({ name, size = 22, strokeWidth = 1.9, color = '#0f172a' }) {
+  const body = paths[name] || paths.sparkle;
+  const xml = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round">${body.replace(/currentColor/g, color)}</svg>`;
+  return <SvgXml xml={xml} width={size} height={size} />;
 }
