@@ -39,7 +39,7 @@ export default function Notes() {
         onRemove={removeNote}
         onEdit={setEditing}
       />
-      {selected && <SmartImageSheet record={{ ...(records.find((item) => item.id === selected.id) || {}), ...selected }} initialView={selectedView} onClose={() => { setSelected(null); setSelectedView('viewer'); }} />}
+      {selected && <SmartImageSheet record={{ ...selected, ...(records.find((item) => item.id === selected.id) || {}) }} initialView={selectedView} onClose={() => { setSelected(null); setSelectedView('viewer'); }} />}
       {studioSubject && <SubjectStudio subject={studioSubject} onClose={() => setStudioSubject(null)} />}
       {editing && <NoteEditor note={editing} onClose={() => setEditing(null)} onSave={(next) => { updateNote(editing.id, next); setEditing(null); }} />}
     </main>

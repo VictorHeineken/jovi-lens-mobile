@@ -23,7 +23,7 @@ export default function History() {
       </header>
       <LibrarySearch notes={notes} aiHistory={aiHistory} records={records} onOpen={openRecord} />
       <NotesTimeline notes={notes} aiHistory={aiHistory} records={records} onOpen={openRecord} />
-      {selected && <SmartImageSheet record={{ ...(records.find((item) => item.id === selected.id) || {}), ...selected }} initialView={selectedView} onClose={() => { setSelected(null); setSelectedView('viewer'); }} />}
+      {selected && <SmartImageSheet record={{ ...selected, ...(records.find((item) => item.id === selected.id) || {}) }} initialView={selectedView} onClose={() => { setSelected(null); setSelectedView('viewer'); }} />}
     </main>
   );
 }

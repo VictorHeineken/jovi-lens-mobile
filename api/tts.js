@@ -1,8 +1,8 @@
 import { synthesizeSpeech } from './_lib/ai/service.js';
+import { DEFAULT_VOICE_ROLE, VOICE_ROLES } from './_lib/ai/voices.js';
 import { errorResponse, isDailyLimited, isRateLimited } from './_lib/http.js';
 
-const MAX_TEXT = 8000; // service chunks this into ≤4096-char TTS calls
-const VOICES = new Set(['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'coral', 'sage', 'ash']);
+const MAX_TEXT = 8000; // service chunks this into provider-sized TTS calls
 const FORMATS = new Set(['mp3', 'opus', 'aac', 'flac', 'wav']);
 
 export default async function handler(req, res) {
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
 
   const body = req.body || {};
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, MAX_TEXT) : '';
-  const voice = VOICES.has(body.voice) ? body.voice : 'alloy';
+  const voice = VOICE_ROLES.includes(body.voice) ? body.voice : DEFAULT_VOICE_ROLE;
   const format = FORMATS.has(body.format) ? body.format : 'mp3';
   if (!text) return res.status(400).json({ message: 'Texto ausente para gerar áudio.' });
 
