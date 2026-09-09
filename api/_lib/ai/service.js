@@ -259,7 +259,7 @@ export async function runYouTubeRecommendations({ subject = {}, preferences = {}
     throw Object.assign(new Error('YouTube não está configurado.'), { code: 'YOUTUBE_NOT_CONFIGURED' });
   }
 
-  const completion = await completeWithAzure({
+  const completion = await getProvider('chat').complete({
     messages: [{ role: 'user', content: buildYouTubeSearchPrompt(subject, normalizedPreferences) }],
     maxTokens: 500,
     timeoutMs: 18000,
