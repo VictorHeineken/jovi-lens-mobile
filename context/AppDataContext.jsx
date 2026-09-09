@@ -1,18 +1,22 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   deleteMediaRecord,
+  clearMediaRecords,
   getAllMediaRecords,
   getHistory,
+  getLearningPreferences,
   getNotes,
   getPlan,
   getSubjectArtifacts,
   getUser,
   saveMediaRecord,
   setHistory as persistHistory,
+  setLearningPreferences as persistLearningPreferences,
   setNotes as persistNotes,
   setPlan as persistPlan,
   setSubjectArtifacts as persistSubjectArtifacts,
   setUser as persistUser,
+  DEFAULT_LEARNING_PREFERENCES,
 } from '../services/storage.js';
 import { aggregateSubjects } from '../services/subjectStudy.js';
 
@@ -317,17 +321,30 @@ function getInitialNotes() {
 
 export function AppDataProvider({ children }) {
   const [records, setRecords] = useState(samples);
+  const recordsRef = useRef(samples);
+  const recordsLoadVersionRef = useRef(0);
   const [notes, setNotesState] = useState(getInitialNotes);
   const [aiHistory, setAiHistory] = useState(() => getHistory());
   const [plan, setPlanState] = useState(() => getPlan());
   const [user, setUserState] = useState(() => getUser());
   const [subjectArtifacts, setSubjectArtifactsState] = useState(() => getSubjectArtifacts());
+  const [learningPreferences, setLearningPreferencesState] = useState(() => getLearningPreferences());
 
   useEffect(() => {
-    getAllMediaRecords().then((stored) => setRecords([...stored, ...samples]));
+    const loadVersion = recordsLoadVersionRef.current;
+    let active = true;
+    getAllMediaRecords().then((stored) => {
+      if (!active || recordsLoadVersionRef.current !== loadVersion) return;
+      const storedIds = new Set(stored.map((record) => record.id));
+      const recordsAddedWhileLoading = recordsRef.current.filter((record) => record.source !== 'sample' && !storedIds.has(record.id));
+      const next = [...stored, ...recordsAddedWhileLoading, ...samples];
+      recordsRef.current = next;
+      setRecords(next);
+    });
+    return () => { active = false; };
   }, []);
 
-  const addRecord = useCallback(async ({ src, source = 'upload', label = 'Nova imagem', aiAvailable = true, mediaType = 'image' }) => {
+  const addRecord = useCallback(async ({ src, source = 'upload', label = 'Nova imagem', aiAvailable = true, mediaType = 'image', collectionId = null, pageNumber = null }) => {
     const record = {
       id: `media-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       src,
@@ -335,26 +352,31 @@ export function AppDataProvider({ children }) {
       label,
       aiAvailable,
       mediaType,
+      collectionId,
+      pageNumber,
       createdAt: new Date().toISOString(),
       analysis: null,
     };
-    setRecords((current) => [record, ...current]);
+    recordsRef.current = [record, ...recordsRef.current];
+    setRecords(recordsRef.current);
     await saveMediaRecord(record);
     return record;
   }, []);
 
   const updateRecord = useCallback(async (id, patch) => {
-    const current = records.find((item) => item.id === id);
+    const current = recordsRef.current.find((item) => item.id === id);
     if (!current) return null;
     const updated = { ...current, ...patch };
-    setRecords((items) => items.map((item) => item.id === id ? updated : item));
+    recordsRef.current = recordsRef.current.map((item) => item.id === id ? updated : item);
+    setRecords(recordsRef.current);
     if (updated.source !== 'sample') await saveMediaRecord(updated);
     return updated;
-  }, [records]);
+  }, []);
 
   const removeRecord = useCallback(async (record) => {
     if (!record || record.source === 'sample') return;
-    setRecords((current) => current.filter((item) => item.id !== record.id));
+    recordsRef.current = recordsRef.current.filter((item) => item.id !== record.id);
+    setRecords(recordsRef.current);
     await deleteMediaRecord(record.id);
   }, []);
 
@@ -390,6 +412,12 @@ export function AppDataProvider({ children }) {
     persistNotes(next);
   }, [notes]);
 
+  const updateNote = useCallback((id, patch) => {
+    const next = notes.map((note) => note.id === id ? { ...note, ...patch } : note);
+    setNotesState(next);
+    persistNotes(next);
+  }, [notes]);
+
   const toggleNoteFavorite = useCallback((id) => {
     const next = notes.map((note) => note.id === id ? { ...note, favorite: !note.favorite } : note);
     setNotesState(next);
@@ -420,6 +448,53 @@ export function AppDataProvider({ children }) {
     persistUser(next);
   }, []);
 
+  const setLearningPreferences = useCallback((next) => {
+    const preferences = { ...DEFAULT_LEARNING_PREFERENCES, ...(next || {}) };
+    setLearningPreferencesState(preferences);
+    persistLearningPreferences(preferences);
+  }, []);
+
+  const restoreLocalData = useCallback(async (backup) => {
+    recordsLoadVersionRef.current += 1;
+    const incomingRecords = Array.isArray(backup.records) ? backup.records : [];
+    await Promise.all(incomingRecords.map((record) => saveMediaRecord(record)));
+    const storedRecords = await getAllMediaRecords();
+    const nextRecords = [...storedRecords, ...samples];
+    recordsRef.current = nextRecords;
+    setRecords(nextRecords);
+    setNotesState(backup.notes || []);
+    persistNotes(backup.notes || []);
+    setAiHistory(backup.aiHistory || []);
+    persistHistory(backup.aiHistory || []);
+    setPlanState(backup.plan || { type: 'free' });
+    persistPlan(backup.plan || { type: 'free' });
+    setUserState(backup.user || null);
+    persistUser(backup.user || null);
+    setSubjectArtifactsState(backup.subjectArtifacts || {});
+    persistSubjectArtifacts(backup.subjectArtifacts || {});
+    setLearningPreferences(backup.learningPreferences || DEFAULT_LEARNING_PREFERENCES);
+    return { records: incomingRecords.length, notes: (backup.notes || []).length };
+  }, [setLearningPreferences]);
+
+  const clearLocalData = useCallback(async () => {
+    recordsLoadVersionRef.current += 1;
+    await clearMediaRecords();
+    recordsRef.current = samples;
+    setRecords(samples);
+    setNotesState(sampleNotes);
+    persistNotes(sampleNotes);
+    setAiHistory([]);
+    persistHistory([]);
+    setPlanState({ type: 'free' });
+    persistPlan({ type: 'free' });
+    setUserState(null);
+    persistUser(null);
+    setSubjectArtifactsState({});
+    persistSubjectArtifacts({});
+    setLearningPreferencesState(DEFAULT_LEARNING_PREFERENCES);
+    persistLearningPreferences(DEFAULT_LEARNING_PREFERENCES);
+  }, []);
+
   // Matérias derived from saved notes (category → subthemes + note bodies).
   // Uncategorized notes fall under "Outros", matching how SubjectNotes groups them.
   const subjects = useMemo(() => aggregateSubjects(notes), [notes]);
@@ -436,9 +511,9 @@ export function AppDataProvider({ children }) {
   const getSubjectArtifact = useCallback((subjectName, key) => subjectArtifacts[subjectName]?.[key] || null, [subjectArtifacts]);
 
   const value = useMemo(() => ({
-    records, notes, aiHistory, plan, user, subjects, subjectArtifacts,
-    addRecord, updateRecord, removeRecord, saveNote, removeNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, saveSubjectArtifact, getSubjectArtifact,
-  }), [records, notes, aiHistory, plan, user, subjects, subjectArtifacts, addRecord, updateRecord, removeRecord, saveNote, removeNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, saveSubjectArtifact, getSubjectArtifact]);
+    records, notes, aiHistory, plan, user, subjects, subjectArtifacts, learningPreferences,
+    addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, setLearningPreferences, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact,
+  }), [records, notes, aiHistory, plan, user, subjects, subjectArtifacts, learningPreferences, addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, setLearningPreferences, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }

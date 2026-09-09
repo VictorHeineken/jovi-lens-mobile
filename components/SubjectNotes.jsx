@@ -65,7 +65,7 @@ function formatNoteDate(value) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
 }
 
-export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenStudio, onFavorite, onRemove }) {
+export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenStudio, onFavorite, onRemove, onEdit }) {
   const [openSubject, setOpenSubject] = useState(null);
   const [activeSubtheme, setActiveSubtheme] = useState({});
   const subjects = useMemo(() => groupBySubject(notes), [notes]);
@@ -149,6 +149,7 @@ export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenS
                       onViewImage={(src) => onOpen?.({ ...record, src, label: note.title }, 'viewer')}
                       onFavorite={onFavorite ? () => onFavorite(note.id) : undefined}
                       onRemove={onRemove ? () => onRemove(note.id) : undefined}
+                      onEdit={onEdit ? () => onEdit(note) : undefined}
                     />
                   );
                 })}
@@ -167,7 +168,7 @@ export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenS
   );
 }
 
-function NoteDetail({ note, record, onConversation, onViewImage, onFavorite, onRemove }) {
+function NoteDetail({ note, record, onConversation, onViewImage, onFavorite, onRemove, onEdit }) {
   const images = record?.images || [];
   return (
     <article className="origin-note-detail">
@@ -204,6 +205,8 @@ function NoteDetail({ note, record, onConversation, onViewImage, onFavorite, onR
         </div>
       )}
 
+      {!!note.tags?.length && <div className="origin-note-tags">{note.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div>}
+
       {!!note.sources?.length && (
         <div className="origin-note-sources">
           <span>Fontes</span>
@@ -218,6 +221,7 @@ function NoteDetail({ note, record, onConversation, onViewImage, onFavorite, onR
       <div className="origin-note-actions">
         <button className="origin-note-chat" onClick={onConversation}><Icon name="send" size={14} /><span>Conversar com IA</span></button>
         <NoteAudioButton note={note} />
+        {onEdit && <button onClick={onEdit}><Icon name="note" size={14} /> Editar</button>}
         {onFavorite && <button onClick={onFavorite}><Icon name="bookmark" size={14} /> {note.favorite ? 'Desfavoritar' : 'Favoritar'}</button>}
         {onRemove && <button className="origin-note-delete" onClick={onRemove}><Icon name="trash" size={14} /> Excluir</button>}
       </div>

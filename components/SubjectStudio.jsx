@@ -4,6 +4,8 @@ import SubjectExam from './SubjectExam.jsx';
 import StudyPlan from './StudyPlan.jsx';
 import PodcastPlayer from './PodcastPlayer.jsx';
 import LessonPlayer from './LessonPlayer.jsx';
+import YouTubeRecommendations from './YouTubeRecommendations.jsx';
+import useDialogAccessibility from './useDialogAccessibility.js';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 
@@ -17,18 +19,21 @@ const TABS = [
 
 export default function SubjectStudio({ subject, onClose }) {
   const { saveSubjectArtifact, getSubjectArtifact } = useAppData();
+  const dialogRef = useDialogAccessibility(onClose, Boolean(subject));
   const [tab, setTab] = useState('questions');
 
   if (!subject) return null;
 
   const examResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
   const savedPlan = getSubjectArtifact(subject.name, 'plan')?.data || null;
+  const savedPlanProgress = getSubjectArtifact(subject.name, 'planProgress')?.data || {};
   const savedQuestions = getSubjectArtifact(subject.name, 'questions')?.data || null;
   const savedPodcast = getSubjectArtifact(subject.name, 'podcast')?.data || null;
   const savedLesson = getSubjectArtifact(subject.name, 'lesson')?.data || null;
+  const savedYouTubeLessons = getSubjectArtifact(subject.name, 'youtubeLessons')?.data || null;
 
   return (
-    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={`Estúdio da matéria ${subject.name}`}>
+    <div ref={dialogRef} className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={`Estúdio da matéria ${subject.name}`}>
       <button className="sheet-close" onClick={onClose} aria-label="Fechar estúdio da matéria"><Icon name="close" size={20} /></button>
       <div className="subject-studio">
         <div className="sheet-handle" />
@@ -56,8 +61,8 @@ export default function SubjectStudio({ subject, onClose }) {
           {tab === 'questions' && <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} />}
           {tab === 'exam' && <SubjectExam subject={subject} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} />}
           {tab === 'podcast' && <PodcastPlayer subject={subject} saved={savedPodcast} onSave={(data) => saveSubjectArtifact(subject.name, 'podcast', data)} />}
-          {tab === 'lesson' && <LessonPlayer subject={subject} saved={savedLesson} onSave={(data) => saveSubjectArtifact(subject.name, 'lesson', data)} />}
-          {tab === 'plan' && <StudyPlan subject={subject} savedPlan={savedPlan} onSave={(data) => saveSubjectArtifact(subject.name, 'plan', data)} />}
+          {tab === 'lesson' && <div className="studio-lesson-stack"><YouTubeRecommendations subject={subject} saved={savedYouTubeLessons} examResult={examResult} onSave={(data) => saveSubjectArtifact(subject.name, 'youtubeLessons', data)} /><LessonPlayer subject={subject} saved={savedLesson} onSave={(data) => saveSubjectArtifact(subject.name, 'lesson', data)} /></div>}
+          {tab === 'plan' && <StudyPlan subject={subject} savedPlan={savedPlan} savedProgress={savedPlanProgress} savedLessons={savedYouTubeLessons?.videos?.filter((video) => video.saved) || []} onSave={(data) => saveSubjectArtifact(subject.name, 'plan', data)} onProgressSave={(data) => saveSubjectArtifact(subject.name, 'planProgress', data)} />}
         </div>
       </div>
     </div>

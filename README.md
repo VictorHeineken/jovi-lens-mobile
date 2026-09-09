@@ -10,6 +10,22 @@ Nova experiência mobile-first do projeto JOVI, construída sobre React + Vite e
 - `/copilot` — aba demonstrativa do modelo avançado, com teste de 7 dias ou conexão de uma assinatura existente.
 - `/profile` — conta de demonstração e acesso demonstrativo ao Copilot, sem login ou cobrança real.
 
+Na área `/notes` e no Histórico existe busca por notas, pesquisas e mídias. Notas salvas podem ser
+editadas por título, matéria, subtema, tags, resumo e texto. A câmera também oferece um modo
+`DOCUMENTOS` para salvar várias páginas na mesma sessão, com contraste de leitura e metadados de
+ordenação. O Perfil oferece exportação, restauração e limpeza dos dados locais, sempre com confirmação.
+
+No Estúdio da matéria, a aba Vídeo aula também pode buscar aulas reais no YouTube. A Azure OpenAI
+transforma a matéria, os subtemas e as preferências do estudante em uma consulta; o backend consulta a
+YouTube Data API v3 e retorna links oficiais, filtrando idioma, região, duração e reprodução externa.
+`YOUTUBE_API_KEY` fica somente no backend.
+
+Cada recomendação pode receber feedback, ser salva na trilha da matéria e aparecer na aba Plano. Quando
+existe um simulado concluído, os subtemas com pior desempenho entram automaticamente na próxima busca.
+
+O modo de documentos é uma captura sequencial local; ele ainda não faz correção geométrica automática,
+detecção de bordas ou sincronização em nuvem.
+
 ## IA
 
 O fluxo real usa Azure OpenAI atrás de uma camada de serviço em `api/_lib/ai/`. O navegador nunca recebe a chave: a imagem passa por `POST /api/analyze-image`, que valida o payload, aplica timeout e normaliza a resposta para o contrato educacional do produto.
@@ -44,12 +60,17 @@ AZURE_OPENAI_ENDPOINT=
 AZURE_OPENAI_API_KEY=
 AZURE_OPENAI_DEPLOYMENT=
 AZURE_OPENAI_API_VERSION=2024-12-01-preview
+YOUTUBE_API_KEY=
 JOVI_LENS_DEMO_MODE=false
 VITE_JOVI_LENS_DEMO_MODE=false
 JOVI_WEB_URL=http://127.0.0.1:5173
 ```
 
 Para uma apresentação sem rede, defina os dois flags como `true`. Para usar a Azure localmente, mantenha os dois como `false` e reinicie `npm run dev` depois de alterar o `.env`.
+
+As APIs locais aplicam rate limit por janela curta e limite diário por recurso. Esses limites protegem o
+protótipo contra bursts e consumo acidental; em produção devem ser substituídos por quotas por usuário
+autenticado e um armazenamento compartilhado.
 
 ## Produção
 

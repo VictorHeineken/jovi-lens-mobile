@@ -47,6 +47,7 @@ export default function Camera() {
   const { addRecord, records } = useAppData();
   const [facingMode, setFacingMode] = useState('environment');
   const [cameraState, setCameraState] = useState('starting');
+  const [cameraAttempt, setCameraAttempt] = useState(0);
   const [cameraMessage, setCameraMessage] = useState('');
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
@@ -59,6 +60,8 @@ export default function Camera() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [thumbnailErrorFor, setThumbnailErrorFor] = useState(null);
+  const [documentSessionId, setDocumentSessionId] = useState(null);
+  const [documentPage, setDocumentPage] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -93,7 +96,7 @@ export default function Camera() {
       active = false;
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [facingMode]);
+  }, [facingMode, cameraAttempt]);
 
   function notify(message) {
     setCameraMessage(message);
@@ -152,17 +155,34 @@ export default function Camera() {
       return;
     }
     try {
+      const documentMode = cameraMode === 'DOCUMENTOS';
+      const nextPage = documentPage + 1;
+      const sessionId = documentSessionId || `document-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const canvas = document.createElement('canvas');
       const crop = getCaptureCrop(video, aspectRatio, getZoomScale(zoom));
       canvas.width = Math.round(crop.width);
       canvas.height = Math.round(crop.height);
-      canvas.getContext('2d').drawImage(video, crop.sourceX, crop.sourceY, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
+      const context = canvas.getContext('2d', { alpha: false });
+      if (documentMode) context.filter = 'grayscale(.08) contrast(1.16) brightness(1.04)';
+      context.drawImage(video, crop.sourceX, crop.sourceY, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      const record = await addRecord({ src: dataUrl, source: 'camera', label: 'Captura da câmera' });
+      const record = await addRecord({
+        src: dataUrl,
+        source: 'camera',
+        label: documentMode ? `Documento · Página ${nextPage}` : 'Captura da câmera',
+        collectionId: documentMode ? sessionId : null,
+        pageNumber: documentMode ? nextPage : null,
+      });
+      if (documentMode) {
+        setDocumentSessionId(sessionId);
+        setDocumentPage(nextPage);
+      }
       setLensActive(false);
       if (useLens) {
         setSelectedView('study');
         setSelected(record);
+      } else if (documentMode) {
+        notify(`Página ${nextPage} salva. Capture a próxima ou conclua o documento.`);
       } else {
         notify('Foto salva na galeria.');
       }
@@ -177,12 +197,27 @@ export default function Camera() {
     if (!file) return;
     const useLens = lensActive;
     try {
+      const documentMode = cameraMode === 'DOCUMENTOS';
+      const nextPage = documentPage + 1;
+      const sessionId = documentSessionId || `document-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const src = await fileToDataUrl(file);
-      const record = await addRecord({ src, source: 'upload', label: file.name });
+      const record = await addRecord({
+        src,
+        source: 'upload',
+        label: documentMode ? `Documento · Página ${nextPage}` : file.name,
+        collectionId: documentMode ? sessionId : null,
+        pageNumber: documentMode ? nextPage : null,
+      });
+      if (documentMode) {
+        setDocumentSessionId(sessionId);
+        setDocumentPage(nextPage);
+      }
       setLensActive(false);
       if (useLens) {
         setSelectedView('study');
         setSelected(record);
+      } else if (documentMode) {
+        notify(`Página ${nextPage} salva. Capture a próxima ou conclua o documento.`);
       } else {
         notify('Foto salva na galeria.');
       }
@@ -229,19 +264,31 @@ export default function Camera() {
       return;
     }
     setMoreOpen(false);
+    if (nextMode !== 'DOCUMENTOS') {
+      setDocumentSessionId(null);
+      setDocumentPage(0);
+    }
     setCameraMode(nextMode);
+  }
+
+  function finishDocumentSession() {
+    setCameraMode('FOTO');
+    setMoreOpen(false);
+    setDocumentSessionId(null);
+    setDocumentPage(0);
+    notify('Documento concluído. As páginas ficaram na galeria.');
   }
 
   const unavailable = cameraState === 'denied' || cameraState === 'unsupported' || cameraState === 'unavailable';
   const latestPhoto = records.find((record) => record.src && record.mediaType !== 'video') || records.find((record) => record.src);
   const zoomScale = getZoomScale(zoom);
-  const cameraClassName = `camera-page origin-camera aspect-${aspectRatio.replace(':', '-')}${cameraMode === 'NOITE' ? ' camera-night' : ''}${cameraMode === 'RETRATO' ? ' camera-portrait' : ''}${recording ? ' is-recording' : ''}`;
+  const cameraClassName = `camera-page origin-camera aspect-${aspectRatio.replace(':', '-')}${cameraMode === 'NOITE' ? ' camera-night' : ''}${cameraMode === 'RETRATO' ? ' camera-portrait' : ''}${cameraMode === 'DOCUMENTOS' ? ' camera-documents' : ''}${recording ? ' is-recording' : ''}`;
 
   return (
     <main className={`${cameraClassName}${unavailable ? ' camera-unavailable' : ''}`}>
       <video ref={videoRef} className="camera-feed" style={{ transform: `scale(${zoomScale})` }} playsInline muted autoPlay />
       <div className={`origin-aspect-guide ratio-${aspectRatio.replace(':', '-')}`} aria-hidden="true" />
-      {unavailable && <div className="camera-fallback"><div className="fallback-mark"><Icon name="camera" size={26} /></div><span className="mode-kicker">Câmera JOVI</span><h1>{cameraState === 'denied' ? 'Libere a câmera para começar' : 'Use uma foto dos seus estudos'}</h1><p>{cameraState === 'denied' ? 'A câmera do JOVI Lens precisa de acesso para mostrar o preview ao vivo.' : 'Seu aparelho não liberou a câmera agora. Você ainda pode escolher uma imagem.'}</p><button onClick={() => fileRef.current?.click()}><Icon name="gallery" size={18} /> Escolher da galeria</button></div>}
+      {unavailable && <div className="camera-fallback"><div className="fallback-mark"><Icon name="camera" size={26} /></div><span className="mode-kicker">Câmera JOVI</span><h1>{cameraState === 'denied' ? 'Libere a câmera para começar' : 'Use uma foto dos seus estudos'}</h1><p>{cameraState === 'denied' ? 'A câmera do JOVI Lens precisa de acesso para mostrar o preview ao vivo.' : 'Seu aparelho não liberou a câmera agora. Você ainda pode escolher uma imagem.'}</p><div className="camera-fallback-actions"><button onClick={() => setCameraAttempt((attempt) => attempt + 1)}><Icon name="rotate" size={18} /> Tentar novamente</button><button className="secondary" onClick={() => fileRef.current?.click()}><Icon name="gallery" size={18} /> Escolher da galeria</button></div></div>}
       {cameraState === 'starting' && <div className="camera-loading"><span className="loading-orbit" /> Preparando a câmera</div>}
 
       <div className="origin-camera-topbar">
@@ -256,8 +303,9 @@ export default function Camera() {
       </div>
 
       <div className="origin-camera-focus" aria-hidden="true"><span /><span /><span /><span /><i /></div>
-      {moreOpen && <div className="origin-more-modes" role="dialog" aria-label="Mais modos de câmera"><span>Mais modos</span><div>{['DOCUMENTOS', 'PANORAMA', 'MACRO', 'PRO'].map((mode) => <button key={mode} onClick={() => { setCameraMode(mode); setMoreOpen(false); }}>{mode}</button>)}</div></div>}
+      {moreOpen && <div className="origin-more-modes" role="dialog" aria-label="Mais modos de câmera"><span>Mais modos</span><div>{['DOCUMENTOS', 'PANORAMA', 'MACRO', 'PRO'].map((mode) => <button key={mode} className={cameraMode === mode ? 'active' : ''} onClick={() => chooseMode(mode)}>{mode}</button>)}</div></div>}
       {lensActive && <div className="origin-camera-lens-hint"><Icon name="sparkle" size={14} /> Próxima captura abre o estudo com IA</div>}
+      {cameraMode === 'DOCUMENTOS' && <div className="origin-document-hint"><div><Icon name="scan" size={16} /><span><strong>Scanner de documentos</strong><small>{documentPage ? `${documentPage} ${documentPage === 1 ? 'página salva' : 'páginas salvas'}` : 'Capture a primeira página'}</small></span></div>{documentPage > 0 && <button onClick={finishDocumentSession}>Concluir</button>}</div>}
 
       <div className="origin-camera-bottom">
         <div className="origin-camera-zoom" aria-label="Zoom da câmera">
@@ -270,7 +318,7 @@ export default function Camera() {
           <button className="origin-camera-thumbnail" onClick={openLatestPhoto} aria-label={latestPhoto ? 'Abrir última foto' : 'Abrir galeria'}>
             {latestPhoto && thumbnailErrorFor !== latestPhoto.id ? <img src={latestPhoto.src} alt="Última captura" onError={() => setThumbnailErrorFor(latestPhoto.id)} /> : <Icon name={latestPhoto ? 'image' : 'gallery'} size={20} />}
           </button>
-          <button className={`origin-shutter${lensActive ? ' lens-ready' : ''}${recording ? ' recording' : ''}`} onClick={() => capture()} aria-label={recording ? 'Parar gravação' : lensActive ? 'Capturar e estudar com IA' : cameraMode === 'VÍDEO' ? 'Começar gravação' : 'Tirar foto'}><span /></button>
+          <button className={`origin-shutter${lensActive ? ' lens-ready' : ''}${recording ? ' recording' : ''}`} onClick={() => capture()} aria-label={recording ? 'Parar gravação' : lensActive ? 'Capturar e estudar com IA' : cameraMode === 'VÍDEO' ? 'Começar gravação' : cameraMode === 'DOCUMENTOS' ? 'Capturar página do documento' : 'Tirar foto'}><span /></button>
           <button className="origin-camera-switch" onClick={() => setFacingMode((mode) => mode === 'environment' ? 'user' : 'environment')} aria-label="Trocar câmera"><Icon name="rotate" size={22} /></button>
         </div>
       </div>

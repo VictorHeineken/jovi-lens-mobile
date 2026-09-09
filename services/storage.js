@@ -6,6 +6,14 @@ const HISTORY_KEY = 'jovi_mobile_ai_history_v1';
 const PLAN_KEY = 'jovi_mobile_plan_v1';
 const USER_KEY = 'jovi_mobile_user_v1';
 const SUBJECT_KEY = 'jovi_mobile_subject_artifacts_v1';
+const LEARNING_PREFERENCES_KEY = 'jovi_mobile_learning_preferences_v1';
+
+export const DEFAULT_LEARNING_PREFERENCES = {
+  videoStyle: 'animated',
+  duration: 'standard',
+  level: 'intermediate',
+  sort: 'relevance',
+};
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -24,11 +32,30 @@ async function withStore(mode, action) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, mode);
-    const store = tx.objectStore(storeName);
+    const store = tx.objectStore(STORE);
     const request = action(store);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-    tx.oncomplete = () => db.close();
+    let result;
+    let settled = false;
+    const close = () => db.close();
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      close();
+      reject(error || new Error('IndexedDB transaction failed.'));
+    };
+
+    request.onsuccess = () => {
+      result = request.result;
+    };
+    request.onerror = () => fail(request.error);
+    tx.onerror = () => fail(tx.error);
+    tx.onabort = () => fail(tx.error || new Error('IndexedDB transaction aborted.'));
+    tx.oncomplete = () => {
+      if (settled) return;
+      settled = true;
+      close();
+      resolve(result);
+    };
   });
 }
 
@@ -58,6 +85,14 @@ export async function deleteMediaRecord(id) {
   }
 }
 
+export async function clearMediaRecords() {
+  try {
+    await withStore('readwrite', (store) => store.clear());
+  } catch {
+    // Ignore storage failures in prototype mode.
+  }
+}
+
 function readJson(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback)); } catch { return fallback; }
 }
@@ -79,3 +114,5 @@ export const setUser = (user) => { try { user ? localStorage.setItem(USER_KEY, J
 // Subject artifacts: generated plan/exam/scripts + last exam result, keyed by matéria.
 export const getSubjectArtifacts = () => readJson(SUBJECT_KEY, {});
 export const setSubjectArtifacts = (artifacts) => writeJson(SUBJECT_KEY, artifacts);
+export const getLearningPreferences = () => ({ ...DEFAULT_LEARNING_PREFERENCES, ...readJson(LEARNING_PREFERENCES_KEY, {}) });
+export const setLearningPreferences = (preferences) => writeJson(LEARNING_PREFERENCES_KEY, { ...DEFAULT_LEARNING_PREFERENCES, ...preferences });

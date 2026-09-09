@@ -7,6 +7,7 @@ import {
   buildSubjectExamPrompt,
   buildSubjectQuestionsPrompt,
   buildTextExtractionPrompt,
+  buildYouTubeSearchPrompt,
 } from './prompts.js';
 import {
   completeWithAzure,
@@ -17,6 +18,7 @@ import {
   transcribeWithAzure,
 } from './providers/azureOpenAI.js';
 import { completeSubjectWithDemo, completeWithDemo } from './providers/demo.js';
+import { fallbackYouTubeQuery, isYouTubeConfigured, searchYouTubeVideos, styleMatchReason } from '../youtube.js';
 
 const parseJson = (text) => {
   const cleaned = String(text || '').replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
@@ -192,6 +194,55 @@ export async function runSubjectAI({ action = 'questions', subject = {} } = {}) 
   const completion = await completeWithAzure({ messages: [{ role: 'user', content: buildSubjectPrompt(action, subject) }], maxTokens: 2600, timeoutMs: 45000 });
   const result = parseJson(completion.text);
   return normalizeSubject(action, result, subjectName, completion);
+}
+
+function normalizeLearningPreferences(preferences = {}) {
+  return {
+    videoStyle: ['animated', 'balanced', 'calm', 'exam'].includes(preferences.videoStyle) ? preferences.videoStyle : 'balanced',
+    duration: ['short', 'standard', 'long'].includes(preferences.duration) ? preferences.duration : 'standard',
+    level: ['beginner', 'intermediate', 'advanced'].includes(preferences.level) ? preferences.level : 'intermediate',
+    sort: ['relevance', 'viewCount', 'date'].includes(preferences.sort) ? preferences.sort : 'relevance',
+  };
+}
+
+export async function runYouTubeRecommendations({ subject = {}, preferences = {} } = {}) {
+  const normalizedPreferences = normalizeLearningPreferences(preferences);
+  const fallbackQuery = fallbackYouTubeQuery(subject, normalizedPreferences);
+
+  if (isDemoMode()) {
+    const query = encodeURIComponent(fallbackQuery);
+    return {
+      query: fallbackQuery,
+      focus: `Demonstração de busca para ${subject.name || 'a matéria'}.`,
+      reason: styleMatchReason(normalizedPreferences),
+      mode: 'demo',
+      videos: [
+        { id: 'demo-1', title: `Buscar aula de ${subject.name || 'estudos'}`, description: 'Abra a busca do YouTube com os filtros da demonstração.', channelTitle: 'YouTube', thumbnail: '', url: `https://www.youtube.com/results?search_query=${query}` },
+      ],
+    };
+  }
+
+  if (!isYouTubeConfigured()) {
+    throw Object.assign(new Error('YouTube não está configurado.'), { code: 'YOUTUBE_NOT_CONFIGURED' });
+  }
+
+  const completion = await completeWithAzure({
+    messages: [{ role: 'user', content: buildYouTubeSearchPrompt(subject, normalizedPreferences) }],
+    maxTokens: 500,
+    timeoutMs: 18000,
+  });
+  const plan = parseJson(completion.text);
+  const query = String(plan?.query || fallbackQuery).replace(/[\r\n]/g, ' ').trim().slice(0, 180) || fallbackQuery;
+  const videos = await searchYouTubeVideos({ query, preferences: normalizedPreferences });
+  return {
+    query,
+    focus: asText(plan?.focus, `Aula selecionada para ${subject.name || 'a matéria'}.`, 240),
+    reason: styleMatchReason(normalizedPreferences),
+    mode: 'live',
+    provider: completion.provider,
+    model: completion.model,
+    videos,
+  };
 }
 
 // ---------------------------------------------------------------------------

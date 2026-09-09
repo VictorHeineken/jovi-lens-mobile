@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import NotesTimeline from '../components/NotesTimeline.jsx';
 import SmartImageSheet from '../components/SmartImageSheet.jsx';
+import LibrarySearch from '../components/LibrarySearch.jsx';
 import { useAppData } from '../context/AppDataContext.jsx';
 
 export default function History() {
@@ -20,6 +21,7 @@ export default function History() {
         <div><div className="eyebrow"><Icon name="history" size={13} /> Uso da IA</div><h1>Histórico</h1></div>
         <div className="header-count"><strong>{notes.length + aiHistory.length}</strong><span>registros</span></div>
       </header>
+      <LibrarySearch notes={notes} aiHistory={aiHistory} records={records} onOpen={openRecord} />
       <NotesTimeline notes={notes} aiHistory={aiHistory} records={records} onOpen={openRecord} />
       {selected && <SmartImageSheet record={{ ...(records.find((item) => item.id === selected.id) || {}), ...selected }} initialView={selectedView} onClose={() => { setSelected(null); setSelectedView('viewer'); }} />}
     </main>

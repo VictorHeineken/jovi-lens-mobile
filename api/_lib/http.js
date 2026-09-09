@@ -33,6 +33,14 @@ export function isRateLimited(req, { windowMs = 60_000, max = 12, scope = 'defau
   return bucket.count > max;
 }
 
+// A second, longer window protects the provider budget even when requests are
+// spread out enough to evade the short burst limiter. This is intentionally an
+// in-process guard for the local prototype; production should move it to a
+// shared store and key it by authenticated user.
+export function isDailyLimited(req, { max = 100, scope = 'default' } = {}) {
+  return isRateLimited(req, { windowMs: 86_400_000, max, scope: `daily:${scope}` });
+}
+
 export function hasKnownImageSignature(base64, mimeType) {
   try {
     // Only the header is needed for magic-byte detection — avoid decoding megabytes.
@@ -66,9 +74,9 @@ export function hasKnownAudioSignature(base64, mimeType) {
 // internal details out of the response body. Handlers extend `messages`.
 export function errorResponse(error, messages = {}) {
   const code = error?.code || 'AI_UNAVAILABLE';
-  const status = code === 'AI_NOT_CONFIGURED' ? 503
-    : code === 'AI_RATE_LIMITED' ? 429
-    : code === 'AI_TIMEOUT' ? 504
+  const status = ['AI_NOT_CONFIGURED', 'YOUTUBE_NOT_CONFIGURED'].includes(code) ? 503
+    : ['AI_RATE_LIMITED', 'YOUTUBE_QUOTA_EXCEEDED'].includes(code) ? 429
+    : ['AI_TIMEOUT', 'YOUTUBE_TIMEOUT'].includes(code) ? 504
     : 502;
   const base = {
     AI_NOT_CONFIGURED: 'Este recurso ao vivo ainda não está configurado. Ative o modo demonstração ou configure o serviço de IA.',

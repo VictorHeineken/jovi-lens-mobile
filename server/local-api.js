@@ -4,6 +4,7 @@ import subjectAI from '../api/subject-ai.js';
 import tts from '../api/tts.js';
 import transcribe from '../api/transcribe.js';
 import videoLesson from '../api/video-lesson.js';
+import youtubeRecommendations from '../api/youtube-recommendations.js';
 
 const POST_ROUTES = {
   '/api/analyze-image': analyzeImage,
@@ -11,6 +12,7 @@ const POST_ROUTES = {
   '/api/tts': tts,
   '/api/transcribe': transcribe,
   '/api/video-lesson': videoLesson,
+  '/api/youtube-recommendations': youtubeRecommendations,
 };
 
 // GET routes (video-lesson doubles as a polling endpoint).

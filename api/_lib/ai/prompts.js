@@ -101,4 +101,24 @@ export function buildLessonScriptPrompt(subject) {
 Gere de 5 a 8 slides, do introdutório ao avançado. Contexto:\n${ctx.text}`;
 }
 
+export function buildYouTubeSearchPrompt(subject, preferences = {}) {
+  const ctx = buildSubjectContext(subject);
+  const styleLabels = {
+    animated: 'dinâmica, visual, com energia e exemplos gráficos',
+    balanced: 'equilibrada, clara e com ritmo moderado',
+    calm: 'calma, detalhada e passo a passo',
+    exam: 'focada em exercícios, resolução de questões e revisão para prova',
+  };
+  const durationLabels = { short: 'curta, de até 15 minutos', standard: 'média, entre 15 e 40 minutos', long: 'aprofundada, com mais de 40 minutos' };
+  const levelLabels = { beginner: 'iniciante', intermediate: 'intermediário', advanced: 'avançado' };
+  const style = styleLabels[preferences.videoStyle] || styleLabels.balanced;
+  const duration = durationLabels[preferences.duration] || durationLabels.standard;
+  const level = levelLabels[preferences.level] || levelLabels.intermediate;
+  const weakTopics = Array.isArray(subject?.weakTopics) && subject.weakTopics.length ? ` O simulado indicou dificuldade nestes pontos: ${subject.weakTopics.slice(0, 5).join(', ')}. Priorize-os na consulta.` : '';
+  return `${SUBJECT_PERSONA} Você vai preparar uma busca no YouTube para encontrar uma vídeo aula REAL sobre a matéria "${ctx.name}". Use apenas o conteúdo da matéria e os subtemas abaixo; não invente tópicos. O estudante prefere uma aula ${style}, ${duration}, adequada ao nível ${level}.${weakTopics} Gere uma consulta curta em português do Brasil, com termos que ajudem o YouTube a encontrar aulas didáticas e específicas. Não retorne links nem nomes de vídeos; retorne somente JSON neste formato:
+{"query":"termos exatos para buscar no YouTube","styleTerms":["até 4 termos que representem o estilo"],"focus":"o foco específico da recomendação em uma frase"}
+Contexto da matéria:
+${ctx.text}`;
+}
+
 export { RESPONSE_SHAPE };

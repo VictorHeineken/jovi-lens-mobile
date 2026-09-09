@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { isDemoMode } from '../services/imageAnalysis.js';
+import { createBackup, downloadBackup, readBackupFile } from '../services/dataTransfer.js';
 
 const DEMO_USER = {
   id: 'demo-student',
@@ -11,8 +12,9 @@ const DEMO_USER = {
 };
 
 export default function Profile() {
-  const { user, setUser, plan, setPlan } = useAppData();
+  const { user, setUser, plan, setPlan, records, notes, aiHistory, subjectArtifacts, learningPreferences, setLearningPreferences, restoreLocalData, clearLocalData } = useAppData();
   const [authMessage, setAuthMessage] = useState('');
+  const fileRef = useRef(null);
   const demoMode = isDemoMode();
 
   const trialActive = plan.type === 'trial' && new Date(plan.endsAt) > new Date();
@@ -40,6 +42,38 @@ export default function Profile() {
     if (!user) setUser(DEMO_USER);
     setPlan({ type: 'trial', demo: true, startedAt: startedAt.toISOString(), endsAt: endsAt.toISOString() });
     setAuthMessage('Teste de 7 dias ativado para a apresentação. Nenhuma cobrança foi feita.');
+  }
+
+  function exportData() {
+    downloadBackup(createBackup({ records, notes, aiHistory, plan, user, subjectArtifacts, learningPreferences }));
+    setAuthMessage('Backup dos seus estudos exportado para este dispositivo.');
+  }
+
+  function updateLearningPreference(key, value) {
+    setLearningPreferences({ ...learningPreferences, [key]: value });
+    setAuthMessage('Preferências de aprendizagem atualizadas.');
+  }
+
+  async function importData(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const backup = await readBackupFile(file);
+      const confirmed = window.confirm('Importar este backup vai substituir suas notas, histórico e preferências locais. As mídias serão mescladas. Continuar?');
+      if (!confirmed) return;
+      const result = await restoreLocalData(backup);
+      setAuthMessage(`Backup restaurado: ${result.notes} notas e ${result.records} mídias.`);
+    } catch (error) {
+      setAuthMessage(error.message || 'Não foi possível restaurar esse backup.');
+    }
+  }
+
+  async function clearData() {
+    const confirmed = window.confirm('Apagar fotos, notas, histórico e preferências locais? Os exemplos da demonstração serão mantidos.');
+    if (!confirmed) return;
+    await clearLocalData();
+    setAuthMessage('Dados locais removidos. Os exemplos da demonstração foram mantidos.');
   }
 
   const planTitle = trialActive
@@ -91,6 +125,24 @@ export default function Profile() {
         <div><span>Conta</span><strong>Perfil local de estudante</strong></div>
         <div><span>Cobrança</span><strong>Não configurada</strong></div>
       </section>
+      <section className="learning-preferences-card">
+        <div className="learning-preferences-heading"><div><strong>Seu jeito de aprender</strong><span>Usamos essas escolhas para encontrar aulas mais adequadas no YouTube.</span></div><Icon name="sparkle" size={18} /></div>
+        <label>Estilo da aula<select value={learningPreferences.videoStyle} onChange={(event) => updateLearningPreference('videoStyle', event.target.value)}><option value="animated">Animada e visual</option><option value="balanced">Equilibrada</option><option value="calm">Calma e detalhada</option><option value="exam">Focada em exercícios</option></select></label>
+        <label>Duração preferida<select value={learningPreferences.duration} onChange={(event) => updateLearningPreference('duration', event.target.value)}><option value="short">Curta · até 15 min</option><option value="standard">Média · 15 a 40 min</option><option value="long">Aprofundada · mais de 40 min</option></select></label>
+        <label>Nível atual<select value={learningPreferences.level} onChange={(event) => updateLearningPreference('level', event.target.value)}><option value="beginner">Estou começando</option><option value="intermediate">Já tenho base</option><option value="advanced">Quero aprofundar</option></select></label>
+        <label>Critério de busca<select value={learningPreferences.sort} onChange={(event) => updateLearningPreference('sort', event.target.value)}><option value="relevance">Melhor combinação</option><option value="viewCount">Mais populares</option><option value="date">Mais recentes</option></select></label>
+      </section>
+      <section className="data-tools-card">
+        <div><div><strong>Seus dados</strong><span>Faça uma cópia local ou restaure um backup anterior.</span></div><Icon name="download" size={18} /></div>
+        <div className="data-tools-actions"><button onClick={exportData}><Icon name="download" size={14} /> Exportar backup</button><button onClick={() => fileRef.current?.click()}><Icon name="upload" size={14} /> Importar backup</button></div>
+        <small>O arquivo fica no seu dispositivo. A importação mescla mídias pelo identificador e substitui notas, histórico e preferências locais.</small>
+      </section>
+      <section className="privacy-card">
+        <div><div><strong>Privacidade local</strong><span>Remova o conteúdo criado neste aparelho quando quiser.</span></div><Icon name="lock" size={18} /></div>
+        <button onClick={clearData}><Icon name="trash" size={14} /> Limpar dados locais</button>
+        <small>Essa ação apaga fotos, notas, histórico, plano demonstrativo e artefatos do Estúdio deste navegador. Ela não remove os exemplos do app.</small>
+      </section>
+      <input ref={fileRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={importData} />
       {authMessage && <div className="inline-message" role="status"><Icon name="info" size={15} /> {authMessage}</div>}
     </main>
   );

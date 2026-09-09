@@ -1,6 +1,6 @@
 import { getDemoAction, getDemoAnalysis } from './demoResponses.js';
 
-const CLIENT_DEMO_MODE = String(import.meta.env.VITE_JOVI_LENS_DEMO_MODE ?? 'true').toLowerCase() === 'true';
+const CLIENT_DEMO_MODE = String(import.meta.env?.VITE_JOVI_LENS_DEMO_MODE ?? 'true').toLowerCase() === 'true';
 const MAX_FILE_SIZE = 12 * 1024 * 1024;
 const VALID_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
@@ -10,6 +10,22 @@ function loadImage(src) {
     image.onload = () => resolve(image);
     image.onerror = reject;
     image.src = src;
+  });
+}
+
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(resolve, ms);
+    if (!signal) return;
+    if (signal.aborted) {
+      window.clearTimeout(timer);
+      reject(new DOMException('Request aborted.', 'AbortError'));
+      return;
+    }
+    signal.addEventListener('abort', () => {
+      window.clearTimeout(timer);
+      reject(new DOMException('Request aborted.', 'AbortError'));
+    }, { once: true });
   });
 }
 
@@ -24,10 +40,10 @@ export async function fileToDataUrl(file) {
   });
 }
 
-export async function prepareImageForAI(src, maxSide = 1600) {
+export async function prepareImageForAI(src, maxSide = 1600, signal) {
   let source = src;
   if (!String(src).startsWith('data:')) {
-    const blob = await fetch(src).then((response) => response.blob());
+    const blob = await fetch(src, { signal }).then((response) => response.blob());
     source = await fileToDataUrl(blob);
   }
 
@@ -43,14 +59,14 @@ export async function prepareImageForAI(src, maxSide = 1600) {
   return canvas.toDataURL('image/jpeg', 0.82);
 }
 
-async function requestAnalysis(src, { action = 'analyze', question = '', context = null } = {}) {
+async function requestAnalysis(src, { action = 'analyze', question = '', context = null, signal } = {}) {
   if (CLIENT_DEMO_MODE) {
-    await new Promise((resolve) => window.setTimeout(resolve, action === 'analyze' ? 1100 : 520));
+    await wait(action === 'analyze' ? 1100 : 520, signal);
     if (action === 'extract') return { text: getDemoAnalysis().text, language: 'pt', confidence: 0.96, provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' };
     return action === 'analyze' ? { ...getDemoAnalysis(), provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' } : getDemoAction({ action, question });
   }
 
-  const prepared = await prepareImageForAI(src);
+  const prepared = await prepareImageForAI(src, 1600, signal);
   const [header, base64] = prepared.split(',');
   const mimeType = header.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
 
@@ -60,8 +76,10 @@ async function requestAnalysis(src, { action = 'analyze', question = '', context
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: base64, mimeType, action, question, context }),
+      signal,
     });
-  } catch {
+  } catch (error) {
+    if (error?.name === 'AbortError') throw error;
     throw new Error('Sem conexão no momento. Confira a internet ou ative o modo demonstração.');
   }
 
@@ -70,12 +88,12 @@ async function requestAnalysis(src, { action = 'analyze', question = '', context
   return payload;
 }
 
-export async function analyzeImage(src) {
-  return requestAnalysis(src);
+export async function analyzeImage(src, options) {
+  return requestAnalysis(src, options);
 }
 
-export async function extractText(src) {
-  return requestAnalysis(src, { action: 'extract' });
+export async function extractText(src, options = {}) {
+  return requestAnalysis(src, { ...options, action: 'extract' });
 }
 
 export async function requestStudyAction(src, options) {

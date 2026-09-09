@@ -2,11 +2,11 @@ import { useState } from 'react';
 import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 
-export default function StudyPlan({ subject, savedPlan, onSave }) {
+export default function StudyPlan({ subject, savedPlan, savedProgress = {}, savedLessons = [], onSave, onProgressSave }) {
   const [plan, setPlan] = useState(savedPlan || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [done, setDone] = useState({});
+  const [done, setDone] = useState(savedProgress);
 
   async function generate() {
     setLoading(true);
@@ -17,6 +17,7 @@ export default function StudyPlan({ subject, savedPlan, onSave }) {
       setPlan(result);
       setDone({});
       onSave?.(result);
+      onProgressSave?.({});
     } catch (err) {
       setError(err.message || 'Falha ao gerar o plano.');
     } finally {
@@ -25,7 +26,9 @@ export default function StudyPlan({ subject, savedPlan, onSave }) {
   }
 
   function toggle(key) {
-    setDone((current) => ({ ...current, [key]: !current[key] }));
+    const next = { ...done, [key]: !done[key] };
+    setDone(next);
+    onProgressSave?.(next);
   }
 
   if (loading) return <div className="studio-loading"><span className="loading-orbit" /> Montando seu plano de {subject.name}...</div>;
@@ -39,6 +42,7 @@ export default function StudyPlan({ subject, savedPlan, onSave }) {
           <p>Uma sequência de sessões com revisão espaçada, priorizando os subtemas mais densos do que você já estudou.</p>
         </div>
         {error && <div className="studio-error" role="alert">{error}</div>}
+        <SavedLessons lessons={savedLessons} />
         <button className="studio-primary" onClick={generate}><Icon name="route" size={16} /> Gerar plano</button>
       </div>
     );
@@ -86,7 +90,19 @@ export default function StudyPlan({ subject, savedPlan, onSave }) {
         </div>
       )}
 
+      <SavedLessons lessons={savedLessons} />
+
       <button className="studio-ghost wide" onClick={generate}><Icon name="rotate" size={14} /> Gerar novo plano</button>
+    </div>
+  );
+}
+
+function SavedLessons({ lessons = [] }) {
+  if (!lessons.length) return null;
+  return (
+    <div className="plan-videos">
+      <span className="studio-subtitle"><Icon name="bookmark" size={13} /> Aulas salvas na trilha</span>
+      {lessons.map((lesson) => <a className="plan-video-link" href={lesson.url} target="_blank" rel="noopener noreferrer" key={lesson.id}><span><Icon name="play" size={12} /><strong>{lesson.title}</strong></span><small>{lesson.channelTitle}</small><Icon name="arrow-up-right" size={13} /></a>)}
     </div>
   );
 }

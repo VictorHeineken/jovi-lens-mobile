@@ -1,5 +1,5 @@
 import { runSubjectAI } from './_lib/ai/service.js';
-import { errorResponse, isRateLimited } from './_lib/http.js';
+import { errorResponse, isDailyLimited, isRateLimited } from './_lib/http.js';
 
 const VALID_ACTIONS = new Set(['questions', 'exam', 'plan', 'podcast-script', 'lesson-script']);
 const MAX_NOTES = 40;
@@ -29,6 +29,7 @@ function safeInput(body) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
   if (isRateLimited(req, { scope: 'subject', max: 10 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitos pedidos em sequência. Tente novamente em instantes.' });
+  if (isDailyLimited(req, { scope: 'subject', max: 40 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário do Estúdio foi atingido. Tente novamente amanhã.' });
 
   const input = safeInput(req.body || {});
   if (input.error) return res.status(input.error.status).json({ message: input.error.message });

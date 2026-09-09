@@ -149,7 +149,7 @@ function PhotosView({ groups, isUploading, onImport, onOpen }) {
 }
 
 function PhotoTile({ record, onOpen }) {
-  return <button className="origin-photo-tile" onClick={() => onOpen(record)} aria-label={`Abrir ${record.label || 'foto'}`}><MediaThumb record={record} />{record.mediaType === 'video' ? <span className="origin-photo-marker" aria-label="Vídeo"><Icon name="play" size={10} /></span> : record.analysis && <span className="origin-photo-marker" aria-label="Foto estudada"><Icon name="sparkle" size={10} /></span>}</button>;
+  return <button className="origin-photo-tile" onClick={() => onOpen(record)} aria-label={`Abrir ${record.label || 'foto'}`}><MediaThumb record={record} />{record.pageNumber ? <span className="origin-photo-marker origin-document-marker" aria-label={`Página ${record.pageNumber} do documento`}><Icon name="scan" size={10} /><em>P{record.pageNumber}</em></span> : record.mediaType === 'video' ? <span className="origin-photo-marker" aria-label="Vídeo"><Icon name="play" size={10} /></span> : record.analysis && <span className="origin-photo-marker" aria-label="Foto estudada"><Icon name="sparkle" size={10} /></span>}</button>;
 }
 
 function MediaThumb({ record, alt = '' }) {

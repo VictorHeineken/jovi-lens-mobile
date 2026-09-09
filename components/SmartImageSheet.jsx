@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import StudyModeContent from './StudyModeContent.jsx';
+import useDialogAccessibility from './useDialogAccessibility.js';
 import { analyzeImage, copyText, extractText, googleSearch, requestStudyAction } from '../services/imageAnalysis.js';
 import { startVoiceInput, voiceInputAvailable } from '../services/speechInput.js';
 import { useAppData } from '../context/AppDataContext.jsx';
@@ -39,6 +40,7 @@ function buildStudyHistoryEntry(record, analysis, action) {
 
 export default function SmartImageSheet({ record, initialView = 'viewer', onClose }) {
   const { updateRecord, saveNote, addHistoryEntry } = useAppData();
+  const dialogRef = useDialogAccessibility(onClose);
   const [view, setView] = useState('viewer');
   const [analysis, setAnalysis] = useState(record?.analysis || null);
   const [loading, setLoading] = useState(false);
@@ -55,6 +57,23 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   const [quizSelection, setQuizSelection] = useState(null);
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [flippedCard, setFlippedCard] = useState(null);
+  const requestAbortRef = useRef(null);
+
+  function cancelActiveRequest() {
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
+  }
+
+  function startRequest() {
+    cancelActiveRequest();
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
+    return controller;
+  }
+
+  function isAbortError(error) {
+    return error?.name === 'AbortError';
+  }
 
   useEffect(() => {
     setView(initialView);
@@ -74,6 +93,8 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
     setActionLoading(false);
   }, [record?.id, initialView]);
 
+  useEffect(() => () => cancelActiveRequest(), []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -83,7 +104,8 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
     }
 
     setLoading(true);
-    analyzeImage(record.src)
+    const controller = startRequest();
+    analyzeImage(record.src, { signal: controller.signal })
       .then(async (result) => {
         if (cancelled) return;
         setAnalysis(result);
@@ -91,10 +113,14 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
         await updateRecord(record.id, { analysis: result });
         addHistoryEntry({ recordId: record.id, image: record.src, title: result.title || record.label || 'Conteúdo identificado', type: 'Análise da imagem', action: 'analyze', prompt: 'Pedi para analisar esta imagem', contentText: result.text || '', text: result.summary || '', response: result.summary || '', keyPoints: result.keyPoints || [], category: result.category || 'Estudos', subcategory: result.subcategory || result.subject || result.contentType || 'Leitura inteligente' });
       })
-      .catch((err) => { if (!cancelled) setError(err.message || 'Falha ao analisar a imagem.'); })
+      .catch((err) => { if (!cancelled && !isAbortError(err)) setError(err.message || 'Falha ao analisar a imagem.'); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (requestAbortRef.current === controller) requestAbortRef.current = null;
+    };
   }, [record?.id, analysisRequestedFor, updateRecord, addHistoryEntry]);
 
   const effectiveRecord = useMemo(() => record ? { ...record, analysis } : null, [record, analysis]);
@@ -111,17 +137,19 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
 
     setTextLoading(true);
     setTextError('');
+    const controller = startRequest();
     try {
-      const result = await extractText(record.src);
+      const result = await extractText(record.src, { signal: controller.signal });
       const text = String(result?.text || '').trim();
       setExtractedText(text);
       if (!text) setTextError('Nenhum texto legível foi encontrado.');
       return text;
     } catch (err) {
-      setTextError(err.message || 'Não foi possível ler o texto agora.');
+      if (!isAbortError(err)) setTextError(err.message || 'Não foi possível ler o texto agora.');
       return '';
     } finally {
       setTextLoading(false);
+      if (requestAbortRef.current === controller) requestAbortRef.current = null;
     }
   }
 
@@ -164,14 +192,16 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
     }
 
     setActionLoading(true);
+    const controller = startRequest();
     try {
-      const result = await requestStudyAction(record.src, { action: nextMode === 'practice' ? 'quiz' : nextMode, context: analysis });
+      const result = await requestStudyAction(record.src, { action: nextMode === 'practice' ? 'quiz' : nextMode, context: analysis, signal: controller.signal });
       if (result.learning) setAnalysis((current) => ({ ...current, learning: { ...current.learning, ...result.learning } }));
       addHistoryEntry(buildStudyHistoryEntry(record, analysis, nextMode));
     } catch (err) {
-      flash(err.message || 'Não foi possível preparar esse modo.');
+      if (!isAbortError(err)) flash(err.message || 'Não foi possível preparar esse modo.');
     } finally {
       setActionLoading(false);
+      if (requestAbortRef.current === controller) requestAbortRef.current = null;
     }
   }
 
@@ -181,14 +211,16 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
     if (!text || actionLoading || !analysis) return;
     setQuestion('');
     setActionLoading(true);
+    const controller = startRequest();
     try {
-      const result = await requestStudyAction(record.src, { action: 'ask', question: text, context: analysis });
+      const result = await requestStudyAction(record.src, { action: 'ask', question: text, context: analysis, signal: controller.signal });
       setConversation((current) => [...current, { question: text, reply: result.reply || 'Não consegui formular uma resposta agora.' }]);
       addHistoryEntry({ recordId: record.id, image: record.src, title: analysis.title || record.label || 'Conversa sobre a imagem', type: 'Pergunta à IA', action: 'ask', prompt: text, contentText: analysis.text || '', text: result.reply || '', response: result.reply || '', category: analysis.category || 'Estudos', subcategory: analysis.subcategory || analysis.subject || analysis.contentType || 'Conversa contextual' });
     } catch (err) {
-      flash(err.message || 'Não foi possível enviar a pergunta.');
+      if (!isAbortError(err)) flash(err.message || 'Não foi possível enviar a pergunta.');
     } finally {
       setActionLoading(false);
+      if (requestAbortRef.current === controller) requestAbortRef.current = null;
     }
   }
 
@@ -209,7 +241,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   const canAnalyze = record.aiAvailable !== false;
 
   return (
-    <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={view === 'viewer' ? 'Visualização da imagem' : 'Sessão de estudo'}>
+    <div ref={dialogRef} className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={view === 'viewer' ? 'Visualização da imagem' : 'Sessão de estudo'}>
       <button className="sheet-close" onClick={onClose} aria-label={view === 'viewer' ? 'Fechar imagem' : 'Fechar sessão de estudo'}><Icon name="close" size={20} /></button>
       {view === 'viewer' ? <ImageViewer record={record} isVideo={record.mediaType === 'video'} textLoading={textLoading} textError={textError} textReady={Boolean(analysis?.text || extractedText)} canAnalyze={canAnalyze} message={message} onCopy={handleCopyText} onSearch={handleSearchText} onStartAI={startAI} /> : (
         <SheetShell record={record} onClose={onClose} loading={loading} hasAnalysis={Boolean(analysis)} message={message}>
