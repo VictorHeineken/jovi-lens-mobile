@@ -1,30 +1,52 @@
-import { isDemoMode } from './imageAnalysis.js';
+import * as FileSystem from 'expo-file-system/legacy';
+import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
+import { ExpoSpeechRecognitionModule, ExpoWebSpeechRecognition } from 'expo-speech-recognition';
+import { isDemoMode } from './env.js';
+import { apiUrl } from './apiClient.js';
 
 export function speechRecognitionAvailable() {
-  return typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+  try {
+    return ExpoSpeechRecognitionModule.isRecognitionAvailable();
+  } catch {
+    return false;
+  }
 }
 
+// expo-audio's recorder is always present in a native build — the web
+// version's feature detection (MediaRecorder + getUserMedia) has no RN
+// equivalent; availability here is purely a matter of runtime permission,
+// checked when recording actually starts.
 export function mediaRecorderAvailable() {
-  return typeof window !== 'undefined' && Boolean(window.MediaRecorder && navigator.mediaDevices?.getUserMedia);
+  return true;
 }
 
 export function voiceInputAvailable() {
   return speechRecognitionAvailable() || (!isDemoMode() && mediaRecorderAvailable());
 }
 
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(String(reader.result).split(',')[1] || '');
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
+function pendingController(starter, handlers) {
+  const controller = { _inner: null, _pendingStop: false, stop() { this._pendingStop = true; this._inner?.stop?.(); } };
+  starter(handlers).then((inner) => {
+    controller._inner = inner;
+    if (controller._pendingStop) inner.stop();
   });
+  return controller;
 }
 
-// Browser Web Speech API: live dictation with interim results.
-function startBrowserRecognition({ onPartial, onFinal, onError, onEnd }) {
-  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const recognizer = new Recognition();
+// On-device live dictation with interim results. expo-speech-recognition's
+// ExpoWebSpeechRecognition implements the same SpeechRecognition interface
+// the web version used (window.SpeechRecognition/webkitSpeechRecognition),
+// so this ports almost unchanged — only the permission request and the
+// class import are RN-specific.
+async function startDeviceRecognition({ onPartial, onFinal, onError, onEnd }) {
+  const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+  if (!permission.granted) {
+    onError?.('Permita o microfone para usar a voz.');
+    onEnd?.();
+    return { stop() {} };
+  }
+
+  const recognizer = new ExpoWebSpeechRecognition();
   recognizer.lang = 'pt-BR';
   recognizer.interimResults = true;
   recognizer.continuous = false;
@@ -45,26 +67,38 @@ function startBrowserRecognition({ onPartial, onFinal, onError, onEnd }) {
   return { stop: () => { try { recognizer.stop(); } catch { /* already stopped */ } } };
 }
 
-// Azure path: record with MediaRecorder, then POST to /api/transcribe.
-async function startAzureRecording({ onFinal, onError, onEnd, onState }) {
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch {
+// Server path: record on-device with expo-audio, then POST to /api/transcribe —
+// same contract as the web version's MediaRecorder path.
+async function startServerRecording({ onFinal, onError, onEnd, onState }) {
+  const permission = await requestRecordingPermissionsAsync();
+  if (!permission.granted) {
     onError?.('Permita o microfone para usar a voz.');
     onEnd?.();
     return { stop() {} };
   }
-  const mimeType = ['audio/webm', 'audio/mp4'].find((type) => window.MediaRecorder.isTypeSupported?.(type)) || 'audio/webm';
-  const recorder = new MediaRecorder(stream, { mimeType });
-  const chunks = [];
-  recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-  recorder.onstop = async () => {
-    stream.getTracks().forEach((track) => track.stop());
+  await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+
+  const recorder = new AudioModule.AudioRecorder(RecordingPresets.HIGH_QUALITY);
+  await recorder.prepareToRecordAsync();
+  recorder.record();
+  onState?.('recording');
+
+  let finished = false;
+  const finish = async () => {
+    if (finished) return;
+    finished = true;
+    await recorder.stop();
     onState?.('transcribing');
     try {
-      const base64 = await blobToBase64(new Blob(chunks, { type: mimeType }));
-      const response = await fetch('/api/transcribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: base64, mimeType }) });
+      if (!recorder.uri) throw new Error('Gravação vazia.');
+      const base64 = await FileSystem.readAsStringAsync(recorder.uri, { encoding: FileSystem.EncodingType.Base64 });
+      // RecordingPresets.HIGH_QUALITY writes an .m4a (AAC/MPEG4) file on both
+      // platforms — matches one of api/transcribe.js's accepted mime types.
+      const response = await fetch(apiUrl('/api/transcribe'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio: base64, mimeType: 'audio/m4a' }),
+      });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || 'Não foi possível transcrever.');
       onFinal?.(data.text || '');
@@ -74,21 +108,16 @@ async function startAzureRecording({ onFinal, onError, onEnd, onState }) {
       onEnd?.();
     }
   };
-  recorder.start();
-  onState?.('recording');
-  return { stop: () => { if (recorder.state !== 'inactive') recorder.stop(); } };
+
+  return { stop: () => { finish(); } };
 }
 
-// Unified entry point. Returns a controller with stop() immediately, even while
-// the async microphone permission for the Azure path is still resolving.
+// Unified entry point. Returns a controller with stop() immediately, even
+// while the async microphone permission is still resolving.
 export function startVoiceInput(handlers = {}) {
-  if (speechRecognitionAvailable()) return startBrowserRecognition(handlers);
-  if (!isDemoMode() && mediaRecorderAvailable()) {
-    const controller = { _inner: null, _pendingStop: false, stop() { this._pendingStop = true; this._inner?.stop?.(); } };
-    startAzureRecording(handlers).then((inner) => { controller._inner = inner; if (controller._pendingStop) inner.stop(); });
-    return controller;
-  }
-  handlers.onError?.('Entrada por voz indisponível neste navegador.');
+  if (speechRecognitionAvailable()) return pendingController(startDeviceRecognition, handlers);
+  if (!isDemoMode() && mediaRecorderAvailable()) return pendingController(startServerRecording, handlers);
+  handlers.onError?.('Entrada por voz indisponível neste dispositivo.');
   handlers.onEnd?.();
   return { stop() {} };
 }

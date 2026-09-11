@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
+import * as Linking from 'expo-linking';
 import Icon from './Icon.jsx';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { findYouTubeLessons } from '../services/youtubeRecommendations.js';
@@ -42,32 +44,122 @@ export default function YouTubeRecommendations({ subject, saved = null, examResu
 
   function updateVideo(videoId, patch) {
     if (!result) return;
-    const next = { ...result, videos: result.videos.map((video) => video.id === videoId ? { ...video, ...patch } : video) };
+    const next = { ...result, videos: result.videos.map((video) => (video.id === videoId ? { ...video, ...patch } : video)) };
     setResult(next);
     onSave?.(next);
   }
 
   return (
-    <section className="youtube-recommendations">
-      <div className="youtube-recommendations-head">
-        <div><span className="studio-panel-kicker"><Icon name="search" size={13} /> Busca inteligente</span><h3>Aulas no YouTube para {subject.name}</h3><p>A IA combina seus subtemas com seu estilo de aprendizagem e entrega links reais para assistir.</p></div>
-        {result?.mode === 'demo' && <span className="youtube-demo-badge">DEMO</span>}
-      </div>
-      {result?.query && <div className="youtube-query"><Icon name="sparkle" size={13} /><span>Busca: <strong>{result.query}</strong></span></div>}
-      {result?.reason && <p className="youtube-reason">A seleção {result.reason}.</p>}
-      {!!weakTopics.length && <div className="youtube-weak-topics"><Icon name="target" size={13} /><span>Também priorizando suas dificuldades: <strong>{weakTopics.join(', ')}</strong></span></div>}
-      {error && <div className="studio-error" role="alert">{error}</div>}
-      {!result && !loading && <button className="studio-primary" onClick={search}><Icon name="search" size={16} /> Encontrar minha aula</button>}
-      {loading && <div className="studio-loading compact"><span className="loading-orbit" /> Procurando uma aula que combine com você…</div>}
-      {result && !loading && <div className="youtube-video-list">
-        {result.videos?.length ? result.videos.map((video) => (
-          <article className="youtube-video-card" key={video.id}>
-            <div className="youtube-video-thumb">{video.thumbnail ? <img src={video.thumbnail} alt="" loading="lazy" /> : <Icon name="play" size={22} />}</div>
-            <div className="youtube-video-copy"><strong>{video.title}</strong><span>{video.channelTitle}</span><p>{video.description || 'Vídeo selecionado para esta matéria.'}</p><div className="youtube-video-actions"><a href={video.url} target="_blank" rel="noopener noreferrer"><Icon name="play" size={13} /> Assistir</a><button className={video.saved ? 'saved' : ''} onClick={() => updateVideo(video.id, { saved: !video.saved })}><Icon name={video.saved ? 'check' : 'bookmark'} size={13} /> {video.saved ? 'Na trilha' : 'Salvar'}</button></div><div className="youtube-feedback" aria-label={`Avaliar vídeo ${video.title}`}><span>Foi útil?</span><button className={video.feedback === 'up' ? 'active' : ''} onClick={() => updateVideo(video.id, { feedback: video.feedback === 'up' ? null : 'up' })} aria-label="Vídeo útil" aria-pressed={video.feedback === 'up'}>👍</button><button className={video.feedback === 'down' ? 'active' : ''} onClick={() => updateVideo(video.id, { feedback: video.feedback === 'down' ? null : 'down' })} aria-label="Vídeo não útil" aria-pressed={video.feedback === 'down'}>👎</button></div></div>
-          </article>
-        )) : <div className="youtube-empty"><Icon name="search" size={18} /> Não encontrei uma aula adequada com esses filtros.</div>}
-        <button className="studio-ghost wide" onClick={search}><Icon name="rotate" size={14} /> Buscar novamente</button>
-      </div>}
-    </section>
+    <View className="gap-3">
+      <View className="flex-row items-start justify-between gap-2">
+        <View className="flex-1 gap-1">
+          <View className="flex-row items-center gap-1.5">
+            <Icon name="search" size={13} color="#4f46e5" />
+            <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Busca inteligente</Text>
+          </View>
+          <Text className="text-[16px] font-bold text-slate-900">Aulas no YouTube para {subject.name}</Text>
+          <Text className="text-[13px] text-slate-600">A IA combina seus subtemas com seu estilo de aprendizagem e entrega links reais para assistir.</Text>
+        </View>
+        {result?.mode === 'demo' ? (
+          <View className="rounded-full bg-amber-100 px-2 py-1"><Text className="text-[10px] font-bold text-amber-700">DEMO</Text></View>
+        ) : null}
+      </View>
+
+      {result?.query ? (
+        <View className="flex-row items-center gap-1.5">
+          <Icon name="sparkle" size={13} color="#4f46e5" />
+          <Text className="flex-1 text-[12px] text-slate-600">Busca: <Text className="font-semibold text-slate-800">{result.query}</Text></Text>
+        </View>
+      ) : null}
+      {result?.reason ? <Text className="text-[12px] text-slate-500">A seleção {result.reason}.</Text> : null}
+      {weakTopics.length ? (
+        <View className="flex-row items-start gap-1.5">
+          <Icon name="target" size={13} color="#d97706" />
+          <Text className="flex-1 text-[12px] text-amber-700">Também priorizando suas dificuldades: <Text className="font-semibold">{weakTopics.join(', ')}</Text></Text>
+        </View>
+      ) : null}
+      {error ? (
+        <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View>
+      ) : null}
+
+      {!result && !loading ? (
+        <Pressable onPress={search} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+          <Icon name="search" size={16} color="#ffffff" />
+          <Text className="text-[14px] font-semibold text-white">Encontrar minha aula</Text>
+        </Pressable>
+      ) : null}
+
+      {loading ? (
+        <View className="flex-row items-center gap-2 py-2">
+          <ActivityIndicator color="#4f46e5" />
+          <Text className="text-[13px] text-slate-500">Procurando uma aula que combine com você…</Text>
+        </View>
+      ) : null}
+
+      {result && !loading ? (
+        <View className="gap-3">
+          {result.videos?.length ? (
+            result.videos.map((video) => (
+              <View key={video.id} className="gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+                <View className="flex-row gap-3">
+                  <View className="h-16 w-24 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+                    {video.thumbnail ? (
+                      <Image source={{ uri: video.thumbnail }} className="h-16 w-24" resizeMode="cover" />
+                    ) : (
+                      <Icon name="play" size={22} color="#94a3b8" />
+                    )}
+                  </View>
+                  <View className="flex-1 gap-0.5">
+                    <Text className="text-[13px] font-bold text-slate-900" numberOfLines={2}>{video.title}</Text>
+                    <Text className="text-[11px] text-slate-400">{video.channelTitle}</Text>
+                  </View>
+                </View>
+                <Text className="text-[12px] text-slate-500" numberOfLines={2}>{video.description || 'Vídeo selecionado para esta matéria.'}</Text>
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row gap-2">
+                    <Pressable onPress={() => Linking.openURL(video.url)} className="flex-row items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5">
+                      <Icon name="play" size={13} color="#ffffff" />
+                      <Text className="text-[12px] font-medium text-white">Assistir</Text>
+                    </Pressable>
+                    <Pressable onPress={() => updateVideo(video.id, { saved: !video.saved })} className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${video.saved ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 bg-white'}`}>
+                      <Icon name={video.saved ? 'check' : 'bookmark'} size={13} color={video.saved ? '#4f46e5' : '#475569'} />
+                      <Text className={`text-[12px] font-medium ${video.saved ? 'text-indigo-600' : 'text-slate-600'}`}>{video.saved ? 'Na trilha' : 'Salvar'}</Text>
+                    </Pressable>
+                  </View>
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-[11px] text-slate-400">Foi útil?</Text>
+                    <Pressable
+                      onPress={() => updateVideo(video.id, { feedback: video.feedback === 'up' ? null : 'up' })}
+                      accessibilityLabel="Vídeo útil"
+                      accessibilityState={{ selected: video.feedback === 'up' }}
+                      className={`h-7 w-7 items-center justify-center rounded-full ${video.feedback === 'up' ? 'bg-emerald-100' : 'bg-slate-100'}`}
+                    >
+                      <Text>👍</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => updateVideo(video.id, { feedback: video.feedback === 'down' ? null : 'down' })}
+                      accessibilityLabel="Vídeo não útil"
+                      accessibilityState={{ selected: video.feedback === 'down' }}
+                      className={`h-7 w-7 items-center justify-center rounded-full ${video.feedback === 'down' ? 'bg-red-100' : 'bg-slate-100'}`}
+                    >
+                      <Text>👎</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            ))
+          ) : (
+            <View className="flex-row items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-3">
+              <Icon name="search" size={18} color="#94a3b8" />
+              <Text className="flex-1 text-[13px] text-slate-500">Não encontrei uma aula adequada com esses filtros.</Text>
+            </View>
+          )}
+          <Pressable onPress={search} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
+            <Icon name="rotate" size={14} color="#475569" />
+            <Text className="text-[13px] font-medium text-slate-600">Buscar novamente</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }

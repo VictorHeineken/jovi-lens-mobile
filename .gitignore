@@ -6,3 +6,23 @@ dist/
 .DS_Store
 *.log
 .playwright-mcp/
+
+# Expo / React Native (root app)
+.expo/
+web-build/
+expo-env.d.ts
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.pem
+*.tsbuildinfo
+/ios
+/android

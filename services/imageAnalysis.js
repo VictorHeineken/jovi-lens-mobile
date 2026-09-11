@@ -1,82 +1,75 @@
+import { Image } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Clipboard from 'expo-clipboard';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as Linking from 'expo-linking';
 import { getDemoAction, getDemoAnalysis } from './demoResponses.js';
+import { isDemoMode } from './env.js';
+import { apiUrl } from './apiClient.js';
 
-const CLIENT_DEMO_MODE = String(import.meta.env?.VITE_JOVI_LENS_DEMO_MODE ?? 'true').toLowerCase() === 'true';
-const MAX_FILE_SIZE = 12 * 1024 * 1024;
-const VALID_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-function loadImage(src) {
+function getImageSize(uri) {
   return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = src;
+    Image.getSize(uri, (width, height) => resolve({ width, height }), reject);
   });
 }
 
-function wait(ms, signal) {
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(resolve, ms);
-    if (!signal) return;
-    if (signal.aborted) {
-      window.clearTimeout(timer);
-      reject(new DOMException('Request aborted.', 'AbortError'));
-      return;
-    }
-    signal.addEventListener('abort', () => {
-      window.clearTimeout(timer);
-      reject(new DOMException('Request aborted.', 'AbortError'));
-    }, { once: true });
-  });
+// Android's image loader (Fresco) rejects `data:` URIs with "Unsupported uri
+// scheme for encoded image fetch!", and both capture flows store images as
+// data URIs (see app/(tabs)/camera.jsx and app/(tabs)/gallery.jsx). Spilling
+// the payload to a cache file first gives Image.getSize/ImageManipulator a
+// file:// URI, which both accept on every platform.
+async function toLoadableUri(uri) {
+  if (typeof uri !== 'string' || !uri.startsWith('data:')) return { uri, cleanup: null };
+  const base64 = uri.slice(uri.indexOf(',') + 1);
+  const target = `${FileSystem.cacheDirectory}jovi-ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+  await FileSystem.writeAsStringAsync(target, base64, { encoding: FileSystem.EncodingType.Base64 });
+  return { uri: target, cleanup: () => FileSystem.deleteAsync(target, { idempotent: true }).catch(() => {}) };
 }
 
-export async function fileToDataUrl(file) {
-  if (!file || !VALID_MIME_TYPES.has(file.type)) throw new Error('Escolha uma imagem JPG, PNG ou WebP.');
-  if (file.size > MAX_FILE_SIZE) throw new Error('Essa imagem é grande demais. Escolha um arquivo de até 12 MB.');
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+// Web resizes on a <canvas> before upload. RN has no canvas — expo-image-manipulator
+// does the resize+compress+base64 natively in one call, and (unlike the web version)
+// takes the source URI directly, so there's no separate fetch-as-blob step for
+// remote images either.
+export async function prepareImageForAI(uri, maxSide = 1600) {
+  const { uri: loadableUri, cleanup } = await toLoadableUri(uri);
+  try {
+    const { width, height } = await getImageSize(loadableUri);
+    const scale = Math.min(1, maxSide / Math.max(width, height));
+    const targetWidth = Math.max(1, Math.round(width * scale));
+    const targetHeight = Math.max(1, Math.round(height * scale));
 
-export async function prepareImageForAI(src, maxSide = 1600, signal) {
-  let source = src;
-  if (!String(src).startsWith('data:')) {
-    const blob = await fetch(src, { signal }).then((response) => response.blob());
-    source = await fileToDataUrl(blob);
+    const result = await ImageManipulator.manipulateAsync(
+      loadableUri,
+      [{ resize: { width: targetWidth, height: targetHeight } }],
+      { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+    );
+    return `data:image/jpeg;base64,${result.base64}`;
+  } finally {
+    if (cleanup) await cleanup();
   }
-
-  const image = await loadImage(source);
-  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d', { alpha: false });
-  ctx.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL('image/jpeg', 0.82);
 }
 
-async function requestAnalysis(src, { action = 'analyze', question = '', context = null, signal } = {}) {
-  if (CLIENT_DEMO_MODE) {
-    await wait(action === 'analyze' ? 1100 : 520, signal);
+async function requestAnalysis(src, { action = 'analyze', question = '', context = null } = {}) {
+  if (isDemoMode()) {
+    await wait(action === 'analyze' ? 1100 : 520);
     if (action === 'extract') return { text: getDemoAnalysis().text, language: 'pt', confidence: 0.96, provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' };
     return action === 'analyze' ? { ...getDemoAnalysis(), provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' } : getDemoAction({ action, question });
   }
 
-  const prepared = await prepareImageForAI(src, 1600, signal);
+  const prepared = await prepareImageForAI(src, 1600);
   const [header, base64] = prepared.split(',');
   const mimeType = header.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
 
   let response;
   try {
-    response = await fetch('/api/analyze-image', {
+    response = await fetch(apiUrl('/api/analyze-image'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: base64, mimeType, action, question, context }),
-      signal,
     });
   } catch (error) {
     if (error?.name === 'AbortError') throw error;
@@ -100,30 +93,17 @@ export async function requestStudyAction(src, options) {
   return requestAnalysis(src, options);
 }
 
-export function isDemoMode() {
-  return CLIENT_DEMO_MODE;
-}
+export { isDemoMode };
 
 export function googleSearch(text) {
   const query = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 650);
   if (!query) return false;
-  window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank', 'noopener,noreferrer');
+  Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
   return true;
 }
 
 export async function copyText(text) {
   if (!text) return false;
-  if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text);
-    return true;
-  }
-  const el = document.createElement('textarea');
-  el.value = text;
-  el.style.position = 'fixed';
-  el.style.opacity = '0';
-  document.body.appendChild(el);
-  el.select();
-  const ok = document.execCommand('copy');
-  el.remove();
-  return ok;
+  await Clipboard.setStringAsync(text);
+  return true;
 }

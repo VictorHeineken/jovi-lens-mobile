@@ -22,6 +22,11 @@ import { aggregateSubjects } from '../services/subjectStudy.js';
 
 const AppDataContext = createContext(null);
 
+// Ported verbatim from the web app's Vite public-folder path. These sample
+// image paths won't resolve to anything in RN yet — that needs real bundled
+// assets (require()'d into an images map) or remote URLs, wired up when the
+// Gallery/Notes screens are built (Tier 2). Not needed for the data layer
+// itself: this file only stores/reads these strings, it never renders them.
 const ASSET_BASE = '/demo-assets';
 
 const studyAssets = {

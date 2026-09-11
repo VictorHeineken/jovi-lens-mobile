@@ -1,36 +1,41 @@
-# JOVI Lens Mobile
+# JOVI Lens
 
-Nova experiência mobile-first do projeto JOVI, construída sobre React + Vite e executada localmente com Azure OpenAI.
+Experiência de estudo "foto → IA → aprendizado" do projeto JOVI. Este repositório contém dois clientes que
+compartilham o mesmo backend:
 
-## Rotas de apresentação
+- **App React Native (Expo)** — nesta pasta raiz (`app/`, `components/`, `services/`, `context/`, ...).
+  A versão instalável para Android/iOS; veja o [plano de migração](react-native-migration-plan.md) para o
+  que foi portado, decisões tomadas e o que ainda falta verificar em um dispositivo real.
+- **App web (Vite + React)** — em [`web/`](web/README.md). A versão original do projeto, PWA instalável
+  via navegador.
+- **Backend compartilhado** — `api/` (handlers estilo Vercel serverless) + `server/local-api.js` (wrapper
+  HTTP para rodar `api/` localmente). Os dois clientes chamam exatamente os mesmos endpoints.
 
-- `/camera` — câmera nativa do navegador + captura; a IA é opcional por imagem.
-- `/gallery` — galeria de fotos com visualização normal, Notas, Histórico e a seção Copilot.
-- `/notes` — notas geradas e salvas.
-- `/copilot` — aba demonstrativa do modelo avançado, com teste de 7 dias ou conexão de uma assinatura existente.
-- `/profile` — conta de demonstração e acesso demonstrativo ao Copilot, sem login ou cobrança real.
-
-Na área `/notes` e no Histórico existe busca por notas, pesquisas e mídias. Notas salvas podem ser
-editadas por título, matéria, subtema, tags, resumo e texto. A câmera também oferece um modo
-`DOCUMENTOS` para salvar várias páginas na mesma sessão, com contraste de leitura e metadados de
-ordenação. O Perfil oferece exportação, restauração e limpeza dos dados locais, sempre com confirmação.
-
-No Estúdio da matéria, a aba Vídeo aula também pode buscar aulas reais no YouTube. A Azure OpenAI
-transforma a matéria, os subtemas e as preferências do estudante em uma consulta; o backend consulta a
-YouTube Data API v3 e retorna links oficiais, filtrando idioma, região, duração e reprodução externa.
-`YOUTUBE_API_KEY` fica somente no backend.
-
-Cada recomendação pode receber feedback, ser salva na trilha da matéria e aparecer na aba Plano. Quando
-existe um simulado concluído, os subtemas com pior desempenho entram automaticamente na próxima busca.
-
-O modo de documentos é uma captura sequencial local; ele ainda não faz correção geométrica automática,
-detecção de bordas ou sincronização em nuvem.
+```text
+jovi-lens-mobile/
+  api/                  backend compartilhado (Azure OpenAI / MiniMax, TTS, STT, vídeo, YouTube)
+  server/               servidor HTTP local que expõe api/ em 127.0.0.1:8787
+  app/, components/,    app React Native (Expo) — roda a partir da raiz
+  services/, context/,
+  app.json, package.json
+  web/                  app web (Vite + React) — veja web/README.md
+  tests/                testes do backend (api/_lib/...)
+  .env, .env.example    variáveis compartilhadas pelos dois clientes e pelo backend
+  react-native-migration-plan.md
+```
 
 ## IA
 
-O fluxo real usa um provedor de IA plugável atrás de uma camada de serviço em `api/_lib/ai/`. O navegador nunca recebe nenhuma chave: a imagem passa por `POST /api/analyze-image`, que valida o payload, aplica timeout e normaliza a resposta para o contrato educacional do produto — esse contrato é o mesmo não importa qual provedor esteja ativo.
+O fluxo real usa um provedor de IA plugável atrás de uma camada de serviço em `api/_lib/ai/`. Nenhum
+cliente recebe chave alguma: a imagem passa por `POST /api/analyze-image`, que valida o payload, aplica
+timeout e normaliza a resposta para o contrato educacional do produto — esse contrato é o mesmo não
+importa qual provedor esteja ativo, nem qual cliente (web ou nativo) fez a chamada.
 
-Cada provedor vive em `api/_lib/ai/providers/<nome>.js` e implementa a mesma interface (`complete`, `speak`, `transcribe`, `createVideoJob`/`getVideoJob`/`getVideoContent`, mais um objeto `capabilities`). O provedor ativo é escolhido pela variável `AI_PROVIDER` no `.env` (veja abaixo); `api/_lib/ai/providers/index.js` resolve qual módulo atende cada recurso. Hoje `azure-openai` e `minimax` estão registrados — `openai`, `anthropic` e `gemini` chegam em fases seguintes desta refatoração.
+Cada provedor vive em `api/_lib/ai/providers/<nome>.js` e implementa a mesma interface (`complete`,
+`speak`, `transcribe`, `createVideoJob`/`getVideoJob`/`getVideoContent`, mais um objeto `capabilities`). O
+provedor ativo é escolhido pela variável `AI_PROVIDER` no `.env` (veja abaixo); `api/_lib/ai/providers/index.js`
+resolve qual módulo atende cada recurso. Hoje `azure-openai` e `minimax` estão registrados — `openai`,
+`anthropic` e `gemini` chegam em fases seguintes desta refatoração.
 
 Nem todo provedor cobre todos os recursos — é uma limitação real das APIs, não uma lacuna de implementação:
 
@@ -42,30 +47,22 @@ Nem todo provedor cobre todos os recursos — é uma limitação real das APIs, 
 | Anthropic (planejado) | ✅ | ❌ | ❌ | ❌ |
 | Google Gemini (planejado) | ✅ | ✅ | ✅ | ✅ (Veo) |
 
-Se `AI_PROVIDER` não cobre um recurso, use a variável de override desse recurso (`AI_TTS_PROVIDER`, `AI_STT_PROVIDER`, `AI_VIDEO_PROVIDER`, ou `AI_CHAT_PROVIDER`/`AI_VISION_PROVIDER`) para apontá-lo a outro provedor configurado. Sem override, o recurso simplesmente fica indisponível (erro `AI_NOT_CONFIGURED`), do mesmo jeito que hoje acontece quando um deployment opcional da Azure não está configurado.
+Se `AI_PROVIDER` não cobre um recurso, use a variável de override desse recurso (`AI_TTS_PROVIDER`,
+`AI_STT_PROVIDER`, `AI_VIDEO_PROVIDER`, ou `AI_CHAT_PROVIDER`/`AI_VISION_PROVIDER`) para apontá-lo a outro
+provedor configurado. Sem override, o recurso simplesmente fica indisponível (erro `AI_NOT_CONFIGURED`), do
+mesmo jeito que hoje acontece quando um deployment opcional da Azure não está configurado.
 
-Para uma apresentação sem dependência de rede, ative o Demo Mode. O mock fica separado em `services/demoResponses.js` e reproduz análise, explicação, resolução, pergunta, quiz e flashcards.
-
-Capturas comuns continuam sendo apenas fotos na galeria. Ao abrir uma captura, a imagem ocupa o visualizador e oferece três ações independentes: copiar o texto lido, pesquisar o texto no Google ou escolher "Usar IA" para iniciar uma sessão de estudo. Algumas referências de exemplo estão marcadas como biblioteca e não entram na análise educacional.
-
-## Conta e Copilot (demo)
-
-O fluxo do perfil é propositalmente local para a apresentação: "Entrar como estudante" cria uma conta fictícia no `localStorage`, e "Ativar acesso Copilot · Demo" libera um plano demonstrativo. Nenhuma conta externa, assinatura ou cobrança é realizada.
-
-A aba `/copilot` apresenta o modelo avançado como uma extensão premium do JOVI Lens. Ela oferece dois caminhos de demonstração: iniciar um teste de 7 dias ou simular a conexão de uma assinatura Copilot já existente. Após ativar, o botão "Abrir câmera com Copilot" leva à experiência principal. O modelo e a assinatura são ilustrativos nesta versão.
-
-## Rodar localmente
-
-```bash
-npm install
-npm run dev
-```
-
-O comando inicia o frontend Vite em `http://127.0.0.1:5173` e a API local Node em `http://127.0.0.1:8787`. O frontend encaminha `/api/analyze-image` para essa API local, sem depender de uma plataforma externa. Para abrir a galeria, use `http://127.0.0.1:5173/gallery`; a API também redireciona `http://127.0.0.1:8787/gallery` para essa tela por conveniência.
+Para uma apresentação sem dependência de rede, ative o Demo Mode (veja `JOVI_LENS_DEMO_MODE` /
+`VITE_JOVI_LENS_DEMO_MODE` / `EXPO_PUBLIC_JOVI_LENS_DEMO_MODE` abaixo — cada cliente lê a variável com seu
+próprio prefixo).
 
 ## Variáveis locais
 
-Copie `.env.example` para `.env` e configure os valores localmente. Toda chave de provedor é server-only e nunca deve usar prefixo `VITE_`. O arquivo de exemplo deve permanecer sem valores reais.
+Copie `.env.example` para `.env` na raiz do repositório e configure os valores localmente. Este único
+`.env` é compartilhado pelo backend, pelo app web e pelo app React Native — cada um lê apenas as variáveis
+com o prefixo que lhe importa (nenhum prefixo para o backend, `VITE_` para o app web, `EXPO_PUBLIC_` para o
+app nativo). Toda chave de provedor de IA é server-only e nunca deve usar esses prefixos. O arquivo de
+exemplo deve permanecer sem valores reais.
 
 Principais variáveis:
 
@@ -79,18 +76,64 @@ YOUTUBE_API_KEY=
 JOVI_LENS_DEMO_MODE=false
 VITE_JOVI_LENS_DEMO_MODE=false
 JOVI_WEB_URL=http://127.0.0.1:5173
+
+# App React Native (Expo) — veja react-native-migration-plan.md
+EXPO_PUBLIC_API_BASE_URL=http://SEU_IP_LOCAL:8787
 ```
 
-`AI_PROVIDER` é obrigatória para o modo ao vivo — sem ela, cada chamada de IA falha com `AI_NOT_CONFIGURED` apontando para o `.env.example`. Para uma apresentação sem rede, defina os dois flags de Demo Mode como `true` (o provedor de IA não importa nesse caso). Para usar um provedor ao vivo localmente, mantenha os dois `false`, configure o bloco de variáveis do provedor escolhido e reinicie `npm run dev` depois de alterar o `.env`.
+`AI_PROVIDER` é obrigatória para o modo ao vivo — sem ela, cada chamada de IA falha com
+`AI_NOT_CONFIGURED` apontando para o `.env.example`. Para uma apresentação sem rede, defina os flags de
+Demo Mode como `true` (o provedor de IA não importa nesse caso). Para usar um provedor ao vivo localmente,
+mantenha-os `false`, configure o bloco de variáveis do provedor escolhido e reinicie o servidor depois de
+alterar o `.env`.
 
 As APIs locais aplicam rate limit por janela curta e limite diário por recurso. Esses limites protegem o
 protótipo contra bursts e consumo acidental; em produção devem ser substituídos por quotas por usuário
 autenticado e um armazenamento compartilhado.
 
-## Produção
+## Rodar o app React Native (a partir da raiz)
 
 ```bash
-npm run build
+npm install
+npm start
 ```
 
-O build gera os arquivos estáticos em `dist/`. Em desenvolvimento, `scripts/dev.js` coordena o Vite e `server/local-api.js`; em produção, hospede o frontend e essa API Node no ambiente local ou em um servidor sob seu controle.
+Isso abre o Expo CLI (QR code para um build de desenvolvimento — veja abaixo). Também disponíveis:
+`npm run android`, `npm run ios` (builds locais, exigem Android Studio/Xcode) e `npm run web` (preview em
+navegador, com limitações — veja o plano de migração).
+
+**Nenhum código deste app roda em Expo Go.** Ele depende de módulos nativos de terceiros
+(`react-native-vision-camera`, `expo-speech-recognition`, `react-native-mmkv`) que não vêm embutidos no
+app Expo Go — é necessário compilar um development client primeiro:
+
+```bash
+npx eas build --profile development --platform android   # build na nuvem (precisa de conta Expo)
+# ou, com o Android SDK instalado localmente:
+npm run android
+```
+
+Configure `EXPO_PUBLIC_API_BASE_URL` no `.env` da raiz antes de rodar — aponte para o IP da sua rede local
+(não `localhost`) na porta da API (`JOVI_API_PORT`, padrão `8787`), já que o telefone/emulador é um
+dispositivo separado. Veja mais detalhes, decisões de arquitetura e o que ainda não foi testado em um
+dispositivo real no [plano de migração](react-native-migration-plan.md).
+
+Para compilar o APK localmente e testá-lo em um aparelho Android (toolchain, `adb` por Wi-Fi,
+leitura de logs e os erros já enfrentados), veja o [guia de build e teste no Android](ANDROID_BUILD.md).
+
+## Rodar o app web
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Veja [`web/README.md`](web/README.md) para rotas, fluxo de demonstração e detalhes específicos do app web.
+
+## Testes do backend
+
+```bash
+node --test tests/youtube.test.js
+```
+
+(Os testes dos serviços do app web ficam em `web/tests/` — rode `cd web && npm test`.)
