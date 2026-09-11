@@ -1,4 +1,5 @@
 import { Image } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Clipboard from 'expo-clipboard';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Linking from 'expo-linking';
@@ -16,22 +17,40 @@ function getImageSize(uri) {
   });
 }
 
+// Android's image loader (Fresco) rejects `data:` URIs with "Unsupported uri
+// scheme for encoded image fetch!", and both capture flows store images as
+// data URIs (see app/(tabs)/camera.jsx and app/(tabs)/gallery.jsx). Spilling
+// the payload to a cache file first gives Image.getSize/ImageManipulator a
+// file:// URI, which both accept on every platform.
+async function toLoadableUri(uri) {
+  if (typeof uri !== 'string' || !uri.startsWith('data:')) return { uri, cleanup: null };
+  const base64 = uri.slice(uri.indexOf(',') + 1);
+  const target = `${FileSystem.cacheDirectory}jovi-ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+  await FileSystem.writeAsStringAsync(target, base64, { encoding: FileSystem.EncodingType.Base64 });
+  return { uri: target, cleanup: () => FileSystem.deleteAsync(target, { idempotent: true }).catch(() => {}) };
+}
+
 // Web resizes on a <canvas> before upload. RN has no canvas — expo-image-manipulator
 // does the resize+compress+base64 natively in one call, and (unlike the web version)
 // takes the source URI directly, so there's no separate fetch-as-blob step for
 // remote images either.
 export async function prepareImageForAI(uri, maxSide = 1600) {
-  const { width, height } = await getImageSize(uri);
-  const scale = Math.min(1, maxSide / Math.max(width, height));
-  const targetWidth = Math.max(1, Math.round(width * scale));
-  const targetHeight = Math.max(1, Math.round(height * scale));
+  const { uri: loadableUri, cleanup } = await toLoadableUri(uri);
+  try {
+    const { width, height } = await getImageSize(loadableUri);
+    const scale = Math.min(1, maxSide / Math.max(width, height));
+    const targetWidth = Math.max(1, Math.round(width * scale));
+    const targetHeight = Math.max(1, Math.round(height * scale));
 
-  const result = await ImageManipulator.manipulateAsync(
-    uri,
-    [{ resize: { width: targetWidth, height: targetHeight } }],
-    { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-  );
-  return `data:image/jpeg;base64,${result.base64}`;
+    const result = await ImageManipulator.manipulateAsync(
+      loadableUri,
+      [{ resize: { width: targetWidth, height: targetHeight } }],
+      { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+    );
+    return `data:image/jpeg;base64,${result.base64}`;
+  } finally {
+    if (cleanup) await cleanup();
+  }
 }
 
 async function requestAnalysis(src, { action = 'analyze', question = '', context = null } = {}) {

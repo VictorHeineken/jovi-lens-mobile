@@ -1,5 +1,5 @@
-import * as FileSystem from 'expo-file-system';
-import { MMKV } from 'react-native-mmkv';
+import * as FileSystem from 'expo-file-system/legacy';
+import { createMMKV } from 'react-native-mmkv';
 
 // Same key/value interface as the web app's services/storage.js (backed by
 // localStorage + IndexedDB there). MMKV is used instead of AsyncStorage
@@ -9,7 +9,7 @@ import { MMKV } from 'react-native-mmkv';
 // in Expo Go), which this project already accepts for the camera/dictation
 // libraries — see react-native-migration-plan.md.
 
-const storage = new MMKV({ id: 'jovi-lens' });
+const storage = createMMKV({ id: 'jovi-lens' });
 
 const NOTES_KEY = 'jovi_mobile_notes_v2';
 const HISTORY_KEY = 'jovi_mobile_ai_history_v1';

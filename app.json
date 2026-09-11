@@ -64,6 +64,14 @@
         {
           "photosPermission": "O JOVI Lens acessa suas fotos para importar imagens para análise."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
     ],
     "experiments": {}

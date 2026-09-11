@@ -24,12 +24,26 @@ function getAspectCrop(width, height, ratio) {
   const sourceRatio = width / height;
   const cropWidth = sourceRatio > desiredRatio ? height * desiredRatio : width;
   const cropHeight = sourceRatio > desiredRatio ? height : width / desiredRatio;
+  // Clamped because expo-image-manipulator rejects the whole render when the
+  // rectangle pokes even one pixel outside the source ("Invalid crop options").
+  const w = Math.min(width, Math.max(1, Math.round(cropWidth)));
+  const h = Math.min(height, Math.max(1, Math.round(cropHeight)));
   return {
-    originX: Math.round((width - cropWidth) / 2),
-    originY: Math.round((height - cropHeight) / 2),
-    width: Math.round(cropWidth),
-    height: Math.round(cropHeight),
+    originX: Math.max(0, Math.min(width - w, Math.round((width - cropWidth) / 2))),
+    originY: Math.max(0, Math.min(height - h, Math.round((height - cropHeight) / 2))),
+    width: w,
+    height: h,
   };
+}
+
+// capturePhoto() reports the sensor's own width/height, but the file written by
+// saveToTemporaryFileAsync() is already EXIF-rotated — so on a portrait shot the
+// two are transposed and a crop computed from the sensor size falls outside the
+// image. Measure the file that will actually be cropped.
+function measureImage(uri) {
+  return new Promise((resolve, reject) => {
+    Image.getSize(uri, (width, height) => resolve({ width, height }), reject);
+  });
 }
 
 export default function CameraScreen() {
@@ -121,15 +135,20 @@ export default function CameraScreen() {
     let photo;
     try {
       photo = await photoOutput.capturePhoto({ flashMode: 'off' }, {});
-      const crop = getAspectCrop(photo.width, photo.height, aspectRatio);
       const tempPath = await photo.saveToTemporaryFileAsync();
+      const fileUri = `file://${tempPath}`;
+      const { width, height } = await measureImage(fileUri);
+      const crop = getAspectCrop(width, height, aspectRatio);
       const manipulated = await ImageManipulator.manipulateAsync(
-        `file://${tempPath}`,
+        fileUri,
         [{ crop }],
         { base64: true, format: ImageManipulator.SaveFormat.JPEG, compress: 0.95 },
       );
       await commitCapture(`data:image/jpeg;base64,${manipulated.base64}`, { source: 'camera', label: 'Captura da câmera' });
-    } catch {
+    } catch (error) {
+      // Swallowing this made a real failure invisible on device; log it so
+      // `adb logcat` shows why a capture was dropped.
+      console.error('[JOVI] takePicture failed:', error?.message ?? String(error), error?.stack ?? '');
       notify('Não foi possível salvar essa captura.');
     } finally {
       photo?.dispose();

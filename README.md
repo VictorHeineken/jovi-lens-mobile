@@ -117,6 +117,9 @@ Configure `EXPO_PUBLIC_API_BASE_URL` no `.env` da raiz antes de rodar — aponte
 dispositivo separado. Veja mais detalhes, decisões de arquitetura e o que ainda não foi testado em um
 dispositivo real no [plano de migração](react-native-migration-plan.md).
 
+Para compilar o APK localmente e testá-lo em um aparelho Android (toolchain, `adb` por Wi-Fi,
+leitura de logs e os erros já enfrentados), veja o [guia de build e teste no Android](ANDROID_BUILD.md).
+
 ## Rodar o app web
 
 ```bash
