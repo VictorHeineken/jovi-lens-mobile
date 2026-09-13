@@ -148,15 +148,17 @@ This holds regardless of which native modules are in the project — Android has
 - [x] Styling approach: NativeWind.
 - [x] Apple Developer account: required for any real-device iOS testing, no browser/simulator substitute for validating Camera/voice features — budget the $99/yr from the start if iOS hardware testing is in scope.
 - [ ] Exact `expo-sharing`/`expo-document-picker` UX for backup export/import (e.g., share sheet copy, error states) — implemented with reasonable defaults (native `Alert.alert` confirm dialogs, standard share sheet), can be refined later.
-- [ ] Bundle real demo-asset images (or point them at remote URLs) so the seeded sample notes/photos actually render instead of dead paths — needed before a first demo run looks right.
+- [x] Bundle real demo-asset images (or point them at remote URLs) so the seeded sample notes/photos actually render instead of dead paths — done 2026-09-12: the 15 images live in `assets/demo/` (downscaled to 800px, ~1.2MB total vs 5.9MB in `web/public/demo-assets/`), and `services/demoAssets.js` maps the seeded `/demo-assets/...` strings to the bundled modules. Verified rendering with real pixel dimensions via a web export inspected in a browser.
 - [ ] DOCUMENTOS mode's subtle scan color filter (grayscale/contrast/brightness) — dropped, no RN equivalent without adding a shader/Skia dependency. Revisit only if the visual effect turns out to matter.
 
 ## What's left before this is a working app
 
 Everything above is code-complete and passes static compilation (`expo-doctor`, Metro bundles for `android`/`ios`/`web`), but **none of it has run on a device, emulator, or Expo Go** — this environment has no Android SDK or Xcode. Before relying on this:
-1. Set `EXPO_PUBLIC_API_BASE_URL` in the repo-root `.env` (see `.env.example`) pointing at a reachable backend.
+1. ~~Set `EXPO_PUBLIC_API_BASE_URL` in the repo-root `.env`~~ — done 2026-09-12, pointing at this machine's LAN IP on port 8787. Re-check it whenever the network changes; the phone cannot reach `localhost`.
 2. Build and install a dev client (step 2 above).
 3. Walk through each tab on a real device — data layer and simple screens first, then Camera (highest native-integration risk, per the Tier 3 notes).
+
+Note on `npm run web`: it does not work, and the limitation is stronger than "preview with limitations". `react-native-vision-camera` ships no web implementation, and expo-router eagerly loads every route, so the camera route's import crashes the whole app at startup with `__fbBatchedBridgeConfig is not set, cannot invoke native modules` — a blank page, not a degraded one. `react-native-mmkv` and `expo-speech-recognition` do have web fallbacks, so vision-camera is the only blocker; a `.web.jsx` stub for the camera route would be enough to make the browser preview usable.
 
 ---
 

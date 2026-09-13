@@ -37,7 +37,7 @@ resposta para o contrato educacional do produto — esse contrato é o mesmo nã
 ativo. Veja o [README na raiz](../README.md#ia) para a lista de provedores e variáveis.
 
 Para uma apresentação sem dependência de rede, ative o Demo Mode. O mock fica separado em
-`services/demoResponses.js` e reproduz análise, explicação, resolução, pergunta, quiz e flashcards.
+`shared/demoResponses.js` e reproduz análise, explicação, resolução, pergunta, quiz e flashcards.
 
 Capturas comuns continuam sendo apenas fotos na galeria. Ao abrir uma captura, a imagem ocupa o
 visualizador e oferece três ações independentes: copiar o texto lido, pesquisar o texto no Google ou
@@ -83,3 +83,10 @@ npm run build
 O build gera os arquivos estáticos em `web/dist/`. Em desenvolvimento, `scripts/dev.js` coordena o Vite
 (a partir desta pasta) e `../server/local-api.js` (na raiz); em produção, hospede o frontend e essa API
 Node no ambiente local ou em um servidor sob seu controle.
+
+**Esta pasta não compila sozinha.** O build importa de `../shared/` (lógica que o app nativo e o
+backend também usam) e o Vite lê o `.env` da raiz via `envDir: '../'`. Num build isolado, só com o
+conteúdo de `web/`, o Rollup falha com sete `UNRESOLVED_IMPORT` — verificado. Ou seja: o diretório
+raiz do build tem de ser a **raiz do repositório**, não `web/`. Em plataformas como a Vercel isso é a
+configuração "Root Directory"; `api/` tem a mesma exigência, porque os handlers importam de
+`../../../../shared/`.

@@ -37,7 +37,7 @@ O endpoint valida tipo/tamanho/base64 da imagem, limita requisições por janela
 
 ## Demo Mode
 
-`services/demoResponses.js` mantém respostas realistas para análise inicial, explicar, resolver, perguntar, quiz e flashcards. `VITE_JOVI_LENS_DEMO_MODE=true` evita a chamada de rede no cliente; `JOVI_LENS_DEMO_MODE=true` também habilita o provider demo no backend. Para usar Azure OpenAI, defina ambos como `false` e configure `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` e `AZURE_OPENAI_API_VERSION`.
+`shared/demoResponses.js` mantém respostas realistas para análise inicial, explicar, resolver, perguntar, quiz e flashcards. `VITE_JOVI_LENS_DEMO_MODE=true` evita a chamada de rede no cliente; `JOVI_LENS_DEMO_MODE=true` também habilita o provider demo no backend. Para usar Azure OpenAI, defina ambos como `false` e configure `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` e `AZURE_OPENAI_API_VERSION`.
 
 ## Conta e Copilot demonstrativos
 

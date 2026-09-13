@@ -15,11 +15,13 @@ compartilham o mesmo backend:
 jovi-lens-mobile/
   api/                  backend compartilhado (Azure OpenAI / MiniMax, TTS, STT, vídeo, YouTube)
   server/               servidor HTTP local que expõe api/ em 127.0.0.1:8787
+  shared/               lógica usada pelos dois clientes e pelo backend — uma cópia só
   app/, components/,    app React Native (Expo) — roda a partir da raiz
-  services/, context/,
-  app.json, package.json
+  hooks/, services/,
+  context/, app.json,
+  package.json
   web/                  app web (Vite + React) — veja web/README.md
-  tests/                testes do backend (api/_lib/...)
+  tests/                testes de shared/ e de api/_lib/ — `npm test` na raiz
   .env, .env.example    variáveis compartilhadas pelos dois clientes e pelo backend
   react-native-migration-plan.md
 ```
@@ -130,10 +132,37 @@ npm run dev
 
 Veja [`web/README.md`](web/README.md) para rotas, fluxo de demonstração e detalhes específicos do app web.
 
-## Testes do backend
+## Testes
 
 ```bash
-node --test tests/youtube.test.js
+npm test        # tests/ — shared/ e api/_lib/
+cd web && npm test   # web/tests/ — só o que é específico do app web
 ```
 
-(Os testes dos serviços do app web ficam em `web/tests/` — rode `cd web && npm test`.)
+A suíte da raiz cobre `shared/` (a lógica que os dois clientes e o backend usam) e os helpers de
+`api/_lib/`. Em `web/tests/` fica apenas o que é genuinamente específico do app web, como
+`dataTransfer` — a contraparte nativa usa o sistema de arquivos em vez de `Blob`.
+
+## Lint
+
+```bash
+npm run lint       # eslint .
+npm run lint:fix    # eslint . --fix
+npm run check       # lint + test
+```
+
+Um único `eslint.config.js` na raiz cobre os dois clientes, `shared/` e o backend, cada um com o
+conjunto de regras certo — em especial a11y: `eslint-plugin-jsx-a11y` (web, DOM) e
+`eslint-plugin-react-native-a11y` (app nativo, `<Pressable>`/`<Image>`) checam coisas diferentes e
+nenhum dos dois entende o componente do outro cliente.
+
+`package.json` tem um campo `overrides` para `eslint-plugin-react-native-a11y` — esse pacote só
+declara suporte a `eslint@^3` até `^8` no seu `peerDependencies`, mas suas regras funcionam
+normalmente sob o ESLint 9 instalado aqui (testado manualmente: as 14 regras disparam e o
+`--fix` funciona). Sem o override, `npm install` falha com `ERESOLVE` só por causa desse peer
+range desatualizado — confirmado removendo o override e reproduzindo o erro. Isso é sobrescrever
+uma checagem de peer, não redirecionar uma versão resolvida (o pacote não declara `eslint` como
+dependency, só como peer), então o `package-lock.json` não registra o override — é esperado, não
+sinal de que ele não funcionou. Se um `npm install` limpo voltar a falhar com esse ERESOLVE, é
+sinal de que o plugin publicou uma versão nova com peer range atualizado; nesse caso, atualize a
+versão do plugin e remova o override.
