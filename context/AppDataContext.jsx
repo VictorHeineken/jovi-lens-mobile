@@ -18,15 +18,17 @@ import {
   setUser as persistUser,
   DEFAULT_LEARNING_PREFERENCES,
 } from '../services/storage.js';
-import { aggregateSubjects } from '../services/subjectStudy.js';
+import { aggregateSubjects } from '../shared/subjects.js';
+import { demoAssetModule } from '../services/demoAssets.js';
 
 const AppDataContext = createContext(null);
 
-// Ported verbatim from the web app's Vite public-folder path. These sample
-// image paths won't resolve to anything in RN yet — that needs real bundled
-// assets (require()'d into an images map) or remote URLs, wired up when the
-// Gallery/Notes screens are built (Tier 2). Not needed for the data layer
-// itself: this file only stores/reads these strings, it never renders them.
+// Ported verbatim from the web app's Vite public-folder path. These strings are
+// not filesystem paths in RN — services/demoAssets.js maps each one to a
+// bundled module under assets/demo/, which is what makes the seeded samples
+// render and what lets the AI pipeline read their bytes. Keep the two in sync:
+// renaming a path here without renaming the matching key there silently falls
+// back to an unresolvable `{ uri }`.
 const ASSET_BASE = '/demo-assets';
 
 const studyAssets = {
@@ -41,6 +43,18 @@ const samples = [
   { id: 'sample-3', src: `${ASSET_BASE}/demo-resultado-encontrado.jpg`, createdAt: '2026-08-23T15:10:00.000Z', source: 'sample', label: 'Resultado', aiAvailable: false },
   { id: 'sample-4', src: `${ASSET_BASE}/demo-buscando-texto.jpg`, createdAt: '2026-08-22T11:45:00.000Z', source: 'sample', label: 'Pesquisa', aiAvailable: false },
 ];
+
+// These paths and the require() keys in services/demoAssets.js are two hand-kept
+// lists that must agree. A mismatch degrades silently — the image just falls back
+// to an unresolvable `{ uri }` and renders as "Indisponível" — which is the exact
+// bug the asset map was added to fix. Fail loudly in development instead.
+if (__DEV__) {
+  const missing = [...Object.values(studyAssets).flat(), ...samples.map((sample) => sample.src)]
+    .filter((src) => !demoAssetModule(src));
+  if (missing.length) {
+    console.error(`[JOVI] demo assets sem módulo em services/demoAssets.js: ${missing.join(', ')}`);
+  }
+}
 
 // Fontes reais (Wikimedia Commons, domínio público/CC0) documentadas em public/demo-assets/SOURCES.md
 const THEME_SOURCES = {
