@@ -1,41 +1,10 @@
-import { getSubjectDemo } from './demoResponses.js';
+import { getSubjectDemo } from '../shared/demoResponses.js';
 import { isDemoMode } from './env.js';
 import { apiUrl } from './apiClient.js';
 
-// A "matéria" is note.category; its subthemes come from topicPath[0]/subcategory.
-export function subthemeOf(note) {
-  return (Array.isArray(note.topicPath) && note.topicPath[0]) || note.subcategory || 'Geral';
-}
-
-// Groups notes into subject objects ready for both the UI and the API payload.
-export function aggregateSubjects(notes = []) {
-  const map = new Map();
-  notes.forEach((note) => {
-    const name = note.category || 'Outros';
-    if (!map.has(name)) map.set(name, []);
-    map.get(name).push(note);
-  });
-  return [...map.entries()]
-    .map(([name, items]) => ({
-      name,
-      count: items.length,
-      subthemes: [...new Set(items.map(subthemeOf))],
-      updatedAt: items.reduce((max, n) => Math.max(max, new Date(n.createdAt || 0).getTime()), 0),
-      notes: items.map((n) => ({
-        title: n.title,
-        summary: n.summary,
-        text: n.text,
-        keyPoints: n.keyPoints,
-        subtheme: subthemeOf(n),
-        topicPath: n.topicPath,
-      })),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-}
-
-export function findSubject(notes, name) {
-  return aggregateSubjects(notes).find((subject) => subject.name === name) || null;
-}
+// Only the request half lives here. The subject aggregation is identical on both
+// clients and lives in shared/subjects.js; this file keeps what is genuinely
+// native-specific — the absolute API base URL and the EXPO_PUBLIC_ demo flag.
 
 // action ∈ questions | exam | plan | podcast-script | lesson-script
 export async function generateSubjectContent(subject, { action, format } = {}) {

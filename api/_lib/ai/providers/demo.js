@@ -1,4 +1,7 @@
-import { getDemoAction, getDemoAnalysis, getSubjectDemo } from '../../../../services/demoResponses.js';
+// shared/ is the one copy of this content, read by the backend here and by both
+// clients' own demo paths. It used to reach into the React Native app's
+// services/ directory, which made the backend depend on a client.
+import { getDemoAction, getDemoAnalysis, getSubjectDemo } from '../../../../shared/demoResponses.js';
 
 export async function completeWithDemo({ action = 'analyze', question = '' }) {
   if (action === 'analyze') return { result: getDemoAnalysis(), provider: 'demo', model: 'jovi-lens-demo' };

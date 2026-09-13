@@ -119,7 +119,7 @@ export function getSubjectDemo({ action = 'questions', subject = {} } = {}) {
   }
 
   if (action === 'exam') {
-    const questions = topics.slice(0, 8).map((topic, i) => ({
+    const questions = topics.slice(0, 8).map((topic) => ({
       question: `Qual afirmação descreve melhor "${topic}" dentro de ${name}?`,
       options: [
         `${topic} é um conceito central e se conecta aos demais subtemas.`,
@@ -159,7 +159,7 @@ export function getSubjectDemo({ action = 'questions', subject = {} } = {}) {
       { speaker: 'A', text: `Oi! Hoje o tema é ${name}. Confesso que fiquei curiosa: por onde a gente começa?` },
       { speaker: 'B', text: `Ótima pergunta. A melhor porta de entrada costuma ser ${pick(topics, 0, 'os fundamentos')}, porque ele sustenta o resto da matéria.` },
     ];
-    topics.slice(1, 6).forEach((topic, i) => {
+    topics.slice(1, 6).forEach((topic) => {
       segments.push({ speaker: 'A', text: `E ${topic}? Como isso se conecta com o que a gente acabou de ver?` });
       segments.push({ speaker: 'B', text: `${topic} amplia a ideia anterior. Pense assim: quando você domina isso, ${name} fica bem mais fácil de enxergar como um todo.` });
     });

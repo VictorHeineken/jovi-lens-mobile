@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { searchLibrary } from '../services/search.js';
+import { searchLibrary } from '../shared/search.js';
 
 const notes = [
   { id: 'n1', recordId: 'r1', title: 'Revolução Industrial', category: 'História', summary: 'Fábricas e trabalhadores.' },

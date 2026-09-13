@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateSubjects, subthemeOf } from '../services/subjectStudy.js';
+import { aggregateSubjects, subthemeOf } from '../shared/subjects.js';
 
 test('subthemeOf prefers the first topic path entry', () => {
   assert.equal(subthemeOf({ topicPath: ['Funções'], subcategory: 'Python' }), 'Funções');
