@@ -1,4 +1,4 @@
-import { getDemoAction, getDemoAnalysis } from './demoResponses.js';
+import { getDemoAction, getDemoAnalysis } from '../../shared/demoResponses.js';
 
 const CLIENT_DEMO_MODE = String(import.meta.env?.VITE_JOVI_LENS_DEMO_MODE ?? 'true').toLowerCase() === 'true';
 const MAX_FILE_SIZE = 12 * 1024 * 1024;

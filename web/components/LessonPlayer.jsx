@@ -146,8 +146,14 @@ export default function LessonPlayer({ subject, saved, onSave }) {
   return (
     <div className="studio-panel">
       <div className="lesson-stage">
+        {/* The clip below is muted on purpose, and it is not an accessibility gap.
+            The spoken content of a lesson comes from TTS over `slide.narration`,
+            and that same text is rendered further down as `.lesson-caption` while
+            playing — a synchronized text equivalent already exists, just in the DOM
+            instead of a WebVTT <track>. Unmuting would also let a generated clip's
+            own audio (when it has any) talk over the narration. */}
         {mode === 'intro' && clip.url && (
-          <video ref={videoRef} className="lesson-clip" src={clip.url} playsInline muted={false} />
+          <video ref={videoRef} className="lesson-clip" src={clip.url} playsInline muted />
         )}
         {mode === 'intro' && !clip.url && (
           <div className="lesson-titlecard">

@@ -1,9 +1,11 @@
 import { Image } from 'react-native';
+import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Clipboard from 'expo-clipboard';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Linking from 'expo-linking';
-import { getDemoAction, getDemoAnalysis } from './demoResponses.js';
+import { getDemoAction, getDemoAnalysis } from '../shared/demoResponses.js';
+import { demoAssetModule } from './demoAssets.js';
 import { isDemoMode } from './env.js';
 import { apiUrl } from './apiClient.js';
 
@@ -23,6 +25,15 @@ function getImageSize(uri) {
 // the payload to a cache file first gives Image.getSize/ImageManipulator a
 // file:// URI, which both accept on every platform.
 async function toLoadableUri(uri) {
+  // A seeded sample's `/demo-assets/...` src names a bundled module, not a file
+  // on disk, so Image.getSize and ImageManipulator both fail on it. expo-asset
+  // materializes the module into the app's cache and hands back a real URI.
+  const demoModule = demoAssetModule(uri);
+  if (demoModule) {
+    const asset = Asset.fromModule(demoModule);
+    if (!asset.localUri) await asset.downloadAsync();
+    return { uri: asset.localUri || asset.uri, cleanup: null };
+  }
   if (typeof uri !== 'string' || !uri.startsWith('data:')) return { uri, cleanup: null };
   const base64 = uri.slice(uri.indexOf(',') + 1);
   const target = `${FileSystem.cacheDirectory}jovi-ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;

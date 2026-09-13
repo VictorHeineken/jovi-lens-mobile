@@ -83,7 +83,7 @@ export default function YouTubeRecommendations({ subject, saved = null, examResu
       ) : null}
 
       {!result && !loading ? (
-        <Pressable onPress={search} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        <Pressable accessibilityRole="button" onPress={search} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="search" size={16} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Encontrar minha aula</Text>
         </Pressable>
@@ -104,7 +104,7 @@ export default function YouTubeRecommendations({ subject, saved = null, examResu
                 <View className="flex-row gap-3">
                   <View className="h-16 w-24 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
                     {video.thumbnail ? (
-                      <Image source={{ uri: video.thumbnail }} className="h-16 w-24" resizeMode="cover" />
+                      <Image source={{ uri: video.thumbnail }} accessibilityIgnoresInvertColors className="h-16 w-24" resizeMode="cover" />
                     ) : (
                       <Icon name="play" size={22} color="#94a3b8" />
                     )}
@@ -117,11 +117,11 @@ export default function YouTubeRecommendations({ subject, saved = null, examResu
                 <Text className="text-[12px] text-slate-500" numberOfLines={2}>{video.description || 'Vídeo selecionado para esta matéria.'}</Text>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row gap-2">
-                    <Pressable onPress={() => Linking.openURL(video.url)} className="flex-row items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5">
+                    <Pressable accessibilityRole="button" onPress={() => Linking.openURL(video.url)} className="flex-row items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5">
                       <Icon name="play" size={13} color="#ffffff" />
                       <Text className="text-[12px] font-medium text-white">Assistir</Text>
                     </Pressable>
-                    <Pressable onPress={() => updateVideo(video.id, { saved: !video.saved })} className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${video.saved ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 bg-white'}`}>
+                    <Pressable accessibilityRole="button" onPress={() => updateVideo(video.id, { saved: !video.saved })} className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${video.saved ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 bg-white'}`}>
                       <Icon name={video.saved ? 'check' : 'bookmark'} size={13} color={video.saved ? '#4f46e5' : '#475569'} />
                       <Text className={`text-[12px] font-medium ${video.saved ? 'text-indigo-600' : 'text-slate-600'}`}>{video.saved ? 'Na trilha' : 'Salvar'}</Text>
                     </Pressable>
@@ -154,7 +154,7 @@ export default function YouTubeRecommendations({ subject, saved = null, examResu
               <Text className="flex-1 text-[13px] text-slate-500">Não encontrei uma aula adequada com esses filtros.</Text>
             </View>
           )}
-          <Pressable onPress={search} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
+          <Pressable accessibilityRole="button" onPress={search} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
             <Icon name="rotate" size={14} color="#475569" />
             <Text className="text-[13px] font-medium text-slate-600">Buscar novamente</Text>
           </Pressable>

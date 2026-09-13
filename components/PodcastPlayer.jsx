@@ -71,7 +71,7 @@ export default function PodcastPlayer({ subject, saved, onSave }) {
         </View>
         <FormatChooser format={format} onChoose={chooseFormat} />
         {error ? <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View> : null}
-        <Pressable onPress={() => generate()} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        <Pressable accessibilityRole="button" onPress={() => generate()} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="waveform" size={16} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Gerar podcast</Text>
         </Pressable>
@@ -95,12 +95,12 @@ export default function PodcastPlayer({ subject, saved, onSave }) {
 
       <View className="flex-row items-center gap-3">
         {isPlaying ? (
-          <Pressable onPress={() => narration.pause()} className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3">
+          <Pressable accessibilityRole="button" onPress={() => narration.pause()} className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3">
             <Icon name="pause" size={20} color="#ffffff" />
             <Text className="text-[14px] font-semibold text-white">Pausar</Text>
           </Pressable>
         ) : (
-          <Pressable onPress={() => (isPaused ? narration.resume() : playFrom(0))} className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3">
+          <Pressable accessibilityRole="button" onPress={() => (isPaused ? narration.resume() : playFrom(0))} className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3">
             <Icon name="play" size={20} color="#ffffff" />
             <Text className="text-[14px] font-semibold text-white">{isPaused ? 'Retomar' : 'Reproduzir'}</Text>
           </Pressable>
@@ -127,6 +127,7 @@ export default function PodcastPlayer({ subject, saved, onSave }) {
           const active = playback.index === index;
           return (
             <Pressable
+              accessibilityRole="button"
               key={index}
               onPress={() => playFrom(index)}
               className={`gap-1 rounded-xl border px-3 py-2.5 ${active ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white'} ${segment.speaker === 'B' ? 'ml-6' : ''}`}
@@ -138,7 +139,7 @@ export default function PodcastPlayer({ subject, saved, onSave }) {
         })}
       </View>
 
-      <Pressable onPress={() => generate()} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
+      <Pressable accessibilityRole="button" onPress={() => generate()} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
         <Icon name="rotate" size={14} color="#475569" />
         <Text className="text-[13px] font-medium text-slate-600">Gerar novo episódio</Text>
       </Pressable>

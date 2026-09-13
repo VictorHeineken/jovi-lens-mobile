@@ -18,7 +18,7 @@ import {
   setUser as persistUser,
   DEFAULT_LEARNING_PREFERENCES,
 } from '../services/storage.js';
-import { aggregateSubjects } from '../services/subjectStudy.js';
+import { aggregateSubjects } from '../../shared/subjects.js';
 
 const AppDataContext = createContext(null);
 

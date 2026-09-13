@@ -58,6 +58,7 @@ export default function StudyModeContent({
             const border = correct ? 'border-emerald-400 bg-emerald-50' : wrong ? 'border-red-300 bg-red-50' : selected ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200 bg-white';
             return (
               <Pressable
+                accessibilityRole="button"
                 key={option}
                 onPress={() => onQuizSelect(index)}
                 disabled={quizSubmitted}
@@ -94,6 +95,7 @@ export default function StudyModeContent({
             const flipped = flippedCard === index;
             return (
               <Pressable
+                accessibilityRole="button"
                 key={`${card.front}-${index}`}
                 onPress={() => onFlipCard(index)}
                 className={`gap-1 rounded-2xl border px-4 py-4 ${flipped ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white'}`}

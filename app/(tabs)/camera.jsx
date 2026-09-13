@@ -6,6 +6,9 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { Camera, useCameraDevice, useCameraPermission, usePhotoOutput, useVideoOutput } from 'react-native-vision-camera';
 import Icon from '../../components/Icon.jsx';
 import SmartImageSheet from '../../components/SmartImageSheet.jsx';
+import { useTopInset } from '../../hooks/safeArea.js';
+import { useToast } from '../../shared/toast.js';
+import { imageSource } from '../../services/demoAssets.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 import { MEDIA_DIR, ensureMediaDirExists } from '../../services/storage.js';
 
@@ -50,6 +53,14 @@ export default function CameraScreen() {
   const router = useRouter();
   const isFocused = useIsFocused();
   const { addRecord, records } = useAppData();
+  // Tighter gap than a scrolling screen: this is a control bar floating over
+  // the full-bleed camera preview, not page content.
+  const topInset = useTopInset(8);
+  // The overlays below the top bar used to be pinned at a hardcoded `top-28`
+  // (112px), a number that silently depended on the old `pt-14`: 56 + the bar's
+  // own h-9 (36) + a 20px gap. Derive it so the gap stays 20px at any inset
+  // instead of drifting with the device.
+  const overlayTop = topInset + 36 + 20;
   const cameraRef = useRef(null);
   const recorderRef = useRef(null);
 
@@ -69,7 +80,7 @@ export default function CameraScreen() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [cameraMessage, setCameraMessage] = useState('');
+  const [cameraMessage, notify] = useToast();
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
   const [thumbnailErrorFor, setThumbnailErrorFor] = useState(null);
@@ -79,11 +90,6 @@ export default function CameraScreen() {
   useEffect(() => {
     if (!hasPermission && canRequestPermission) requestPermission();
   }, [hasPermission, canRequestPermission, requestPermission]);
-
-  function notify(message) {
-    setCameraMessage(message);
-    setTimeout(() => setCameraMessage(''), 2600);
-  }
 
   function zoomValue() {
     if (!device) return 1;
@@ -236,8 +242,18 @@ export default function CameraScreen() {
 
   return (
     <View className="flex-1 bg-black">
+      {/* The Pressable below is the full-bleed tap-to-focus surface over the
+          preview. It is not a button: without a label a screen reader announced
+          only "button" across the whole screen, and the focus gesture is exactly
+          the kind of non-obvious action an accessibilityHint exists for. */}
       {cameraReady ? (
-        <Pressable style={StyleSheet.absoluteFill} onPress={focusAt}>
+        <Pressable
+          accessibilityRole="imagebutton"
+          accessibilityLabel="Visor da câmera"
+          accessibilityHint="Toque para focar no ponto desejado"
+          style={StyleSheet.absoluteFill}
+          onPress={focusAt}
+        >
           <Camera
             ref={cameraRef}
             style={StyleSheet.absoluteFill}
@@ -270,13 +286,14 @@ export default function CameraScreen() {
           <Text className="text-center text-[13px] text-slate-400">{permanentlyDenied ? 'O JOVI Lens precisa de acesso à câmera para mostrar o preview ao vivo.' : 'Seu aparelho não liberou a câmera agora. Você ainda pode escolher uma imagem.'}</Text>
           <View className="mt-2 gap-2">
             <Pressable
+              accessibilityRole="button"
               onPress={() => (permanentlyDenied ? Linking.openSettings() : requestPermission())}
               className="flex-row items-center justify-center gap-1.5 rounded-full bg-indigo-600 px-5 py-3"
             >
               <Icon name={permanentlyDenied ? 'lock' : 'rotate'} size={18} color="#ffffff" />
               <Text className="text-[14px] font-semibold text-white">{permanentlyDenied ? 'Abrir configurações' : 'Tentar novamente'}</Text>
             </Pressable>
-            <Pressable onPress={pickFromLibrary} className="flex-row items-center justify-center gap-1.5 rounded-full border border-white/30 px-5 py-3">
+            <Pressable accessibilityRole="button" onPress={pickFromLibrary} className="flex-row items-center justify-center gap-1.5 rounded-full border border-white/30 px-5 py-3">
               <Icon name="gallery" size={18} color="#ffffff" />
               <Text className="text-[14px] font-semibold text-white">Escolher da galeria</Text>
             </Pressable>
@@ -289,22 +306,30 @@ export default function CameraScreen() {
         </View>
       ) : null}
 
-      <View className="absolute left-0 right-0 flex-row items-center justify-center gap-2 px-4 pt-14">
+      <View className="absolute left-0 right-0 flex-row items-center justify-center gap-2 px-4" style={{ paddingTop: topInset }}>
         <TopbarButton icon="flash" selected={flashOn} onPress={toggleFlash} label={flashOn ? 'Desligar flash' : 'Ligar flash'} />
         <TopbarButton label={`Alterar proporção, atual ${aspectRatio}`} onPress={toggleAspectRatio} text={aspectRatio} />
         <TopbarButton icon="sparkle" selected={lensActive} onPress={() => setLensActive((c) => !c)} label="Lens" text="Lens" />
-        <TopbarButton icon="more" onPress={() => notify('Configurações da câmera JOVI')} label="Mais configurações" />
+        {/* "Mais configurações" was removed here: it only flashed its own name as a
+            toast and opened nothing. Same reason as the gallery header — a control
+            that reports an outcome it did not produce is worse than its absence. */}
         <TopbarButton icon="gallery" onPress={() => router.push('/(tabs)/gallery')} label="Abrir galeria" />
       </View>
 
       {moreOpen ? (
-        <View className="absolute left-4 right-4 top-28 gap-2 rounded-2xl bg-black/80 p-3" accessibilityRole="menu" accessibilityLabel="Mais modos de câmera">
+        <View className="absolute left-4 right-4 gap-2 rounded-2xl bg-black/80 p-3" style={{ top: overlayTop }} accessibilityRole="menu" accessibilityLabel="Mais modos de câmera">
           <Text className="text-[11px] font-semibold text-slate-300">Mais modos</Text>
           <View className="flex-row flex-wrap gap-2">
             {MORE_MODES.map((mode) => {
               const active = cameraMode === mode;
               return (
-                <Pressable key={mode} onPress={() => chooseMode(mode)} className={`rounded-full px-3 py-1.5 ${active ? 'bg-indigo-600' : 'bg-white/10'}`}>
+                <Pressable
+                  accessibilityRole="menuitem"
+                  accessibilityState={{ selected: active }}
+                  key={mode}
+                  onPress={() => chooseMode(mode)}
+                  className={`rounded-full px-3 py-1.5 ${active ? 'bg-indigo-600' : 'bg-white/10'}`}
+                >
                   <Text className="text-[12px] font-medium text-white">{mode}</Text>
                 </Pressable>
               );
@@ -314,14 +339,14 @@ export default function CameraScreen() {
       ) : null}
 
       {lensActive ? (
-        <View className="absolute left-4 right-4 top-28 flex-row items-center justify-center gap-1.5 self-center rounded-full bg-indigo-600/90 px-3 py-1.5">
+        <View className="absolute left-4 right-4 flex-row items-center justify-center gap-1.5 self-center rounded-full bg-indigo-600/90 px-3 py-1.5" style={{ top: overlayTop }}>
           <Icon name="sparkle" size={14} color="#ffffff" />
           <Text className="text-[12px] font-medium text-white">Próxima captura abre o estudo com IA</Text>
         </View>
       ) : null}
 
       {cameraMode === 'DOCUMENTOS' ? (
-        <View className="absolute left-4 right-4 top-28 flex-row items-center justify-between gap-2 rounded-2xl bg-black/70 px-3 py-2.5">
+        <View className="absolute left-4 right-4 flex-row items-center justify-between gap-2 rounded-2xl bg-black/70 px-3 py-2.5" style={{ top: overlayTop }}>
           <View className="flex-row items-center gap-2">
             <Icon name="scan" size={16} color="#ffffff" />
             <View>
@@ -330,7 +355,7 @@ export default function CameraScreen() {
             </View>
           </View>
           {documentPage > 0 ? (
-            <Pressable onPress={finishDocumentSession} className="rounded-full bg-indigo-600 px-3 py-1.5">
+            <Pressable accessibilityRole="button" onPress={finishDocumentSession} className="rounded-full bg-indigo-600 px-3 py-1.5">
               <Text className="text-[12px] font-semibold text-white">Concluir</Text>
             </Pressable>
           ) : null}
@@ -342,7 +367,13 @@ export default function CameraScreen() {
           {ZOOM_LEVELS.map((level) => {
             const active = zoom === level;
             return (
-              <Pressable key={level} onPress={() => setZoom(level)} className={`h-8 min-w-8 items-center justify-center rounded-full px-2 ${active ? 'bg-white' : 'bg-white/15'}`}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                key={level}
+                onPress={() => setZoom(level)}
+                className={`h-8 min-w-8 items-center justify-center rounded-full px-2 ${active ? 'bg-white' : 'bg-white/15'}`}
+              >
                 <Text className={`text-[12px] font-semibold ${active ? 'text-black' : 'text-white'}`}>{level}</Text>
               </Pressable>
             );
@@ -353,7 +384,7 @@ export default function CameraScreen() {
           {CAMERA_MODES.map((mode) => {
             const active = cameraMode === mode || (mode === 'MAIS' && MORE_MODES.includes(cameraMode));
             return (
-              <Pressable key={mode} onPress={() => chooseMode(mode)}>
+              <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} key={mode} onPress={() => chooseMode(mode)}>
                 <Text className={`text-[12px] font-semibold ${active ? 'text-amber-400' : 'text-white/70'}`}>{mode}</Text>
               </Pressable>
             );
@@ -362,7 +393,7 @@ export default function CameraScreen() {
 
         <View className="flex-row items-center justify-between px-8">
           <Pressable onPress={openLatestPhoto} accessibilityLabel={latestPhoto ? 'Abrir última foto' : 'Abrir galeria'} className="h-11 w-11 overflow-hidden rounded-xl border border-white/40 bg-white/10">
-            {latestPhoto && thumbnailErrorFor !== latestPhoto.id ? (
+            {latestPhoto?.src && thumbnailErrorFor !== latestPhoto.id ? (
               <ThumbImage uri={latestPhoto.src} onError={() => setThumbnailErrorFor(latestPhoto.id)} />
             ) : (
               <View className="h-full w-full items-center justify-center"><Icon name={latestPhoto ? 'image' : 'gallery'} size={20} color="#ffffff" /></View>
@@ -406,5 +437,7 @@ function TopbarButton({ icon, text, selected, onPress, label }) {
 }
 
 function ThumbImage({ uri, onError }) {
-  return <Image source={{ uri }} onError={onError} className="h-full w-full" resizeMode="cover" />;
+  // `uri` can be a seeded sample's /demo-assets path on a fresh install, so it
+  // goes through the same resolver as every other image in the app.
+  return <Image source={imageSource(uri)} accessibilityIgnoresInvertColors onError={onError} className="h-full w-full" resizeMode="cover" />;
 }

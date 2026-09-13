@@ -2,8 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import Icon from './Icon.jsx';
+import { useBottomInset, useTopInset } from '../hooks/safeArea.js';
+import { useToast } from '../shared/toast.js';
 import StudyModeContent from './StudyModeContent.jsx';
 import { analyzeImage, copyText, extractText, googleSearch, requestStudyAction } from '../services/imageAnalysis.js';
+import { imageSource } from '../services/demoAssets.js';
 import { startVoiceInput, voiceInputAvailable } from '../services/speechInput.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 
@@ -41,6 +44,7 @@ function buildStudyHistoryEntry(record, analysis, action) {
 
 export default function SmartImageSheet({ record, initialView = 'viewer', onClose }) {
   const { updateRecord, saveNote, addHistoryEntry } = useAppData();
+  const topInset = useTopInset();
   const [view, setView] = useState('viewer');
   const [analysis, setAnalysis] = useState(record?.analysis || null);
   const [loading, setLoading] = useState(false);
@@ -50,7 +54,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   const [textError, setTextError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, flash] = useToast(1800);
   const [mode, setMode] = useState('understand');
   const [question, setQuestion] = useState('');
   const [conversation, setConversation] = useState([]);
@@ -125,11 +129,6 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
 
   const effectiveRecord = useMemo(() => (record ? { ...record, analysis } : null), [record, analysis]);
   if (!record) return null;
-
-  function flash(text) {
-    setMessage(text);
-    setTimeout(() => setMessage(''), 1800);
-  }
 
   async function ensureText() {
     const knownText = String(analysis?.text || extractedText || '').trim();
@@ -245,7 +244,8 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
         <Pressable
           onPress={onClose}
           accessibilityLabel={view === 'viewer' ? 'Fechar imagem' : 'Fechar sessão de estudo'}
-          className="absolute right-4 top-14 z-10 h-9 w-9 items-center justify-center rounded-full bg-black/45"
+          className="absolute right-4 z-10 h-9 w-9 items-center justify-center rounded-full bg-black/45"
+          style={{ top: topInset }}
         >
           <Icon name="close" size={20} color="#ffffff" />
         </Pressable>
@@ -270,6 +270,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
                   const active = mode === item.id;
                   return (
                     <Pressable
+                      accessibilityRole="button"
                       key={item.id}
                       onPress={() => handleMode(item.id)}
                       disabled={loading || actionLoading}
@@ -297,6 +298,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
                   <Text className="text-[13px] text-red-600">{error}</Text>
                   <Text className="text-[12px] text-red-400">Verifique a conexão ou ative o modo demonstração para apresentar o fluxo sem depender da IA ao vivo.</Text>
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => { setError(''); setAnalysisRequestedFor(null); setTimeout(() => setAnalysisRequestedFor(record.id), 0); }}
                     className="mt-1 self-start rounded-full bg-red-600 px-4 py-2"
                   >
@@ -337,6 +339,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
                         const active = mode === id || (id === 'practice' && mode === 'flashcards');
                         return (
                           <Pressable
+                            accessibilityRole="button"
                             key={id}
                             onPress={() => handleMode(id)}
                             className={`flex-1 items-center gap-1 rounded-xl border px-2 py-2.5 ${active ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white'}`}
@@ -390,9 +393,14 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
 }
 
 function ImageViewer({ record, isVideo, textLoading, textError, textReady, canAnalyze, message, onCopy, onSearch, onStartAI }) {
+  const topInset = useTopInset();
+  // The action row holds the primary "Usar IA" CTA, and this is a Modal — it
+  // draws under the Android gesture bar, so the old flat py-4 put the button
+  // partly under it.
+  const bottomInset = useBottomInset(16);
   return (
     <View className="flex-1">
-      <View className="flex-row items-center justify-between px-4 pb-3 pt-14">
+      <View className="flex-row items-center justify-between px-4 pb-3" style={{ paddingTop: topInset }}>
         <View className="flex-row items-center gap-2">
           <View className="h-2 w-2 rounded-full bg-emerald-500" />
           <Text className="text-[12px] font-medium text-slate-500">Visualização</Text>
@@ -402,7 +410,7 @@ function ImageViewer({ record, isVideo, textLoading, textError, textReady, canAn
       <View className="flex-1 items-center justify-center bg-black">
         {isVideo ? <VideoField uri={record.src} /> : <ImageWithFallback src={record.src} alt={record.label || 'Imagem capturada'} />}
       </View>
-      <View className="gap-3 px-4 py-4">
+      <View className="gap-3 px-4 pt-4" style={{ paddingBottom: bottomInset }}>
         <View className="flex-row gap-2" accessibilityLabel="Ações da imagem">
           <ViewerActionButton icon="copy" label={textLoading ? 'Lendo texto...' : 'Copiar texto'} onPress={onCopy} disabled={isVideo || textLoading} />
           <ViewerActionButton icon="search" label="Pesquisar no Google" onPress={onSearch} disabled={isVideo || textLoading} />
@@ -429,6 +437,7 @@ function ImageViewer({ record, isVideo, textLoading, textError, textReady, canAn
 function ViewerActionButton({ icon, label, onPress, disabled, primary }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       disabled={disabled}
       className={`flex-1 items-center gap-1 rounded-2xl px-2 py-3 ${primary ? 'bg-indigo-600' : 'bg-white/10'} ${disabled ? 'opacity-40' : ''}`}
@@ -440,8 +449,10 @@ function ViewerActionButton({ icon, label, onPress, disabled, primary }) {
 }
 
 function SheetShell({ record, loading, hasAnalysis, message, children }) {
+  const topInset = useTopInset();
+  const bottomInset = useBottomInset(40);
   return (
-    <ScrollView className="flex-1" contentContainerClassName="pb-10">
+    <ScrollView className="flex-1" contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}>
       <View className="items-center pt-2">
         <View className="h-1 w-10 rounded-full bg-slate-200" />
       </View>
@@ -491,12 +502,13 @@ function ImageWithFallback({ src, alt }) {
       </View>
     );
   }
-  return <Image source={{ uri: src }} accessibilityLabel={alt} onError={() => setFailed(true)} className="h-64 w-full" resizeMode="contain" />;
+  return <Image source={imageSource(src)} accessibilityIgnoresInvertColors accessibilityLabel={alt} onError={() => setFailed(true)} className="h-64 w-full" resizeMode="contain" />;
 }
 
 function SourceActionButton({ icon, label, onPress, disabled, primary }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       disabled={disabled}
       className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 ${primary ? 'border-indigo-600 bg-indigo-600' : 'border-slate-200 bg-white'} ${disabled ? 'opacity-40' : ''}`}
@@ -518,7 +530,7 @@ function AskPanel({ analysis, conversation, question, setQuestion, onSubmit, dis
       {analysis.suggestedQuestions?.length ? (
         <View className="gap-2">
           {analysis.suggestedQuestions.map((item) => (
-            <Pressable key={item} onPress={() => onSubmit(item)} disabled={disabled} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+            <Pressable accessibilityRole="button" key={item} onPress={() => onSubmit(item)} disabled={disabled} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
               <Text className="flex-1 text-[13px] text-slate-700">{item}</Text>
               <Icon name="arrow-up-right" size={14} color="#94a3b8" />
             </Pressable>

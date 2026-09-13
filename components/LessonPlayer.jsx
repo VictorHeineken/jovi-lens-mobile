@@ -23,7 +23,10 @@ export default function LessonPlayer({ subject, saved, onSave }) {
   const titleTimerRef = useRef(null);
   const mountedRef = useRef(true);
   const clipUrlRef = useRef(null);
-  const player = useVideoPlayer(null);
+  // Muted: the spoken content is TTS over `slide.narration`, rendered on screen at
+  // the same time, so a generated clip's own audio would only talk over it. Matches
+  // the web player (see web/components/LessonPlayer.jsx).
+  const player = useVideoPlayer(null, (instance) => { instance.muted = true; });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -140,7 +143,7 @@ export default function LessonPlayer({ subject, saved, onSave }) {
           <Text className="text-[13px] text-slate-600">Slides narrados a partir das suas notas, com um clipe de abertura gerado pela IA.</Text>
         </View>
         {error ? <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View> : null}
-        <Pressable onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        <Pressable accessibilityRole="button" onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="film" size={16} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Gerar vídeo aula</Text>
         </Pressable>
@@ -193,12 +196,12 @@ export default function LessonPlayer({ subject, saved, onSave }) {
             <Text className="text-[14px] font-semibold text-slate-500">Introdução…</Text>
           </View>
         ) : isPlaying ? (
-          <Pressable onPress={() => narration.pause()} className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3">
+          <Pressable accessibilityRole="button" onPress={() => narration.pause()} className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3">
             <Icon name="pause" size={20} color="#ffffff" />
             <Text className="text-[14px] font-semibold text-white">Pausar</Text>
           </Pressable>
         ) : (
-          <Pressable onPress={() => (isPaused ? narration.resume() : play())} className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3">
+          <Pressable accessibilityRole="button" onPress={() => (isPaused ? narration.resume() : play())} className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3">
             <Icon name="play" size={20} color="#ffffff" />
             <Text className="text-[14px] font-semibold text-white">{isPaused ? 'Retomar' : 'Assistir aula'}</Text>
           </Pressable>
@@ -215,7 +218,7 @@ export default function LessonPlayer({ subject, saved, onSave }) {
         <Text className="text-[11px] text-slate-500">Abertura: {statusLabel}</Text>
       </View>
 
-      <Pressable onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
+      <Pressable accessibilityRole="button" onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
         <Icon name="rotate" size={14} color="#475569" />
         <Text className="text-[13px] font-medium text-slate-600">Gerar nova aula</Text>
       </Pressable>

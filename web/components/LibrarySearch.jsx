@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import Icon from './Icon.jsx';
-import { searchLibrary } from '../services/search.js';
+import { searchLibrary } from '../../shared/search.js';
 
 function resultLabel(kind) {
   return { nota: 'Nota', historico: 'Histórico', foto: 'Foto' }[kind] || 'Resultado';
@@ -19,13 +19,13 @@ export default function LibrarySearch({ notes, aiHistory, records, onOpen }) {
       </div>
 
       {query && (
-        <div className="library-search-results" role="listbox" aria-label="Resultados da busca">
+        <div className="library-search-results" role="menu" aria-label="Resultados da busca">
           {results.length ? results.map((result) => (
             <button
               key={result.id}
               className="library-search-result"
               onClick={() => onOpen?.(result.record, result.kind === 'historico' ? 'study' : 'viewer')}
-              role="option"
+              role="menuitem"
             >
               <span className="library-search-result-icon"><Icon name={result.kind === 'foto' ? 'image' : result.kind === 'historico' ? 'history' : 'note'} size={15} /></span>
               <span className="library-search-result-copy"><strong>{result.title}</strong><small>{resultLabel(result.kind)} · {result.category}</small>{result.summary && <span>{result.summary}</span>}</span>

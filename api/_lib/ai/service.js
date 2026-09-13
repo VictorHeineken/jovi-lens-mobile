@@ -313,7 +313,7 @@ export async function synthesizeSpeech({ text, voice = 'narrator', format = 'mp3
   if (!chunks.length) throw Object.assign(new Error('Texto vazio para áudio.'), { code: 'AI_INVALID_RESPONSE' });
   const results = [];
   for (const chunk of chunks) {
-    // eslint-disable-next-line no-await-in-loop -- providers speak one chunk at a time, sequentially.
+    // Sequential on purpose: providers speak one chunk at a time.
     const audio = await provider.speak({ text: chunk, voice, format });
     results.push(audio.buffer.toString('base64'));
   }

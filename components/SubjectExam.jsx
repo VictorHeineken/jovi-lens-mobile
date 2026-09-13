@@ -106,7 +106,7 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
           </View>
         ) : null}
         {error ? <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View> : null}
-        <Pressable onPress={start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        <Pressable accessibilityRole="button" onPress={start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="target" size={16} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Iniciar simulado</Text>
         </Pressable>
@@ -168,7 +168,7 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
             );
           })}
         </View>
-        <Pressable onPress={start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        <Pressable accessibilityRole="button" onPress={start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="rotate" size={15} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Refazer simulado</Text>
         </Pressable>
@@ -202,6 +202,7 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
           const isSelected = selected === index;
           return (
             <Pressable
+              accessibilityRole="button"
               key={index}
               onPress={() => setAnswers((a) => ({ ...a, [current]: index }))}
               className={`flex-row items-center gap-3 rounded-xl border px-3 py-3 ${isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white'}`}
@@ -214,16 +215,16 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
         })}
       </View>
       <View className="flex-row gap-3">
-        <Pressable onPress={() => setCurrent((c) => Math.max(0, c - 1))} disabled={current === 0} className={`flex-1 items-center rounded-xl border border-slate-200 py-3 ${current === 0 ? 'opacity-40' : ''}`}>
+        <Pressable accessibilityRole="button" onPress={() => setCurrent((c) => Math.max(0, c - 1))} disabled={current === 0} className={`flex-1 items-center rounded-xl border border-slate-200 py-3 ${current === 0 ? 'opacity-40' : ''}`}>
           <Text className="text-[14px] font-semibold text-slate-600">Anterior</Text>
         </Pressable>
         {isLast ? (
-          <Pressable onPress={finish} disabled={answeredCount === 0} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3 ${answeredCount === 0 ? 'opacity-40' : ''}`}>
+          <Pressable accessibilityRole="button" onPress={finish} disabled={answeredCount === 0} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3 ${answeredCount === 0 ? 'opacity-40' : ''}`}>
             <Icon name="check" size={15} color="#ffffff" />
             <Text className="text-[14px] font-semibold text-white">Finalizar ({answeredCount}/{exam.questions.length})</Text>
           </Pressable>
         ) : (
-          <Pressable onPress={() => setCurrent((c) => Math.min(exam.questions.length - 1, c + 1))} className="flex-1 items-center rounded-xl bg-indigo-600 py-3">
+          <Pressable accessibilityRole="button" onPress={() => setCurrent((c) => Math.min(exam.questions.length - 1, c + 1))} className="flex-1 items-center rounded-xl bg-indigo-600 py-3">
             <Text className="text-[14px] font-semibold text-white">Próxima</Text>
           </Pressable>
         )}

@@ -8,6 +8,9 @@ import NotesTimeline from '../../components/NotesTimeline.jsx';
 import SubjectNotes from '../../components/SubjectNotes.jsx';
 import SubjectStudio from '../../components/SubjectStudio.jsx';
 import SmartImageSheet from '../../components/SmartImageSheet.jsx';
+import { useTopInset } from '../../hooks/safeArea.js';
+import { useToast } from '../../shared/toast.js';
+import { imageSource } from '../../services/demoAssets.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 
 const GALLERY_TABS = [
@@ -49,10 +52,11 @@ function groupRecords(records) {
 export default function GalleryScreen() {
   const router = useRouter();
   const { records, notes, aiHistory, subjects, addRecord } = useAppData();
+  const topInset = useTopInset();
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
   const [isUploading, setIsUploading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, notify] = useToast();
   const [activeTab, setActiveTab] = useState('photos');
   const [activeAlbum, setActiveAlbum] = useState(null);
   const [studioSubject, setStudioSubject] = useState(null);
@@ -75,7 +79,7 @@ export default function GalleryScreen() {
 
   async function pickImages() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) { setMessage('Permita o acesso às fotos para importar.'); setTimeout(() => setMessage(''), 2600); return; }
+    if (!permission.granted) { notify('Permita o acesso às fotos para importar.'); return; }
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       base64: true,
@@ -91,12 +95,11 @@ export default function GalleryScreen() {
         const src = asset.base64 ? `data:${mime};base64,${asset.base64}` : asset.uri;
         await addRecord({ src, source: 'upload', label: asset.fileName || 'Imagem importada' });
       }
-      setMessage(`${picked.assets.length} ${picked.assets.length === 1 ? 'imagem adicionada' : 'imagens adicionadas'}`);
+      notify(`${picked.assets.length} ${picked.assets.length === 1 ? 'imagem adicionada' : 'imagens adicionadas'}`);
     } catch (error) {
-      setMessage(error.message || 'Não foi possível adicionar essa imagem.');
+      notify(error.message || 'Não foi possível adicionar essa imagem.');
     } finally {
       setIsUploading(false);
-      setTimeout(() => setMessage(''), 2600);
     }
   }
 
@@ -118,7 +121,7 @@ export default function GalleryScreen() {
 
   return (
     <View className="flex-1 bg-white">
-      <ScrollView contentContainerClassName="gap-4 pb-4 pt-14">
+      <ScrollView contentContainerClassName="gap-4 pb-4" contentContainerStyle={{ paddingTop: topInset }}>
         <View className="gap-3 px-4">
           <View className="flex-row items-start justify-between">
             <View className="gap-1">
@@ -129,7 +132,10 @@ export default function GalleryScreen() {
               <HeaderIconButton icon="camera" label="Abrir câmera" onPress={() => router.push('/(tabs)/camera')} />
               <HeaderIconButton icon="note" label="Abrir notas da IA" onPress={() => goTab('notes')} />
               <HeaderIconButton icon="upload" label="Importar fotos" onPress={pickImages} />
-              <HeaderIconButton icon="more" label="Mais opções" onPress={() => { setMessage('Organização inteligente ativada'); setTimeout(() => setMessage(''), 2600); }} />
+              {/* "Mais opções" was removed here: it showed the toast "Organização
+                  inteligente ativada" and did nothing at all. Announcing success for
+                  an action that does not exist is worse than not offering it. Wire a
+                  real menu back in when there is something for it to open. */}
             </View>
           </View>
           <View className="flex-row gap-2 rounded-full bg-slate-100 p-1" accessibilityRole="tablist" accessibilityLabel="Seções da galeria">
@@ -163,7 +169,7 @@ export default function GalleryScreen() {
         {GALLERY_TABS.map((tab) => {
           const active = activeTab === tab.id;
           return (
-            <Pressable key={tab.id} onPress={() => goTab(tab.id)} className="flex-1 items-center gap-1 py-1">
+            <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} key={tab.id} onPress={() => goTab(tab.id)} className="flex-1 items-center gap-1 py-1">
               <Icon name={tab.icon} size={19} color={active ? '#4f46e5' : '#94a3b8'} />
               <Text className={`text-[10px] font-medium ${active ? 'text-indigo-600' : 'text-slate-400'}`}>{tab.label}</Text>
             </Pressable>
@@ -218,7 +224,7 @@ function PhotosView({ groups, isUploading, onImport, onOpen }) {
           <Text className="text-[15px] font-bold text-slate-900">Recentes</Text>
           <Text className="text-[12px] text-slate-500">O seu mural de fotos</Text>
         </View>
-        <Pressable onPress={onImport} disabled={isUploading} className="flex-row items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5">
+        <Pressable accessibilityRole="button" onPress={onImport} disabled={isUploading} className="flex-row items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5">
           <Icon name="upload" size={15} color="#475569" />
           <Text className="text-[12px] font-medium text-slate-600">{isUploading ? 'Importando' : 'Importar'}</Text>
         </Pressable>
@@ -272,7 +278,7 @@ function MediaThumb({ record }) {
       </View>
     );
   }
-  return <Image source={{ uri: record.src }} onError={() => setFailed(true)} className="h-full w-full" resizeMode="cover" />;
+  return <Image source={imageSource(record.src)} accessibilityIgnoresInvertColors onError={() => setFailed(true)} className="h-full w-full" resizeMode="cover" />;
 }
 
 function AlbumsView({ albums, onOpen }) {
@@ -287,7 +293,7 @@ function AlbumsView({ albums, onOpen }) {
       </View>
       <View className="gap-2">
         {albums.map((album) => (
-          <Pressable key={album.id} onPress={() => onOpen(album)} className="flex-row items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+          <Pressable accessibilityRole="button" key={album.id} onPress={() => onOpen(album)} className="flex-row items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3">
             <View className="h-14 w-14 items-center justify-center overflow-hidden rounded-xl bg-slate-100">
               {album.items[0] ? <MediaThumb record={album.items[0]} /> : <Icon name={album.icon} size={22} color="#94a3b8" />}
             </View>
@@ -314,7 +320,7 @@ function AlbumsView({ albums, onOpen }) {
 function AlbumDetail({ album, onBack, onOpen }) {
   return (
     <View className="gap-4">
-      <Pressable onPress={onBack} className="flex-row items-center gap-1 self-start">
+      <Pressable accessibilityRole="button" onPress={onBack} className="flex-row items-center gap-1 self-start">
         <Icon name="chevron" size={17} color="#4f46e5" strokeWidth={2.4} />
         <Text className="text-[13px] font-medium text-indigo-600">Álbuns</Text>
       </Pressable>

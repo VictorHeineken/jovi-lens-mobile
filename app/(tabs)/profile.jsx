@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import Icon from '../../components/Icon.jsx';
+import { useTopInset } from '../../hooks/safeArea.js';
+import { useAnnounce } from '../../hooks/announce.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 import { isDemoMode } from '../../services/imageAnalysis.js';
 import { createBackup, downloadBackup, readBackupFile } from '../../services/dataTransfer.js';
@@ -38,6 +40,8 @@ const SORT_OPTIONS = [
 export default function ProfileScreen() {
   const { user, setUser, plan, setPlan, records, notes, aiHistory, subjectArtifacts, learningPreferences, setLearningPreferences, restoreLocalData, clearLocalData } = useAppData();
   const [authMessage, setAuthMessage] = useState('');
+  useAnnounce(authMessage);
+  const topInset = useTopInset();
   const demoMode = isDemoMode();
 
   const trialActive = plan.type === 'trial' && new Date(plan.endsAt) > new Date();
@@ -127,7 +131,7 @@ export default function ProfileScreen() {
 
   return (
     <View className="flex-1 bg-white">
-      <ScrollView contentContainerClassName="gap-4 px-4 pb-10 pt-14">
+      <ScrollView contentContainerClassName="gap-4 px-4 pb-10" contentContainerStyle={{ paddingTop: topInset }}>
         <View className="flex-row items-center gap-1.5">
           <Icon name="user" size={13} color="#4f46e5" />
           <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Seu espaço</Text>
@@ -143,7 +147,7 @@ export default function ProfileScreen() {
             <Text className="text-[12px] text-slate-500">{user ? user.email : 'Entre para testar o Copilot da JOVI'}</Text>
           </View>
           {user ? (
-            <Pressable onPress={leaveDemoAccount}><Text className="text-[13px] font-medium text-indigo-600">Sair</Text></Pressable>
+            <Pressable accessibilityRole="button" onPress={leaveDemoAccount}><Text className="text-[13px] font-medium text-indigo-600">Sair</Text></Pressable>
           ) : null}
         </View>
 
@@ -155,7 +159,7 @@ export default function ProfileScreen() {
             </View>
             <Text className="text-[16px] font-bold text-slate-900">Entre para continuar sua trilha</Text>
             <Text className="text-[13px] text-slate-600">Este botão representa um futuro login da conta JOVI. Nesta proposta, tudo acontece localmente para você apresentar o produto sem depender de cadastro externo.</Text>
-            <Pressable onPress={enterDemoAccount} className="mt-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+            <Pressable accessibilityRole="button" onPress={enterDemoAccount} className="mt-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
               <Icon name="user" size={16} color="#ffffff" />
               <Text className="text-[14px] font-semibold text-white">Entrar como estudante</Text>
             </Pressable>
@@ -176,12 +180,12 @@ export default function ProfileScreen() {
             <BenefitLine text="Histórico e notas para revisão" />
           </View>
           {!trialActive && plan.type !== 'pro' ? (
-            <Pressable onPress={startTrial} className="items-center rounded-xl bg-indigo-600 py-3">
+            <Pressable accessibilityRole="button" onPress={startTrial} className="items-center rounded-xl bg-indigo-600 py-3">
               <Text className="text-[14px] font-semibold text-white">Testar por 7 dias · Demo</Text>
             </Pressable>
           ) : null}
           {plan.type !== 'pro' ? (
-            <Pressable onPress={activateCopilot} className="items-center rounded-xl border border-slate-200 py-3">
+            <Pressable accessibilityRole="button" onPress={activateCopilot} className="items-center rounded-xl border border-slate-200 py-3">
               <Text className="text-[14px] font-semibold text-slate-600">Ativar acesso Copilot · Demo</Text>
             </Pressable>
           ) : (
@@ -222,11 +226,11 @@ export default function ProfileScreen() {
             <Icon name="download" size={18} color="#64748b" />
           </View>
           <View className="flex-row gap-2">
-            <Pressable onPress={exportData} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
+            <Pressable accessibilityRole="button" onPress={exportData} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
               <Icon name="download" size={14} color="#475569" />
               <Text className="text-[13px] font-medium text-slate-600">Exportar backup</Text>
             </Pressable>
-            <Pressable onPress={importData} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
+            <Pressable accessibilityRole="button" onPress={importData} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
               <Icon name="upload" size={14} color="#475569" />
               <Text className="text-[13px] font-medium text-slate-600">Importar backup</Text>
             </Pressable>
@@ -242,7 +246,7 @@ export default function ProfileScreen() {
             </View>
             <Icon name="lock" size={18} color="#64748b" />
           </View>
-          <Pressable onPress={clearData} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 py-2.5">
+          <Pressable accessibilityRole="button" onPress={clearData} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 py-2.5">
             <Icon name="trash" size={14} color="#dc2626" />
             <Text className="text-[13px] font-medium text-red-600">Limpar dados locais</Text>
           </Pressable>
@@ -250,7 +254,7 @@ export default function ProfileScreen() {
         </View>
 
         {authMessage ? (
-          <View className="flex-row items-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5" accessibilityRole="status">
+          <View className="flex-row items-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5">
             <Icon name="info" size={15} color="#64748b" />
             <Text className="flex-1 text-[13px] text-slate-600">{authMessage}</Text>
           </View>
@@ -287,6 +291,7 @@ function PreferenceField({ label, options, value, onChange }) {
           const active = option.value === value;
           return (
             <Pressable
+              accessibilityRole="button"
               key={option.value}
               onPress={() => onChange(option.value)}
               accessibilityState={{ selected: active }}

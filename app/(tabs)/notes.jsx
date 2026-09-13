@@ -6,10 +6,12 @@ import SubjectStudio from '../../components/SubjectStudio.jsx';
 import SmartImageSheet from '../../components/SmartImageSheet.jsx';
 import LibrarySearch from '../../components/LibrarySearch.jsx';
 import NoteEditor from '../../components/NoteEditor.jsx';
+import { useTopInset } from '../../hooks/safeArea.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 
 export default function NotesScreen() {
   const { notes, aiHistory, records, subjects, removeNote, updateNote, toggleNoteFavorite } = useAppData();
+  const topInset = useTopInset();
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
   const [studioSubject, setStudioSubject] = useState(null);
@@ -26,7 +28,7 @@ export default function NotesScreen() {
 
   return (
     <View className="flex-1 bg-white">
-      <ScrollView contentContainerClassName="gap-4 px-4 pb-10 pt-14">
+      <ScrollView contentContainerClassName="gap-4 px-4 pb-10" contentContainerStyle={{ paddingTop: topInset }}>
         <View className="flex-row items-center justify-between">
           <View className="gap-1">
             <View className="flex-row items-center gap-1.5">

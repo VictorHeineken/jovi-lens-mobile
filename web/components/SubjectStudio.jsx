@@ -49,13 +49,13 @@ export default function SubjectStudio({ subject, onClose }) {
           </div>
         </header>
 
-        <nav className="studio-tabs" role="tablist" aria-label="Ferramentas da matéria">
+        <div className="studio-tabs" role="tablist" aria-label="Ferramentas da matéria">
           {TABS.map((item) => (
             <button key={item.id} role="tab" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}>
               <Icon name={item.icon} size={15} /><span>{item.label}</span>
             </button>
           ))}
-        </nav>
+        </div>
 
         <div className="studio-body">
           {tab === 'questions' && <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} />}

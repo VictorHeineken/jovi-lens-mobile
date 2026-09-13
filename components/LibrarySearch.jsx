@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import Icon from './Icon.jsx';
-import { searchLibrary } from '../services/search.js';
+import { searchLibrary } from '../shared/search.js';
 
 function resultLabel(kind) {
   return { nota: 'Nota', historico: 'Histórico', foto: 'Foto' }[kind] || 'Resultado';
@@ -35,6 +35,7 @@ export default function LibrarySearch({ notes, aiHistory, records, onOpen }) {
           {results.length ? (
             results.map((result) => (
               <Pressable
+                accessibilityRole="menuitem"
                 key={result.id}
                 onPress={() => onOpen?.(result.record, result.kind === 'historico' ? 'study' : 'viewer')}
                 className="flex-row items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 active:bg-slate-50"
@@ -51,7 +52,7 @@ export default function LibrarySearch({ notes, aiHistory, records, onOpen }) {
           ) : (
             <View className="flex-row items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-3">
               <Icon name="search" size={18} color="#94a3b8" />
-              <Text className="text-[13px] text-slate-500">Nenhum resultado para "{query}".</Text>
+              <Text className="text-[13px] text-slate-500">Nenhum resultado para “{query}”.</Text>
             </View>
           )}
         </View>

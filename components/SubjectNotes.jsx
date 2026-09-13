@@ -3,6 +3,7 @@ import { Image, Pressable, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import Icon from './Icon.jsx';
 import { narration, noteToSpeech } from '../services/audio.js';
+import { imageSource } from '../services/demoAssets.js';
 
 const THEME_META = {
   'História': { icon: 'history', description: 'Linha do tempo, indústria e transporte da Revolução Industrial.' },
@@ -109,6 +110,7 @@ export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenS
           return (
             <View className="overflow-hidden rounded-2xl border border-slate-200" key={subject.subject}>
               <Pressable
+                accessibilityRole="button"
                 onPress={() => toggleSubject(subject.subject)}
                 accessibilityState={{ expanded: isOpen }}
                 className="flex-row items-center gap-3 px-4 py-3.5"
@@ -126,7 +128,7 @@ export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenS
               {isOpen ? (
                 <View className="gap-3 border-t border-slate-100 px-4 py-4">
                   {onOpenStudio ? (
-                    <Pressable onPress={() => onOpenStudio(subject.subject)} className="flex-row items-center gap-3 rounded-2xl bg-indigo-600 px-4 py-3.5">
+                    <Pressable accessibilityRole="button" onPress={() => onOpenStudio(subject.subject)} className="flex-row items-center gap-3 rounded-2xl bg-indigo-600 px-4 py-3.5">
                       <View className="h-9 w-9 items-center justify-center rounded-full bg-white/15">
                         <Icon name="layers" size={16} color="#ffffff" />
                       </View>
@@ -243,7 +245,7 @@ function NoteDetail({ note, record, onConversation, onViewImage, onFavorite, onR
         <View className="gap-1">
           <Text className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Fontes</Text>
           {note.sources.map((source) => (
-            <Pressable key={source.url} onPress={() => Linking.openURL(source.url)} className="flex-row items-center gap-1">
+            <Pressable accessibilityRole="button" key={source.url} onPress={() => Linking.openURL(source.url)} className="flex-row items-center gap-1">
               <Text className="text-[12px] text-indigo-600">{source.label}</Text>
               <Icon name="arrow-up-right" size={11} color="#4f46e5" />
             </Pressable>
@@ -275,7 +277,7 @@ function ActionButton({ icon, label, onPress, primary, danger }) {
   const textColor = primary ? 'text-white' : danger ? 'text-red-600' : 'text-slate-600';
   const iconColor = primary ? '#ffffff' : danger ? '#dc2626' : '#475569';
   return (
-    <Pressable onPress={onPress} className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${palette}`}>
+    <Pressable accessibilityRole="button" onPress={onPress} className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${palette}`}>
       <Icon name={icon} size={14} color={iconColor} />
       <Text className={`text-[12px] font-medium ${textColor}`}>{label}</Text>
     </Pressable>
@@ -306,6 +308,7 @@ function NoteAudioButton({ note }) {
   const active = state === 'playing' || state === 'paused';
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={toggle}
       accessibilityState={{ selected: active }}
       className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${active ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 bg-white'}`}
@@ -325,5 +328,5 @@ function MediaThumb({ src, alt }) {
       </View>
     );
   }
-  return <Image source={{ uri: src }} accessibilityLabel={alt} onError={() => setFailed(true)} className="h-16 w-16 rounded-xl bg-slate-100" />;
+  return <Image source={imageSource(src)} accessibilityIgnoresInvertColors accessibilityLabel={alt} onError={() => setFailed(true)} className="h-16 w-16 rounded-xl bg-slate-100" />;
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import StudyModeContent from './StudyModeContent.jsx';
 import useDialogAccessibility from './useDialogAccessibility.js';
+import { useToast } from '../../shared/toast.js';
 import { analyzeImage, copyText, extractText, googleSearch, requestStudyAction } from '../services/imageAnalysis.js';
 import { startVoiceInput, voiceInputAvailable } from '../services/speechInput.js';
 import { useAppData } from '../context/AppDataContext.jsx';
@@ -50,7 +51,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   const [textError, setTextError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, flash] = useToast(1800);
   const [mode, setMode] = useState('understand');
   const [question, setQuestion] = useState('');
   const [conversation, setConversation] = useState([]);
@@ -126,10 +127,6 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   const effectiveRecord = useMemo(() => record ? { ...record, analysis } : null, [record, analysis]);
   if (!record) return null;
 
-  function flash(text) {
-    setMessage(text);
-    window.setTimeout(() => setMessage(''), 1800);
-  }
 
   async function ensureText() {
     const knownText = String(analysis?.text || extractedText || '').trim();
@@ -244,7 +241,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
     <div ref={dialogRef} className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={view === 'viewer' ? 'Visualização da imagem' : 'Sessão de estudo'}>
       <button className="sheet-close" onClick={onClose} aria-label={view === 'viewer' ? 'Fechar imagem' : 'Fechar sessão de estudo'}><Icon name="close" size={20} /></button>
       {view === 'viewer' ? <ImageViewer record={record} isVideo={record.mediaType === 'video'} textLoading={textLoading} textError={textError} textReady={Boolean(analysis?.text || extractedText)} canAnalyze={canAnalyze} message={message} onCopy={handleCopyText} onSearch={handleSearchText} onStartAI={startAI} /> : (
-        <SheetShell record={record} onClose={onClose} loading={loading} hasAnalysis={Boolean(analysis)} message={message}>
+        <SheetShell record={record} loading={loading} hasAnalysis={Boolean(analysis)} message={message}>
           {analysis && <div className="quick-actions" aria-label="Ações de estudo">
             {MODES.map((item) => <button key={item.id} className={mode === item.id ? 'ai-action' : ''} onClick={() => handleMode(item.id)} disabled={loading || actionLoading}><span><Icon name={item.icon} /></span>{item.label}</button>)}
           </div>}
@@ -281,7 +278,14 @@ function ImageViewer({ record, isVideo, textLoading, textError, textReady, canAn
   return (
     <div className="image-viewer">
       <div className="viewer-topbar"><span><span className="viewer-status-dot" /> Visualização</span><strong>{record.label || 'Imagem capturada'}</strong></div>
-      <div className="viewer-image-stage">{isVideo ? <video src={record.src} controls playsInline aria-label={record.label || 'Vídeo capturado'} /> : <ImageWithFallback src={record.src} alt={record.label || 'Imagem capturada'} />}</div>
+      {/* `record.src` here is always the user's own camera capture, never an
+          upload (both pickers restrict mediaTypes to images) — and the capture
+          itself is recorded with no audio track (getUserMedia's `audio: false` in
+          Camera.jsx, matched on the RN client by `enableAudio: false`). `muted`
+          is not silencing real content; it exists only to satisfy
+          jsx-a11y/media-has-caption, which otherwise asks for a <track> this
+          silent recording has nothing to caption. */}
+      <div className="viewer-image-stage">{isVideo ? <video src={record.src} controls playsInline muted aria-label={record.label || 'Vídeo capturado'} /> : <ImageWithFallback src={record.src} alt={record.label || 'Imagem capturada'} />}</div>
       <div className="viewer-footer">
         <div className="viewer-actions" aria-label="Ações da imagem">
           <button onClick={onCopy} disabled={isVideo || textLoading}><Icon name="copy" size={20} /><span>{textLoading ? 'Lendo texto...' : 'Copiar texto'}</span></button>
@@ -295,12 +299,15 @@ function ImageViewer({ record, isVideo, textLoading, textError, textReady, canAn
   );
 }
 
-function SheetShell({ record, onClose, loading, hasAnalysis, message, children }) {
+function SheetShell({ record, loading, hasAnalysis, message, children }) {
   return (
     <div className="smart-sheet">
       <div className="sheet-handle" />
       <div className="result-image-wrap">
-        {record.mediaType === 'video' ? <video src={record.src} controls playsInline aria-label="Vídeo capturado" /> : <ImageWithFallback src={record.src} alt="Conteúdo capturado" />}
+        {/* Same reasoning as ImageViewer above: this is always a silent camera
+            capture, never an upload — `muted` satisfies media-has-caption without
+            silencing any real audio. */}
+        {record.mediaType === 'video' ? <video src={record.src} controls playsInline muted aria-label="Vídeo capturado" /> : <ImageWithFallback src={record.src} alt="Conteúdo capturado" />}
         <div className="result-caption"><span className="status-dot" />{loading ? 'Identificando conteúdo' : hasAnalysis ? 'Conteúdo pronto para estudar' : 'Captura salva'}</div>
         {loading && <div className="scan-overlay"><span className="scan-line" /><div><Icon name="sparkle" size={18} /> Lendo a imagem...</div></div>}
       </div>

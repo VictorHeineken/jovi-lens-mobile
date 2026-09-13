@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Copilot from './Copilot.jsx';
 import Icon from '../components/Icon.jsx';
+import { useToast } from '../../shared/toast.js';
 import NotesTimeline from '../components/NotesTimeline.jsx';
 import SubjectNotes from '../components/SubjectNotes.jsx';
 import SubjectStudio from '../components/SubjectStudio.jsx';
@@ -48,7 +49,7 @@ export default function Gallery() {
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
   const [isUploading, setIsUploading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, notify] = useToast();
   const [activeTab, setActiveTab] = useState('photos');
   const [activeAlbum, setActiveAlbum] = useState(null);
   const [studioSubject, setStudioSubject] = useState(null);
@@ -80,12 +81,11 @@ export default function Gallery() {
         const src = await fileToDataUrl(file);
         await addRecord({ src, source: 'upload', label: file.name });
       }
-      setMessage(`${files.length} ${files.length === 1 ? 'imagem adicionada' : 'imagens adicionadas'}`);
+      notify(`${files.length} ${files.length === 1 ? 'imagem adicionada' : 'imagens adicionadas'}`);
     } catch (error) {
-      setMessage(error.message || 'Não foi possível adicionar essa imagem.');
+      notify(error.message || 'Não foi possível adicionar essa imagem.');
     } finally {
       setIsUploading(false);
-      window.setTimeout(() => setMessage(''), 2600);
     }
   }
 
@@ -110,7 +110,10 @@ export default function Gallery() {
               <button onClick={() => navigate('/camera')} aria-label="Abrir câmera"><Icon name="camera" size={18} /></button>
               <button onClick={() => setActiveTab('notes')} aria-label="Abrir notas da IA"><Icon name="note" size={18} /></button>
               <button onClick={() => inputRef.current?.click()} aria-label="Importar fotos"><Icon name="upload" size={18} /></button>
-              <button onClick={() => setMessage('Organização inteligente ativada')} aria-label="Mais opções"><Icon name="more" size={19} /></button>
+              {/* "Mais opções" was removed here: it showed the toast "Organização
+                  inteligente ativada" and did nothing at all. Announcing success for
+                  an action that does not exist is worse than not offering it. Wire a
+                  real menu back in when there is something for it to open. */}
             </div>
           </div>
           <div className="origin-gallery-segmented" role="tablist" aria-label="Seções da galeria">

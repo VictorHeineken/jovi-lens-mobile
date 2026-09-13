@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from './Icon.jsx';
+import { useTopInset } from '../hooks/safeArea.js';
+import { useAnnounce } from '../hooks/announce.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 
 function getTrialState(plan) {
@@ -20,7 +22,9 @@ const BENEFITS = [
 export default function CopilotView({ embedded = false }) {
   const router = useRouter();
   const { plan, user, setPlan, setUser } = useAppData();
+  const topInset = useTopInset();
   const [message, setMessage] = useState('');
+  useAnnounce(message);
   const trial = getTrialState(plan);
   const accessActive = plan.type === 'pro' || trial.active;
 
@@ -80,7 +84,7 @@ export default function CopilotView({ embedded = false }) {
           {accessActive ? (
             <>
               <Text className="text-[13px] text-slate-600">O modelo avançado está selecionado nesta demonstração. Abra a câmera para continuar uma sessão de estudo.</Text>
-              <Pressable onPress={() => router.push('/(tabs)/camera')} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+              <Pressable accessibilityRole="button" onPress={() => router.push('/(tabs)/camera')} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
                 <Icon name="camera" size={16} color="#ffffff" />
                 <Text className="text-[14px] font-semibold text-white">Abrir câmera com Copilot</Text>
               </Pressable>
@@ -89,11 +93,11 @@ export default function CopilotView({ embedded = false }) {
             <>
               <Text className="text-[13px] text-slate-600">Você pode mostrar os dois caminhos de acesso sem criar cadastro, assinatura ou cobrança real.</Text>
               <View className="gap-2">
-                <Pressable onPress={startTrial} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+                <Pressable accessibilityRole="button" onPress={startTrial} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
                   <Icon name="sparkle" size={16} color="#ffffff" />
                   <Text className="text-[14px] font-semibold text-white">Testar por 7 dias</Text>
                 </Pressable>
-                <Pressable onPress={connectPaidAccount} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-3">
+                <Pressable accessibilityRole="button" onPress={connectPaidAccount} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-3">
                   <Icon name="link" size={16} color="#475569" />
                   <Text className="text-[14px] font-semibold text-slate-600">Já assino o Copilot</Text>
                 </Pressable>
@@ -127,7 +131,7 @@ export default function CopilotView({ embedded = false }) {
         </View>
 
         {message ? (
-          <View className="flex-row items-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5" accessibilityRole="status">
+          <View className="flex-row items-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5">
             <Icon name="info" size={15} color="#64748b" />
             <Text className="flex-1 text-[13px] text-slate-600">{message}</Text>
           </View>
@@ -139,7 +143,7 @@ export default function CopilotView({ embedded = false }) {
 
   return (
     <View className="flex-1 bg-white">
-      <ScrollView contentContainerClassName="gap-5 px-4 pb-10 pt-14">{content}</ScrollView>
+      <ScrollView contentContainerClassName="gap-5 px-4 pb-10" contentContainerStyle={{ paddingTop: topInset }}>{content}</ScrollView>
     </View>
   );
 }

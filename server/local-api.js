@@ -5,6 +5,7 @@ import tts from '../api/tts.js';
 import transcribe from '../api/transcribe.js';
 import videoLesson from '../api/video-lesson.js';
 import youtubeRecommendations from '../api/youtube-recommendations.js';
+import authGoogle from '../api/auth/google.js';
 
 const POST_ROUTES = {
   '/api/analyze-image': analyzeImage,
@@ -13,6 +14,11 @@ const POST_ROUTES = {
   '/api/transcribe': transcribe,
   '/api/video-lesson': videoLesson,
   '/api/youtube-recommendations': youtubeRecommendations,
+  // This handler existed but was reachable from nowhere: no client called it and it
+  // was not routed here, so Google Sign-In could not work locally even with a
+  // client id set. Routed now; it answers 503 until GOOGLE_CLIENT_ID is configured,
+  // the same way every other optional feature behaves.
+  '/api/auth/google': authGoogle,
 };
 
 // GET routes (video-lesson doubles as a polling endpoint).

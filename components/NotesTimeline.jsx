@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import Icon from './Icon.jsx';
+import { imageSource } from '../services/demoAssets.js';
 
 const FILTERS = [
   { id: 'all', label: 'Tudo' },
@@ -180,7 +181,7 @@ function NoteTimelineCard({ event, record, open, onToggle, onConversation, onFav
   return (
     <View className={`overflow-hidden rounded-2xl border bg-white ${open ? 'border-indigo-300' : 'border-slate-200'}`}>
       <View className="flex-row items-stretch">
-        <Pressable onPress={onToggle} accessibilityState={{ expanded: open }} className="flex-1 flex-row items-center gap-3 px-3 py-3">
+        <Pressable accessibilityRole="button" onPress={onToggle} accessibilityState={{ expanded: open }} className="flex-1 flex-row items-center gap-3 px-3 py-3">
           <MediaThumb record={record} />
           <View className="flex-1 gap-0.5">
             <Text className="text-[11px] text-slate-400">{event.type} · {event.category}</Text>
@@ -233,6 +234,7 @@ function TextBlock({ label, text }) {
 function ActionButton({ icon, label, onPress, danger }) {
   return (
     <Pressable
+      accessibilityRole="button"
       onPress={onPress}
       className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${danger ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'}`}
     >
@@ -253,7 +255,8 @@ function MediaThumb({ record }) {
   }
   return (
     <Image
-      source={{ uri: record.src }}
+      source={imageSource(record.src)}
+      accessibilityIgnoresInvertColors
       accessibilityLabel={record.label || 'Imagem'}
       onError={() => setFailed(true)}
       className="h-12 w-12 rounded-xl bg-slate-100"

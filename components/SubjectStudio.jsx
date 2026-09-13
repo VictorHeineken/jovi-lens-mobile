@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import Icon from './Icon.jsx';
+import { useBottomInset, useTopInset } from '../hooks/safeArea.js';
 import SubjectExam from './SubjectExam.jsx';
 import StudyPlan from './StudyPlan.jsx';
 import PodcastPlayer from './PodcastPlayer.jsx';
@@ -20,6 +21,8 @@ const TABS = [
 export default function SubjectStudio({ subject, onClose }) {
   const { saveSubjectArtifact, getSubjectArtifact } = useAppData();
   const [tab, setTab] = useState('questions');
+  const topInset = useTopInset();
+  const bottomInset = useBottomInset(16);
 
   if (!subject) return null;
 
@@ -37,12 +40,13 @@ export default function SubjectStudio({ subject, onClose }) {
         <Pressable
           onPress={onClose}
           accessibilityLabel="Fechar estúdio da matéria"
-          className="absolute right-4 top-14 z-10 h-9 w-9 items-center justify-center rounded-full bg-slate-100"
+          className="absolute right-4 z-10 h-9 w-9 items-center justify-center rounded-full bg-slate-100"
+          style={{ top: topInset }}
         >
           <Icon name="close" size={20} color="#475569" />
         </Pressable>
 
-        <View className="gap-2 px-4 pb-3 pt-14">
+        <View className="gap-2 px-4 pb-3" style={{ paddingTop: topInset }}>
           <View className="flex-row items-center gap-1.5">
             <Icon name="layers" size={13} color="#4f46e5" />
             <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Estúdio da matéria</Text>
@@ -85,7 +89,7 @@ export default function SubjectStudio({ subject, onClose }) {
           })}
         </ScrollView>
 
-        <ScrollView className="flex-1 border-t border-slate-100" contentContainerClassName="px-4 py-4">
+        <ScrollView className="flex-1 border-t border-slate-100" contentContainerClassName="px-4 pt-4" contentContainerStyle={{ paddingBottom: bottomInset }}>
           {tab === 'questions' ? <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} /> : null}
           {tab === 'exam' ? <SubjectExam subject={subject} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} /> : null}
           {tab === 'podcast' ? <PodcastPlayer subject={subject} saved={savedPodcast} onSave={(data) => saveSubjectArtifact(subject.name, 'podcast', data)} /> : null}
@@ -153,7 +157,7 @@ function SubjectQuestions({ subject, saved, onSave }) {
           <Text className="text-[13px] text-slate-600">Geramos perguntas de estudo que cruzam todos os subtemas — não apenas uma imagem — com respostas-modelo para você conferir.</Text>
         </View>
         {error ? <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View> : null}
-        <Pressable onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        <Pressable accessibilityRole="button" onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="sparkle" size={16} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Gerar perguntas</Text>
         </Pressable>
@@ -168,7 +172,7 @@ function SubjectQuestions({ subject, saved, onSave }) {
           const isOpen = Boolean(open[index]);
           return (
             <View key={index} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <Pressable onPress={() => setOpen((o) => ({ ...o, [index]: !o[index] }))} accessibilityState={{ expanded: isOpen }} className="flex-row items-center gap-3 px-3 py-3">
+              <Pressable accessibilityRole="button" onPress={() => setOpen((o) => ({ ...o, [index]: !o[index] }))} accessibilityState={{ expanded: isOpen }} className="flex-row items-center gap-3 px-3 py-3">
                 <View className="flex-1 gap-1">
                   <Text className="text-[11px] text-indigo-500">{item.topic}{item.difficulty ? ` · ${item.difficulty}` : ''}</Text>
                   <Text className="text-[14px] font-semibold text-slate-900">{item.question}</Text>
@@ -185,7 +189,7 @@ function SubjectQuestions({ subject, saved, onSave }) {
           );
         })}
       </View>
-      <Pressable onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
+      <Pressable accessibilityRole="button" onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
         <Icon name="rotate" size={14} color="#475569" />
         <Text className="text-[13px] font-medium text-slate-600">Gerar novas perguntas</Text>
       </Pressable>

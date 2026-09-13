@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Icon from './Icon.jsx';
+import { useBottomInset, useTopInset } from '../hooks/safeArea.js';
 
 export default function NoteEditor({ note, onSave, onClose }) {
+  const topInset = useTopInset();
+  // Save/Cancel sit at the very bottom of this modal, under the Android gesture bar.
+  const bottomInset = useBottomInset(40);
   const [draft, setDraft] = useState(() => ({
     title: note?.title || '',
     category: note?.category || 'Estudos',
@@ -52,11 +56,12 @@ export default function NoteEditor({ note, onSave, onClose }) {
         <Pressable
           onPress={onClose}
           accessibilityLabel="Fechar edição"
-          className="absolute right-4 top-14 z-10 h-9 w-9 items-center justify-center rounded-full bg-slate-100"
+          className="absolute right-4 z-10 h-9 w-9 items-center justify-center rounded-full bg-slate-100"
+          style={{ top: topInset }}
         >
           <Icon name="close" size={20} color="#475569" />
         </Pressable>
-        <ScrollView contentContainerClassName="gap-4 px-4 pb-10 pt-14">
+        <ScrollView contentContainerClassName="gap-4 px-4" contentContainerStyle={{ paddingTop: topInset, paddingBottom: bottomInset }}>
           <View className="flex-row items-center gap-1.5">
             <Icon name="note" size={13} color="#4f46e5" />
             <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Editar nota</Text>
@@ -70,35 +75,35 @@ export default function NoteEditor({ note, onSave, onClose }) {
           ) : null}
 
           <Field label="Título">
-            <TextInput value={draft.title} onChangeText={(value) => update('title', value)} maxLength={120} autoComplete="off" className="text-[15px] text-slate-900" />
+            <TextInput accessibilityLabel="Título" value={draft.title} onChangeText={(value) => update('title', value)} maxLength={120} autoComplete="off" className="text-[15px] text-slate-900" />
           </Field>
           <View className="flex-row gap-3">
             <View className="flex-1">
               <Field label="Matéria">
-                <TextInput value={draft.category} onChangeText={(value) => update('category', value)} maxLength={60} className="text-[15px] text-slate-900" />
+                <TextInput accessibilityLabel="Matéria" value={draft.category} onChangeText={(value) => update('category', value)} maxLength={60} className="text-[15px] text-slate-900" />
               </Field>
             </View>
             <View className="flex-1">
               <Field label="Subtema">
-                <TextInput value={draft.subcategory} onChangeText={(value) => update('subcategory', value)} maxLength={80} className="text-[15px] text-slate-900" />
+                <TextInput accessibilityLabel="Subtema" value={draft.subcategory} onChangeText={(value) => update('subcategory', value)} maxLength={80} className="text-[15px] text-slate-900" />
               </Field>
             </View>
           </View>
           <Field label="Tags" hint="separe por vírgula">
-            <TextInput value={draft.tags} onChangeText={(value) => update('tags', value)} maxLength={240} placeholder="revisão, prova, importante" placeholderTextColor="#94a3b8" className="text-[15px] text-slate-900" />
+            <TextInput accessibilityLabel="Tags, separadas por vírgula" value={draft.tags} onChangeText={(value) => update('tags', value)} maxLength={240} placeholder="revisão, prova, importante" placeholderTextColor="#94a3b8" className="text-[15px] text-slate-900" />
           </Field>
           <Field label="Resumo">
-            <TextInput value={draft.summary} onChangeText={(value) => update('summary', value)} multiline numberOfLines={3} maxLength={1000} textAlignVertical="top" className="min-h-20 text-[15px] text-slate-900" />
+            <TextInput accessibilityLabel="Resumo" value={draft.summary} onChangeText={(value) => update('summary', value)} multiline numberOfLines={3} maxLength={1000} textAlignVertical="top" className="min-h-20 text-[15px] text-slate-900" />
           </Field>
           <Field label="Conteúdo completo">
-            <TextInput value={draft.text} onChangeText={(value) => update('text', value)} multiline numberOfLines={7} maxLength={10000} textAlignVertical="top" className="min-h-40 text-[15px] text-slate-900" />
+            <TextInput accessibilityLabel="Conteúdo completo" value={draft.text} onChangeText={(value) => update('text', value)} multiline numberOfLines={7} maxLength={10000} textAlignVertical="top" className="min-h-40 text-[15px] text-slate-900" />
           </Field>
 
           <View className="flex-row gap-3 pt-2">
-            <Pressable onPress={onClose} className="flex-1 items-center rounded-xl border border-slate-200 bg-white py-3">
+            <Pressable accessibilityRole="button" onPress={onClose} className="flex-1 items-center rounded-xl border border-slate-200 bg-white py-3">
               <Text className="text-[14px] font-semibold text-slate-600">Cancelar</Text>
             </Pressable>
-            <Pressable onPress={submit} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+            <Pressable accessibilityRole="button" onPress={submit} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
               <Icon name="check" size={15} color="#ffffff" />
               <Text className="text-[14px] font-semibold text-white">Salvar alterações</Text>
             </Pressable>

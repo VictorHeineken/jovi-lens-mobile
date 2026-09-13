@@ -55,7 +55,7 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
         </View>
         {error ? <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View> : null}
         <SavedLessons lessons={savedLessons} />
-        <Pressable onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        <Pressable accessibilityRole="button" onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="route" size={16} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Gerar plano</Text>
         </Pressable>
@@ -99,6 +99,7 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
                 const isDone = Boolean(done[key]);
                 return (
                   <Pressable
+                    accessibilityRole="button"
                     key={key}
                     onPress={() => toggle(key)}
                     accessibilityState={{ selected: isDone }}
@@ -133,7 +134,7 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
 
       <SavedLessons lessons={savedLessons} />
 
-      <Pressable onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
+      <Pressable accessibilityRole="button" onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
         <Icon name="rotate" size={14} color="#475569" />
         <Text className="text-[13px] font-medium text-slate-600">Gerar novo plano</Text>
       </Pressable>
@@ -150,7 +151,7 @@ function SavedLessons({ lessons = [] }) {
         <Text className="text-[12px] font-semibold text-slate-500">Aulas salvas na trilha</Text>
       </View>
       {lessons.map((lesson) => (
-        <Pressable key={lesson.id} onPress={() => Linking.openURL(lesson.url)} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+        <Pressable accessibilityRole="button" key={lesson.id} onPress={() => Linking.openURL(lesson.url)} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
           <View className="flex-1 gap-0.5">
             <View className="flex-row items-center gap-1.5">
               <Icon name="play" size={12} color="#4f46e5" />

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import SmartImageSheet from '../components/SmartImageSheet.jsx';
+import { useToast } from '../../shared/toast.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { fileToDataUrl } from '../services/imageAnalysis.js';
 
@@ -48,7 +49,13 @@ export default function Camera() {
   const [facingMode, setFacingMode] = useState('environment');
   const [cameraState, setCameraState] = useState('starting');
   const [cameraAttempt, setCameraAttempt] = useState(0);
-  const [cameraMessage, setCameraMessage] = useState('');
+  // Two different things used to share one state. A camera-permission failure has
+  // to stay on screen until it is resolved, but any transient toast overwrote it
+  // and then blanked it 2.6s later — leaving the camera still denied with no
+  // message explaining why. They are separate now, and the toast takes priority
+  // in the single slot that renders them.
+  const [cameraError, setCameraError] = useState('');
+  const [toast, notify] = useToast();
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
   const [flashOn, setFlashOn] = useState(false);
@@ -83,12 +90,12 @@ export default function Camera() {
           await videoRef.current.play();
         }
         setCameraState('ready');
-        setCameraMessage('');
+        setCameraError('');
       } catch (error) {
         if (!active) return;
         const denied = error?.name === 'NotAllowedError' || error?.name === 'SecurityError';
         setCameraState(denied ? 'denied' : 'unavailable');
-        setCameraMessage(denied ? 'Permissão da câmera desativada' : 'A câmera não respondeu');
+        setCameraError(denied ? 'Permissão da câmera desativada' : 'A câmera não respondeu');
       }
     }
     start();
@@ -97,11 +104,6 @@ export default function Camera() {
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, [facingMode, cameraAttempt]);
-
-  function notify(message) {
-    setCameraMessage(message);
-    window.setTimeout(() => setCameraMessage(''), 2600);
-  }
 
   function startVideoRecording() {
     if (!window.MediaRecorder || !streamRef.current) {
@@ -297,7 +299,9 @@ export default function Camera() {
           <button className={`origin-camera-control ${hdrOn ? 'selected' : ''}`} onClick={() => setHdrOn((current) => !current)} aria-pressed={hdrOn}>HDR</button>
           <button className="origin-camera-control origin-camera-aspect" onClick={toggleAspectRatio} aria-label={`Alterar proporção, atual ${aspectRatio}`}>{aspectRatio}</button>
           <button className={`origin-camera-control origin-lens-control ${lensActive ? 'selected' : ''}`} onClick={() => setLensActive((current) => !current)} aria-pressed={lensActive}><Icon name="sparkle" size={17} /><span>Lens</span></button>
-          <button className="origin-camera-control" onClick={() => notify('Configurações da câmera JOVI')} aria-label="Mais configurações"><Icon name="more" size={19} /></button>
+          {/* "Mais configurações" was removed here: it only flashed its own name as a
+              toast and opened nothing. Same reason as the gallery header — a control
+              that reports an outcome it did not produce is worse than its absence. */}
           <button className="origin-camera-control" onClick={() => navigate('/gallery')} aria-label="Abrir galeria"><Icon name="gallery" size={18} /></button>
         </div>
       </div>
@@ -323,7 +327,7 @@ export default function Camera() {
         </div>
       </div>
 
-      {cameraMessage && <div className="camera-toast" role="status"><Icon name="info" size={16} /> {cameraMessage}</div>}
+      {(toast || cameraError) && <div className="camera-toast" role="status"><Icon name="info" size={16} /> {toast || cameraError}</div>}
       <input ref={fileRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={pickFile} />
       {selected && <SmartImageSheet record={selected} initialView={selectedView} onClose={() => setSelected(null)} />}
     </main>

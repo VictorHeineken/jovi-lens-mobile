@@ -128,7 +128,8 @@ export async function exportLessonWebm({ title, subjectName, slides = [], onProg
     await animate((t) => drawTitle(ctx, title, subjectName, t), 2600);
     for (let i = 0; i < total; i += 1) {
       onProgress?.((i + 1) / (total + 1));
-      // eslint-disable-next-line no-await-in-loop -- sequential slideshow frames.
+      // Sequential on purpose: each frame's duration depends on the previous
+      // frame having actually finished drawing, not just been scheduled.
       await animate((t) => drawSlide(ctx, slides[i], i, total, t), slideDuration(slides[i].narration));
     }
     onProgress?.(1);
