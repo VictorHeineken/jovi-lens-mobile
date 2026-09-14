@@ -7,6 +7,7 @@ import { useAnnounce } from '../../hooks/announce.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 import { isDemoMode } from '../../services/imageAnalysis.js';
 import { createBackup, downloadBackup, readBackupFile } from '../../services/dataTransfer.js';
+import { signOutGoogle, useGoogleSignIn } from '../../services/googleAuth.js';
 
 const DEMO_USER = {
   id: 'demo-student',
@@ -43,6 +44,7 @@ export default function ProfileScreen() {
   useAnnounce(authMessage);
   const topInset = useTopInset();
   const demoMode = isDemoMode();
+  const { signIn: signInWithGoogle, configured: googleConfigured } = useGoogleSignIn();
 
   const trialActive = plan.type === 'trial' && new Date(plan.endsAt) > new Date();
   const daysLeft = trialActive ? Math.max(1, Math.ceil((new Date(plan.endsAt) - new Date()) / 86400000)) : 0;
@@ -53,8 +55,21 @@ export default function ProfileScreen() {
   }
 
   function leaveDemoAccount() {
+    signOutGoogle();
     setUser(null);
-    setAuthMessage('Você saiu da conta de demonstração.');
+    setAuthMessage('Você saiu da conta.');
+  }
+
+  async function handleGoogleSignIn() {
+    try {
+      const googleUser = await signInWithGoogle();
+      if (googleUser) {
+        setUser(googleUser);
+        setAuthMessage('Login com Google realizado.');
+      }
+    } catch (error) {
+      setAuthMessage(error.message || 'Não foi possível entrar com o Google.');
+    }
   }
 
   function activateCopilot() {
@@ -150,6 +165,17 @@ export default function ProfileScreen() {
             <Pressable accessibilityRole="button" onPress={leaveDemoAccount}><Text className="text-[13px] font-medium text-indigo-600">Sair</Text></Pressable>
           ) : null}
         </View>
+
+        {!user && googleConfigured ? (
+          <View className="gap-2 rounded-2xl border border-slate-200 bg-white p-4">
+            <Text className="text-[16px] font-bold text-slate-900">Entrar com sua conta Google</Text>
+            <Text className="text-[13px] text-slate-600">Sua cota de uso da IA passa a ser controlada pela sua conta em vez do seu endereço na rede.</Text>
+            <Pressable accessibilityRole="button" onPress={handleGoogleSignIn} className="mt-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 py-3">
+              <Icon name="user" size={16} color="#334155" />
+              <Text className="text-[14px] font-semibold text-slate-700">Entrar com o Google</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {!user ? (
           <View className="gap-2 rounded-2xl border border-slate-200 bg-white p-4">

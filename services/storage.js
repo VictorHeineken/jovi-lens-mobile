@@ -15,6 +15,7 @@ const NOTES_KEY = 'jovi_mobile_notes_v2';
 const HISTORY_KEY = 'jovi_mobile_ai_history_v1';
 const PLAN_KEY = 'jovi_mobile_plan_v1';
 const USER_KEY = 'jovi_mobile_user_v1';
+const SESSION_KEY = 'jovi_mobile_session_v1';
 const SUBJECT_KEY = 'jovi_mobile_subject_artifacts_v1';
 const LEARNING_PREFERENCES_KEY = 'jovi_mobile_learning_preferences_v1';
 const MEDIA_INDEX_KEY = 'jovi_mobile_media_index_v1';
@@ -142,6 +143,25 @@ export const setUser = (user) => {
   try {
     if (user) storage.set(USER_KEY, JSON.stringify(user));
     else storage.delete(USER_KEY);
+  } catch {
+    // storage unavailable
+  }
+};
+
+// Kept out of `user` (and therefore out of createBackup's export) on purpose —
+// this is a live credential, not profile data that should end up in a backup
+// file someone might share. See services/googleAuth.js and services/apiClient.js.
+export const getSessionToken = () => {
+  try {
+    return storage.getString(SESSION_KEY) || null;
+  } catch {
+    return null;
+  }
+};
+export const setSessionToken = (token) => {
+  try {
+    if (token) storage.set(SESSION_KEY, token);
+    else storage.delete(SESSION_KEY);
   } catch {
     // storage unavailable
   }

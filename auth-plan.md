@@ -159,81 +159,148 @@ fetches an image blob, is unrelated and stays as-is.)
 
 ---
 
-## Phase 2 — device attestation + per-Google-account quota (later)
+## Phase 2 — device attestation + per-Google-account quota
 
 Goal: replace "anyone with the static key" with "a genuine instance of this
 app" + "this specific Google account," and make quotas durable. Phase 1's
 `hasValidApiKey` stays as an outer speed bump (cheap, blocks non-app
 traffic before it reaches the more expensive checks below) — Phase 2 adds
-checks after it in the same spot in each handler, so no handler needs a
-second round of edits to its call-site structure.
+checks after it in the same spot in each handler.
 
-### 1. App attestation
+Status: **per-account quota is implemented** (below). **App attestation is
+scaffolded only** — Play Console isn't linked to a Cloud project yet, so
+there's nothing real to verify against.
 
-Prove the request comes from an unmodified build of the actual app, not a
-script that learned the static key. **iOS is out of scope for now — the app
-isn't shipping there yet** (see `app.json`'s `ios` block, which exists but
-isn't used for a real release). No App Attest/DeviceCheck work is planned
-until that changes.
+### 1. App attestation — scaffolded, not enforced
 
-- **Android**: [Play Integrity API](https://developer.android.com/google/play/integrity).
-  Client requests an integrity token (via `expo-*` binding or a small native
-  module, since this isn't in the current Expo dependency list — check for a
-  maintained Expo config plugin first), sends it with the request. Server
-  verifies via Google's `decodeIntegrityToken` endpoint, checking package
-  name, certificate digest, and app recognition verdict.
+**iOS is out of scope for now — the app isn't shipping there yet** (see
+`app.json`'s `ios` block, which exists but isn't used for a real release). No
+App Attest/DeviceCheck work is planned until that changes.
+
+`api/_lib/attestation.js` has one function, `verifyAttestation(req)`, not
+called from any handler yet. It always reports "not enforced" until
+`PLAY_INTEGRITY_PROJECT_NUMBER` is set, so it's safe to leave in the repo
+unwired. To finish this:
+
+1. Register the app in Play Console for `com.jovilens.app`, link a Google
+   Cloud project, set `PLAY_INTEGRITY_PROJECT_NUMBER`.
+2. Add a client-side integrity-token fetch — needs a native module (no
+   maintained package is in `package.json` yet) plus a config plugin and an
+   EAS **development build**; Expo Go can't load it. Send the token in a
+   header, e.g. `x-play-integrity-token`.
+3. Implement the real check in `verifyAttestation()` using Google's
+   `decodeIntegrityToken` API with a service account, checking package name,
+   certificate digest, and app recognition verdict.
+4. Wire `verifyAttestation(req)` into each handler right after the
+   `hasValidApiKey`/`sessionUser` checks.
 - **Web**: no equivalent primitive exists (no Play Integrity for browsers).
   Realistic options are reCAPTCHA/Turnstile-style challenge or simply
   accepting that web stays behind the static key + rate limits only — decide
-  when this phase is scoped.
-- Server side: new `api/_lib/attestation.js` with one `verifyAttestation(req)`
-  for Android, called from the same guard spot as `hasValidApiKey` today. If
-  iOS ships later, this is the one place a second branch gets added.
+  when this is scoped.
 
-### 2. Per-Google-account quota
+### 2. Per-Google-account quota — implemented
 
-`api/auth/google.js` already validates the Google ID token against
-`https://oauth2.googleapis.com/tokeninfo` and returns `profile.sub` (the
-stable per-account id) — but nothing downstream uses it yet; no session is
-issued and no other handler receives it. Needed:
+`api/auth/google.js` already validated the Google ID token against
+`https://oauth2.googleapis.com/tokeninfo`; it now also issues a session and
+both clients have a real Sign-In flow (not just the "Fluxo de apresentação"
+demo button, which stays alongside it — see below).
 
-1. **Session issuance**: `/api/auth/google` signs a short-lived JWT (or
-   opaque token) binding `sub` after validating the Google id_token, instead
-   of just returning a display profile. Re-validating the raw Google
-   id_token against `tokeninfo` on every AI call would be too slow and would
-   hammer an endpoint the code already flags as unauthenticated-by-definition
-   and separately rate-limited (`api/auth/google.js` comment) — so AI
-   handlers verify the app-issued session token locally (HMAC/JWT secret in
-   env), not by calling Google again.
-2. **Client wiring**: RN/web store the session token (e.g. MMKV on RN per
-   `react-native-mmkv` already in `package.json`; the web app has no
-   persisted-auth code yet — check `context/AppDataContext.jsx` /
-   `web/context/AppDataContext.jsx` for where profile state would live) and
-   send it as e.g. `Authorization: Bearer <token>` via the same `apiFetch`
-   wrapper Phase 1 introduces — one more header added in one place per
-   platform, not per call site.
-3. **Quota store**: move `rateBuckets` (`api/_lib/http.js`) off the in-memory
-   `Map` and onto a shared, durable store (Redis/Upstash or similar — pick
-   based on wherever this ends up deployed, since no production hosting
-   config exists in the repo yet) keyed by `sub` instead of IP for
-   authenticated calls. This is required for real per-account daily limits
-   regardless of attestation — an in-memory map can't survive a restart or a
-   second instance, and IP-keyed limits break down the moment two people
-   share a network (roommates, a classroom) or one person switches networks
-   mid-day.
-4. **Unauthenticated fallback**: decide whether logged-out use should still
-   be allowed with the current IP-based limits (today's behavior, since
-   Google Sign-In is optional — `GOOGLE_CLIENT_ID` unset makes
-   `/api/auth/google` 503 and "the Perfil segue com a conta de demonstração"
-   per its comment) or become required once this ships.
+1. **Session issuance** (`api/_lib/session.js`, new): after `/api/auth/google`
+   validates the Google id_token, it signs `{ sub, email, exp }` with HMAC-SHA256
+   using `JOVI_SESSION_SECRET` and returns it as `session` in the response
+   body, alongside the existing `user`. No JWT library — one HMAC over one
+   JSON payload didn't need a dependency. `issueSession`/`verifySession` are
+   the only two exports; `verifySession` returns `null` for anything
+   malformed, tampered, or expired (30-day TTL) rather than throwing, so
+   callers can treat "no valid session" as one case. If `JOVI_SESSION_SECRET`
+   is unset, sign-in still works (client gets a profile to show) but no
+   session is issued, so quotas stay IP-based — same "optional until
+   configured" pattern as `GOOGLE_CLIENT_ID`/`JOVI_API_KEY`.
+2. **Verifying it on AI calls** (`api/_lib/http.js`): `sessionUser(req)` reads
+   `Authorization: Bearer <token>`, returns `{ provided, user }`. Each of the
+   6 AI handlers (not `auth/google.js` itself) added one line right after the
+   `hasValidApiKey` check: if a token was provided but doesn't verify (expired,
+   tampered, or the secret rotated), the call is rejected with 401
+   `SESSION_INVALID` — it does **not** silently fall back to IP-based
+   limiting, so a stale token can't quietly outlive its session. No
+   `Authorization` header at all is fine — that's the logged-out/demo path,
+   unchanged from before.
+3. **Quota keying** (`api/_lib/http.js`): `clientKey(req)` now returns
+   `user:<sub>` when a valid session is present, IP otherwise. Every existing
+   `isRateLimited`/`isDailyLimited` call in every handler picks this up for
+   free — none of those call sites changed, since they all already went
+   through `clientKey`. **The store is still the in-memory `rateBuckets` Map**
+   (kept as-is per your call — no Redis/Upstash wired in), so quotas are
+   correct per-process but reset on restart, same limitation Phase 1 already
+   had for IP-based buckets.
+4. **Unauthenticated fallback**: kept. Google Sign-In stays optional — logged-
+   out/demo use keeps today's IP-based limits, matching how `GOOGLE_CLIENT_ID`
+   unset already made `/api/auth/google` 503 while the rest of the app worked
+   fine on the demo account.
+5. **Client wiring**:
+   - **Env**: `GOOGLE_CLIENT_ID` is now comma-separated (`api/auth/google.js`
+     checks membership, not equality) because the web and RN apps are
+     registered as separate Google OAuth clients, so a token's `aud` differs
+     by platform. `VITE_GOOGLE_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_CLIENT_ID` are
+     what each client actually sends in the sign-in request — see
+     `.env.example` for the full comment.
+   - **Web** (`web/services/googleAuth.js`, new): Google Identity Services
+     (`accounts.google.com/gsi/client`), loaded on demand. `renderGoogleSignInButton(container, onResult)`
+     initializes it with `VITE_GOOGLE_CLIENT_ID` and renders Google's own
+     button into `container`; the callback POSTs the resulting `credential`
+     to `/api/auth/google`, stores the returned `session`, and calls
+     `onResult({ user })`. No redirect, no code exchange, no secret — this is
+     the standard, stable web integration.
+   - **RN** (`services/googleAuth.js`, new): `expo-auth-session` (added via
+     `npx expo install`), **not** `@react-native-google-signin/google-signin`
+     or `react-native-nitro-google-signin` — Expo's current docs point Google
+     Sign-In at those native modules (Google deprecated the old native
+     Android SDK in favor of Credential Manager), but both need a config
+     plugin, an EAS **development build**, and an Android OAuth client with
+     the app's keystore SHA-1 registered — none of which exist yet, and it's
+     the same infra weight as the attestation work above. `expo-auth-session`
+     runs today in Expo Go: `useGoogleSignIn()` requests an `id_token`
+     directly via `AuthSession.ResponseType.IdToken` (documented in the
+     library specifically as "for getting an `id_token` from Google OAuth" —
+     an OpenID Connect implicit-style flow), so there's no code-exchange step
+     and therefore no client secret to protect on-device. `signIn()` calls
+     `promptAsync()`, POSTs the resulting `id_token` to `/api/auth/google`,
+     stores the session, and returns `user`.
+     **Not verified against a live Google consent screen** — there's no way
+     to click through an actual OAuth round trip in this environment. Before
+     relying on this, set `EXPO_PUBLIC_GOOGLE_CLIENT_ID` to an OAuth client
+     from Google Cloud Console and test the real button. The open question is
+     which client **type** Google will accept `AuthSession.makeRedirectUri({ scheme: 'jovilens' })`'s
+     redirect URI for — "Web application" clients reject non-https redirect
+     URIs outright, so that type won't work here; a "Desktop app"-type client
+     is the most likely to accept a custom scheme redirect, but confirm by
+     trying it — if Google rejects the redirect URI, the fallback is the
+     native-module route described above.
+   - **Session storage**: kept out of the `user` profile object on purpose,
+     in a separate key (`services/storage.js`'s `getSessionToken`/
+     `setSessionToken`, MMKV on RN; `web/services/storage.js`'s
+     `localStorage` equivalent) — `user` still flows through
+     `createBackup()`/`downloadBackup()` (see `services/dataTransfer.js`),
+     and a live session token has no business ending up in a backup file
+     someone might export and share.
+   - **`apiFetch`** (`services/apiClient.js` / `web/services/apiClient.js`):
+     now also attaches `Authorization: Bearer <token>` when a session is
+     stored, so no AI service call site needed touching for this.
+   - **UI**: both `app/(tabs)/profile.jsx` and `web/pages/Profile.jsx` got a
+     new "Entrar com sua conta Google" block, shown only when a client id is
+     configured, sitting **alongside** the existing "Fluxo de apresentação"
+     demo button rather than replacing it — the demo flow is explicitly
+     documented in its own copy as a presentation aid and wasn't ours to
+     remove. "Sair" now also clears the session (`signOutGoogle()`) for
+     whichever flow was used to sign in.
 
-### 3. Sequencing note
+### 3. What's still open
 
-Attestation and per-account quota are independent and can ship in either
-order or separately: attestation stops non-app callers regardless of who
-they claim to be; per-account quota stops one legitimate signed-in user from
-costing more than their share regardless of what device they're on. Doing
-attestation first is probably higher leverage against the original "random
-LAN device" threat; per-account quota matters more once the app has enough
-real users that one person's runaway usage needs to be isolated from
-everyone else's.
+- Play Integrity is unenforced scaffolding (see above) — needs Play Console
+  linkage plus a native module + EAS dev build before it does anything.
+- The RN sign-in button needs a real end-to-end test once a Google Cloud
+  OAuth client id is set — see the caveat in "Client wiring" above.
+- Quota storage is still the in-memory `Map`, now keyed by account instead of
+  (or in addition to) IP — durability work is unchanged from before: move to
+  Redis/Upstash/similar when this needs to survive restarts or run on more
+  than one instance.

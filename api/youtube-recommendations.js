@@ -1,5 +1,5 @@
 import { runYouTubeRecommendations } from './_lib/ai/service.js';
-import { errorResponse, hasValidApiKey, isDailyLimited, isRateLimited } from './_lib/http.js';
+import { errorResponse, hasValidApiKey, isDailyLimited, isRateLimited, sessionUser } from './_lib/http.js';
 
 const MAX_NOTES = 40;
 
@@ -33,6 +33,8 @@ function safeInput(body) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
   if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
+  const { provided: hasSession, user: sessionOwner } = sessionUser(req);
+  if (hasSession && !sessionOwner) return res.status(401).json({ code: 'SESSION_INVALID', message: 'Sessão expirada. Faça login novamente.' });
   if (isRateLimited(req, { scope: 'youtube', max: 6 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas buscas em sequência. Tente novamente em instantes.' });
   if (isDailyLimited(req, { scope: 'youtube', max: 20 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de buscas foi atingido. Tente novamente amanhã.' });
 

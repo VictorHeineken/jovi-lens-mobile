@@ -1,4 +1,5 @@
 import { hasValidApiKey, isDailyLimited, isRateLimited } from '../_lib/http.js';
+import { issueSession } from '../_lib/session.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
@@ -11,8 +12,12 @@ export default async function handler(req, res) {
   if (isRateLimited(req, { scope: 'auth', max: 10 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas tentativas de login em sequência. Tente novamente em instantes.' });
   if (isDailyLimited(req, { scope: 'auth', max: 60 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de tentativas de login foi atingido.' });
 
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  if (!clientId) return res.status(503).json({ message: 'Google Sign-In ainda não está configurado no servidor.' });
+  // Comma-separated on purpose: the web app (Google Identity Services) and the
+  // RN app (expo-auth-session's browser OAuth flow) are registered as separate
+  // Google Cloud OAuth clients, so a token's `aud` legitimately differs by
+  // platform — this checks membership instead of equality against one value.
+  const allowedClientIds = String(process.env.GOOGLE_CLIENT_ID || '').split(',').map((id) => id.trim()).filter(Boolean);
+  if (!allowedClientIds.length) return res.status(503).json({ message: 'Google Sign-In ainda não está configurado no servidor.' });
   const credential = req.body?.credential;
   if (typeof credential !== 'string' || credential.length < 20 || credential.length > 6000) return res.status(400).json({ message: 'Credencial Google inválida.' });
 
@@ -28,7 +33,19 @@ export default async function handler(req, res) {
     // encouraged retries that only ate into this endpoint's own rate limit.
     if (response.status !== 400 && !response.ok) return res.status(502).json({ message: 'Não foi possível validar com o Google agora. Tente novamente.' });
     const profile = await response.json();
-    if (!response.ok || profile.aud !== clientId || !['accounts.google.com', 'https://accounts.google.com'].includes(profile.iss) || profile.email_verified !== 'true' || Number(profile.exp || 0) * 1000 <= Date.now()) return res.status(401).json({ message: 'Token Google inválido para este aplicativo.' });
+    if (!response.ok || !allowedClientIds.includes(profile.aud) || !['accounts.google.com', 'https://accounts.google.com'].includes(profile.iss) || profile.email_verified !== 'true' || Number(profile.exp || 0) * 1000 <= Date.now()) return res.status(401).json({ message: 'Token Google inválido para este aplicativo.' });
+
+    let session;
+    try {
+      session = issueSession({ sub: profile.sub, email: profile.email });
+    } catch (error) {
+      // JOVI_SESSION_SECRET unset: sign-in itself still works (the client gets
+      // a profile to show), but per-account quotas stay on IP-based limiting
+      // until the secret is configured — same "optional until configured"
+      // pattern as GOOGLE_CLIENT_ID/JOVI_API_KEY elsewhere in this file.
+      if (error?.code !== 'SESSION_NOT_CONFIGURED') throw error;
+    }
+
     return res.status(200).json({
       user: {
         id: profile.sub,
@@ -36,6 +53,7 @@ export default async function handler(req, res) {
         email: profile.email,
         picture: profile.picture || '',
       },
+      session,
     });
   } catch {
     return res.status(500).json({ message: 'Não foi possível validar a conta Google.' });

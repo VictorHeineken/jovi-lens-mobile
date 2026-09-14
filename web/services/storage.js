@@ -5,6 +5,7 @@ const NOTES_KEY = 'jovi_mobile_notes_v2';
 const HISTORY_KEY = 'jovi_mobile_ai_history_v1';
 const PLAN_KEY = 'jovi_mobile_plan_v1';
 const USER_KEY = 'jovi_mobile_user_v1';
+const SESSION_KEY = 'jovi_mobile_session_v1';
 const SUBJECT_KEY = 'jovi_mobile_subject_artifacts_v1';
 const LEARNING_PREFERENCES_KEY = 'jovi_mobile_learning_preferences_v1';
 
@@ -112,6 +113,12 @@ export const getPlan = () => readJson(PLAN_KEY, { type: 'free' });
 export const setPlan = (plan) => writeJson(PLAN_KEY, plan);
 export const getUser = () => readJson(USER_KEY, null);
 export const setUser = (user) => { try { user ? localStorage.setItem(USER_KEY, JSON.stringify(user)) : localStorage.removeItem(USER_KEY); } catch { /* storage unavailable */ } };
+
+// Kept out of `user` (and therefore out of createBackup's export) on purpose —
+// this is a live credential, not profile data that should end up in a backup
+// file someone might share. See services/googleAuth.js and services/apiClient.js.
+export const getSessionToken = () => { try { return localStorage.getItem(SESSION_KEY); } catch { return null; } };
+export const setSessionToken = (token) => { try { token ? localStorage.setItem(SESSION_KEY, token) : localStorage.removeItem(SESSION_KEY); } catch { /* storage unavailable */ } };
 
 // Subject artifacts: generated plan/exam/scripts + last exam result, keyed by matéria.
 export const getSubjectArtifacts = () => readJson(SUBJECT_KEY, {});

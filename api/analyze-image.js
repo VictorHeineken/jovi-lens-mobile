@@ -1,5 +1,5 @@
 import { runStudyAI } from './_lib/ai/service.js';
-import { errorResponse, hasKnownImageSignature, hasValidApiKey, isDailyLimited, isRateLimited } from './_lib/http.js';
+import { errorResponse, hasKnownImageSignature, hasValidApiKey, isDailyLimited, isRateLimited, sessionUser } from './_lib/http.js';
 
 const MAX_IMAGE_LENGTH = 8_000_000;
 const VALID_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -25,6 +25,8 @@ export default async function handler(req, res) {
   }
 
   if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
+  const { provided: hasSession, user: sessionOwner } = sessionUser(req);
+  if (hasSession && !sessionOwner) return res.status(401).json({ code: 'SESSION_INVALID', message: 'Sessão expirada. Faça login novamente.' });
   if (isRateLimited(req, { scope: 'analyze', max: 12 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas análises em sequência. Tente novamente em instantes.' });
   if (isDailyLimited(req, { scope: 'analyze', max: 100 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de análises foi atingido. Tente novamente amanhã.' });
 
