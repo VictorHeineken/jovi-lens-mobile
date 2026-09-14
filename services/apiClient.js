@@ -14,3 +14,11 @@ export function apiUrl(path) {
   }
   return `${API_BASE_URL}${path}`;
 }
+
+// Attaches the shared x-api-key header (see auth-plan.md Phase 1) so every
+// backend call gets it without each service file repeating the header.
+export function apiFetch(path, options = {}) {
+  const headers = { ...options.headers };
+  if (process.env.EXPO_PUBLIC_JOVI_API_KEY) headers['x-api-key'] = process.env.EXPO_PUBLIC_JOVI_API_KEY;
+  return fetch(apiUrl(path), { ...options, headers });
+}

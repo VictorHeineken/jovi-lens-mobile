@@ -2,7 +2,23 @@
 // Extracted from api/analyze-image.js so every endpoint reuses the same
 // client identification, rate limiting and payload validation.
 
+import { timingSafeEqual } from 'node:crypto';
+
 const rateBuckets = new Map();
+
+// Static shared-secret gate — see auth-plan.md Phase 1. This is a speed bump
+// against casual/accidental use of the paid AI quota by other devices on the
+// same LAN, not real authentication: the key ships inside the app bundle and
+// web build, so anyone who extracts it can still call the API directly.
+// Phase 2 (device attestation + per-account quota) replaces/augments this.
+export function hasValidApiKey(req) {
+  const expected = process.env.JOVI_API_KEY;
+  if (!expected) return true; // unset = feature opt-in, same pattern as GOOGLE_CLIENT_ID
+  const provided = String(req.headers['x-api-key'] || '');
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export function clientKey(req) {
   // Prefer the transport-level peer address (set by the local server from the

@@ -1,11 +1,12 @@
 import { transcribeAudio } from './_lib/ai/service.js';
-import { errorResponse, hasKnownAudioSignature, isDailyLimited, isRateLimited } from './_lib/http.js';
+import { errorResponse, hasKnownAudioSignature, hasValidApiKey, isDailyLimited, isRateLimited } from './_lib/http.js';
 
 const MAX_AUDIO_LENGTH = 10_000_000; // base64 chars (~7.5 MB of audio)
 const VALID_MIME = new Set(['audio/webm', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/m4a']);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
+  if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
   if (isRateLimited(req, { scope: 'stt', max: 20 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas transcrições em sequência. Tente novamente em instantes.' });
   if (isDailyLimited(req, { scope: 'stt', max: 80 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de transcrição foi atingido. Tente novamente amanhã.' });
 

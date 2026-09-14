@@ -1,4 +1,4 @@
-import { isDailyLimited, isRateLimited } from '../_lib/http.js';
+import { hasValidApiKey, isDailyLimited, isRateLimited } from '../_lib/http.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
@@ -7,6 +7,7 @@ export default async function handler(req, res) {
   // than it looks: it is unauthenticated by definition (it is what establishes who
   // the caller is) and each call makes an outbound request to Google, so an
   // unthrottled route here is a free way to hammer that dependency from our IP.
+  if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
   if (isRateLimited(req, { scope: 'auth', max: 10 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas tentativas de login em sequência. Tente novamente em instantes.' });
   if (isDailyLimited(req, { scope: 'auth', max: 60 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de tentativas de login foi atingido.' });
 

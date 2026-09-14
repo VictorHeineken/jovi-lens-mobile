@@ -1,4 +1,5 @@
 import { isDemoMode } from './imageAnalysis.js';
+import { apiFetch } from './apiClient.js';
 
 // Browser pitch differentiates speakers when only one pt-BR voice exists in
 // speechSynthesis. The live path sends the role itself ('A'/'B'/'narrator')
@@ -28,7 +29,7 @@ function pickBrowserVoice() {
 async function fetchLiveTts(text, voice) {
   let response;
   try {
-    response = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
+    response = await apiFetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
   } catch {
     liveTtsAvailable = false;
     return null;

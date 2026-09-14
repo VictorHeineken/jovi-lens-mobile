@@ -1,4 +1,5 @@
 import { isDemoMode } from './imageAnalysis.js';
+import { apiFetch } from './apiClient.js';
 
 export function speechRecognitionAvailable() {
   return typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -64,7 +65,7 @@ async function startAzureRecording({ onFinal, onError, onEnd, onState }) {
     onState?.('transcribing');
     try {
       const base64 = await blobToBase64(new Blob(chunks, { type: mimeType }));
-      const response = await fetch('/api/transcribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: base64, mimeType }) });
+      const response = await apiFetch('/api/transcribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: base64, mimeType }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || 'Não foi possível transcrever.');
       onFinal?.(data.text || '');
