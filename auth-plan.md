@@ -171,7 +171,10 @@ second round of edits to its call-site structure.
 ### 1. App attestation
 
 Prove the request comes from an unmodified build of the actual app, not a
-script that learned the static key.
+script that learned the static key. **iOS is out of scope for now — the app
+isn't shipping there yet** (see `app.json`'s `ios` block, which exists but
+isn't used for a real release). No App Attest/DeviceCheck work is planned
+until that changes.
 
 - **Android**: [Play Integrity API](https://developer.android.com/google/play/integrity).
   Client requests an integrity token (via `expo-*` binding or a small native
@@ -179,16 +182,13 @@ script that learned the static key.
   maintained Expo config plugin first), sends it with the request. Server
   verifies via Google's `decodeIntegrityToken` endpoint, checking package
   name, certificate digest, and app recognition verdict.
-- **iOS**: [App Attest](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity)
-  (or the lighter-weight DeviceCheck if App Attest's per-key attestation flow
-  is more than needed). Same shape: client attests once, then signs
-  subsequent requests with the attested key; server verifies the assertion.
-- **Web**: no equivalent primitive exists (no App Attest/Play Integrity for
-  browsers). Realistic options are reCAPTCHA/Turnstile-style challenge or
-  simply accepting that web stays behind the static key + rate limits only —
-  decide when this phase is scoped.
+- **Web**: no equivalent primitive exists (no Play Integrity for browsers).
+  Realistic options are reCAPTCHA/Turnstile-style challenge or simply
+  accepting that web stays behind the static key + rate limits only — decide
+  when this phase is scoped.
 - Server side: new `api/_lib/attestation.js` with one `verifyAttestation(req)`
-  per platform, called from the same guard spot as `hasValidApiKey` today.
+  for Android, called from the same guard spot as `hasValidApiKey` today. If
+  iOS ships later, this is the one place a second branch gets added.
 
 ### 2. Per-Google-account quota
 
