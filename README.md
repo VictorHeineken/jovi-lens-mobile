@@ -13,7 +13,7 @@ compartilham o mesmo backend:
 
 ```text
 jovi-lens-mobile/
-  api/                  backend compartilhado (Azure OpenAI / MiniMax, TTS, STT, vídeo, YouTube)
+  api/                  backend compartilhado (Azure OpenAI / MiniMax, TTS, STT e recomendações)
   server/               servidor HTTP local que expõe api/ em 127.0.0.1:8787
   shared/               lógica usada pelos dois clientes e pelo backend — uma cópia só
   app/, components/,    app React Native (Expo) — roda a partir da raiz
@@ -34,23 +34,23 @@ timeout e normaliza a resposta para o contrato educacional do produto — esse c
 importa qual provedor esteja ativo, nem qual cliente (web ou nativo) fez a chamada.
 
 Cada provedor vive em `api/_lib/ai/providers/<nome>.js` e implementa a mesma interface (`complete`,
-`speak`, `transcribe`, `createVideoJob`/`getVideoJob`/`getVideoContent`, mais um objeto `capabilities`). O
+`speak`, `transcribe`, mais um objeto `capabilities`). O
 provedor ativo é escolhido pela variável `AI_PROVIDER` no `.env` (veja abaixo); `api/_lib/ai/providers/index.js`
 resolve qual módulo atende cada recurso. Hoje `azure-openai` e `minimax` estão registrados — `openai`,
 `anthropic` e `gemini` chegam em fases seguintes desta refatoração.
 
 Nem todo provedor cobre todos os recursos — é uma limitação real das APIs, não uma lacuna de implementação:
 
-| Provedor | Chat/Visão | TTS | STT | Vídeo |
-|---|---|---|---|---|
-| Azure OpenAI | ✅ | ✅ | ✅ | ✅ (Sora) |
-| MiniMax | ✅ | ✅ | ❌ (não confirmado) | ✅ (Hailuo) |
-| OpenAI (planejado) | ✅ | ✅ | ✅ | ✅ (Sora) |
-| Anthropic (planejado) | ✅ | ❌ | ❌ | ❌ |
-| Google Gemini (planejado) | ✅ | ✅ | ✅ | ✅ (Veo) |
+| Provedor | Chat/Visão | TTS | STT |
+|---|---|---|---|
+| Azure OpenAI | ✅ | ✅ | ✅ |
+| MiniMax | ✅ | ✅ | ❌ (não confirmado) |
+| OpenAI (planejado) | ✅ | ✅ | ✅ |
+| Anthropic (planejado) | ✅ | ❌ | ❌ |
+| Google Gemini (planejado) | ✅ | ✅ | ✅ |
 
 Se `AI_PROVIDER` não cobre um recurso, use a variável de override desse recurso (`AI_TTS_PROVIDER`,
-`AI_STT_PROVIDER`, `AI_VIDEO_PROVIDER`, ou `AI_CHAT_PROVIDER`/`AI_VISION_PROVIDER`) para apontá-lo a outro
+`AI_STT_PROVIDER`, ou `AI_CHAT_PROVIDER`/`AI_VISION_PROVIDER`) para apontá-lo a outro
 provedor configurado. Sem override, o recurso simplesmente fica indisponível (erro `AI_NOT_CONFIGURED`), do
 mesmo jeito que hoje acontece quando um deployment opcional da Azure não está configurado.
 
@@ -74,7 +74,14 @@ AZURE_OPENAI_ENDPOINT=
 AZURE_OPENAI_API_KEY=
 AZURE_OPENAI_DEPLOYMENT=
 AZURE_OPENAI_API_VERSION=2024-12-01-preview
-YOUTUBE_API_KEY=
+AZURE_OPENAI_TTS_DEPLOYMENT=gpt-4o-mini-tts
+# opcionais: vozes por papel do podcast
+# AZURE_OPENAI_TTS_VOICE_A=nova
+# AZURE_OPENAI_TTS_VOICE_B=onyx
+# AZURE_OPENAI_TTS_VOICE_NARRATOR=alloy
+AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT=gpt-4o-mini-transcribe
+# opcional se o deployment de transcrição tiver nome customizado:
+# AZURE_OPENAI_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe
 JOVI_LENS_DEMO_MODE=false
 VITE_JOVI_LENS_DEMO_MODE=false
 JOVI_WEB_URL=http://127.0.0.1:5173

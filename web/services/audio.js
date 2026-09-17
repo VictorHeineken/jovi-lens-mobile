@@ -4,7 +4,8 @@ import { apiFetch } from './apiClient.js';
 // Browser pitch differentiates speakers when only one pt-BR voice exists in
 // speechSynthesis. The live path sends the role itself ('A'/'B'/'narrator')
 // to /api/tts — the active provider maps it to a real voice ID server-side.
-const BROWSER_PITCH = { A: 1.12, B: 0.9, narrator: 1 };
+const BROWSER_PITCH = { A: 1.08, B: 0.94, narrator: 1 };
+const BROWSER_RATE = { A: 0.92, B: 0.88, narrator: 0.9 };
 
 let liveTtsAvailable = null; // null unknown | true | false (not configured / failed)
 
@@ -126,7 +127,7 @@ class Narration {
     const voice = pickBrowserVoice();
     if (voice) utterance.voice = voice;
     utterance.pitch = BROWSER_PITCH[segment.speaker] ?? 1;
-    utterance.rate = 1;
+    utterance.rate = BROWSER_RATE[segment.speaker] ?? 0.9;
     utterance.onend = () => { if (!this.stale(token)) { this.index += 1; this.playSegment(token); } };
     utterance.onerror = () => { if (!this.stale(token)) { this.index += 1; this.playSegment(token); } };
     synth.speak(utterance);

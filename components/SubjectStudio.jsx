@@ -6,7 +6,7 @@ import SubjectExam from './SubjectExam.jsx';
 import StudyPlan from './StudyPlan.jsx';
 import PodcastPlayer from './PodcastPlayer.jsx';
 import LessonPlayer from './LessonPlayer.jsx';
-import YouTubeRecommendations from './YouTubeRecommendations.jsx';
+import VideoRecommendations from './VideoRecommendations.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 
@@ -27,12 +27,14 @@ export default function SubjectStudio({ subject, onClose }) {
   if (!subject) return null;
 
   const examResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
+  const savedExam = getSubjectArtifact(subject.name, 'exam')?.data || null;
   const savedPlan = getSubjectArtifact(subject.name, 'plan')?.data || null;
   const savedPlanProgress = getSubjectArtifact(subject.name, 'planProgress')?.data || {};
   const savedQuestions = getSubjectArtifact(subject.name, 'questions')?.data || null;
   const savedPodcast = getSubjectArtifact(subject.name, 'podcast')?.data || null;
+  const savedPodcasts = getSubjectArtifact(subject.name, 'podcasts')?.data || null;
   const savedLesson = getSubjectArtifact(subject.name, 'lesson')?.data || null;
-  const savedYouTubeLessons = getSubjectArtifact(subject.name, 'youtubeLessons')?.data || null;
+  const savedVideoRecommendations = getSubjectArtifact(subject.name, 'videoRecommendations')?.data || null;
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} accessibilityViewIsModal>
@@ -91,11 +93,21 @@ export default function SubjectStudio({ subject, onClose }) {
 
         <ScrollView className="flex-1 border-t border-slate-100" contentContainerClassName="px-4 pt-4" contentContainerStyle={{ paddingBottom: bottomInset }}>
           {tab === 'questions' ? <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} /> : null}
-          {tab === 'exam' ? <SubjectExam subject={subject} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} /> : null}
-          {tab === 'podcast' ? <PodcastPlayer subject={subject} saved={savedPodcast} onSave={(data) => saveSubjectArtifact(subject.name, 'podcast', data)} /> : null}
+          {tab === 'exam' ? <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} /> : null}
+          {tab === 'podcast' ? (
+            <PodcastPlayer
+              subject={subject}
+              saved={savedPodcast}
+              savedVariants={savedPodcasts?.formats}
+              onSave={(data) => {
+                saveSubjectArtifact(subject.name, 'podcast', data);
+                if (savedPodcasts?.formats) saveSubjectArtifact(subject.name, 'podcasts', { ...savedPodcasts, formats: { ...savedPodcasts.formats, [data.format || 'dialogue']: data } });
+              }}
+            />
+          ) : null}
           {tab === 'lesson' ? (
             <View className="gap-6">
-              <YouTubeRecommendations subject={subject} saved={savedYouTubeLessons} examResult={examResult} onSave={(data) => saveSubjectArtifact(subject.name, 'youtubeLessons', data)} />
+              <VideoRecommendations subject={subject} saved={savedVideoRecommendations} examResult={examResult} onSave={(data) => saveSubjectArtifact(subject.name, 'videoRecommendations', data)} />
               <LessonPlayer subject={subject} saved={savedLesson} onSave={(data) => saveSubjectArtifact(subject.name, 'lesson', data)} />
             </View>
           ) : null}
@@ -104,7 +116,7 @@ export default function SubjectStudio({ subject, onClose }) {
               subject={subject}
               savedPlan={savedPlan}
               savedProgress={savedPlanProgress}
-              savedLessons={savedYouTubeLessons?.videos?.filter((video) => video.saved) || []}
+              savedLessons={savedVideoRecommendations?.videos?.filter((video) => video.saved) || []}
               onSave={(data) => saveSubjectArtifact(subject.name, 'plan', data)}
               onProgressSave={(data) => saveSubjectArtifact(subject.name, 'planProgress', data)}
             />

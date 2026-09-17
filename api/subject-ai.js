@@ -4,6 +4,16 @@ import { errorResponse, hasValidApiKey, isDailyLimited, isRateLimited, sessionUs
 const VALID_ACTIONS = new Set(['questions', 'exam', 'plan', 'podcast-script', 'lesson-script']);
 const MAX_NOTES = 40;
 
+function safePreferences(preferences = {}) {
+  return {
+    studyGoal: ['vestibular', 'enem', 'school_exam', 'general'].includes(preferences.studyGoal) ? preferences.studyGoal : 'vestibular',
+    videoStyle: ['animated', 'balanced', 'calm', 'exam'].includes(preferences.videoStyle) ? preferences.videoStyle : 'balanced',
+    duration: ['short', 'standard', 'long'].includes(preferences.duration) ? preferences.duration : 'standard',
+    level: ['beginner', 'intermediate', 'advanced'].includes(preferences.level) ? preferences.level : 'intermediate',
+    sort: ['relevance', 'viewCount', 'date'].includes(preferences.sort) ? preferences.sort : 'relevance',
+  };
+}
+
 function safeInput(body) {
   const action = VALID_ACTIONS.has(body?.action) ? body.action : 'questions';
   const subject = body?.subject && typeof body.subject === 'object' ? body.subject : null;
@@ -22,8 +32,8 @@ function safeInput(body) {
 
   if (!name && !notes.length) return { error: { status: 400, message: 'Salve ao menos uma nota nesta matéria para gerar este conteúdo.' } };
 
-  const format = subject.format === 'single' ? 'single' : (subject.format === 'dialogue' ? 'dialogue' : undefined);
-  return { action, subject: { name: name || 'Matéria', notes, format } };
+  const format = ['dialogue', 'single', 'drive'].includes(subject.format) ? subject.format : undefined;
+  return { action, subject: { name: name || 'Matéria', notes, format }, preferences: safePreferences(body?.preferences) };
 }
 
 export default async function handler(req, res) {
@@ -38,7 +48,7 @@ export default async function handler(req, res) {
   if (input.error) return res.status(input.error.status).json({ message: input.error.message });
 
   try {
-    const result = await runSubjectAI({ action: input.action, subject: input.subject });
+    const result = await runSubjectAI({ action: input.action, subject: input.subject, preferences: input.preferences });
     return res.status(200).json(result);
   } catch (error) {
     const mapped = errorResponse(error);

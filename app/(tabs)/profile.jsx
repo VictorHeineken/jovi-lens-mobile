@@ -16,6 +16,12 @@ const DEMO_USER = {
   picture: '',
 };
 
+const STUDY_GOAL_OPTIONS = [
+  { value: 'vestibular', label: 'Vestibular' },
+  { value: 'enem', label: 'ENEM' },
+  { value: 'school_exam', label: 'Prova da escola' },
+  { value: 'general', label: 'Revisão geral' },
+];
 const VIDEO_STYLE_OPTIONS = [
   { value: 'animated', label: 'Animada e visual' },
   { value: 'balanced', label: 'Equilibrada' },
@@ -232,11 +238,12 @@ export default function ProfileScreen() {
         <View className="gap-3 rounded-2xl border border-slate-200 bg-white p-4">
           <View className="flex-row items-start justify-between gap-2">
             <View className="flex-1">
-              <Text className="text-[15px] font-bold text-slate-900">Seu jeito de aprender</Text>
-              <Text className="text-[12px] text-slate-500">Usamos essas escolhas para encontrar aulas mais adequadas no YouTube.</Text>
+              <Text className="text-[15px] font-bold text-slate-900">Seu plano de estudo</Text>
+              <Text className="text-[12px] text-slate-500">Usamos essas escolhas nas perguntas, simulados, podcasts, planos e recomendações de vídeo.</Text>
             </View>
             <Icon name="sparkle" size={18} color="#4f46e5" />
           </View>
+          <PreferenceField label="Objetivo principal" options={STUDY_GOAL_OPTIONS} value={learningPreferences.studyGoal} onChange={(v) => updateLearningPreference('studyGoal', v)} />
           <PreferenceField label="Estilo da aula" options={VIDEO_STYLE_OPTIONS} value={learningPreferences.videoStyle} onChange={(v) => updateLearningPreference('videoStyle', v)} />
           <PreferenceField label="Duração preferida" options={DURATION_OPTIONS} value={learningPreferences.duration} onChange={(v) => updateLearningPreference('duration', v)} />
           <PreferenceField label="Nível atual" options={LEVEL_OPTIONS} value={learningPreferences.level} onChange={(v) => updateLearningPreference('level', v)} />

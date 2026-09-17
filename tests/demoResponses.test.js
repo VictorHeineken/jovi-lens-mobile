@@ -51,10 +51,12 @@ test('getSubjectDemo builds questions from the notes it is given', () => {
   const result = getSubjectDemo({
     action: 'questions',
     subject: { name: 'História', notes: [{ subtheme: 'Revolução Industrial', title: 'As fábricas de Viena' }] },
+    preferences: { studyGoal: 'enem' },
   });
   assert.equal(result.subject, 'História');
   assert.equal(result.questions.length, 1);
   assert.match(result.questions[0].question, /Revolução Industrial/);
+  assert.match(result.questions[0].question, /ENEM/);
   assert.match(result.questions[0].question, /As fábricas de Viena/);
   assert.equal(result.questions[0].topic, 'Revolução Industrial');
 });
@@ -83,6 +85,7 @@ test('getSubjectDemo exam returns the flat shape SubjectExam reads', () => {
   const result = getSubjectDemo({
     action: 'exam',
     subject: { name: 'História', notes: [{ subtheme: 'Indústria' }, { subtheme: 'Transporte' }] },
+    preferences: { studyGoal: 'school_exam' },
   });
   // Assert the flat `questions` field specifically: components/SubjectExam.jsx
   // reads `exam.questions` and nothing else, so nesting it (say, under `.exam`)
@@ -91,6 +94,7 @@ test('getSubjectDemo exam returns the flat shape SubjectExam reads', () => {
   assert.equal(typeof result.durationMinutes, 'number');
   assert.ok(Array.isArray(result.questions), 'questions must be a flat array on the result');
   assert.equal(result.questions.length, 2);
+  assert.match(result.questions[0].question, /prova da escola/);
 
   result.questions.forEach((item) => {
     assert.ok(Array.isArray(item.options) && item.options.length > 1);
@@ -100,4 +104,17 @@ test('getSubjectDemo exam returns the flat shape SubjectExam reads', () => {
     // `q.topic`, so both fields are load-bearing, not decorative.
     assert.ok(item.topic, 'each question needs a topic for the per-topic breakdown');
   });
+});
+
+test('getSubjectDemo podcast drive mode is hands-free friendly', () => {
+  const result = getSubjectDemo({
+    action: 'podcast-script',
+    subject: { name: 'Biologia', format: 'drive', notes: [{ subtheme: 'Citologia' }, { subtheme: 'Mitose' }] },
+  });
+
+  assert.equal(result.format, 'drive');
+  assert.equal(typeof result.durationMinutes, 'number');
+  assert.ok(Array.isArray(result.takeaways));
+  assert.ok(result.segments.length >= 4);
+  assert.ok(result.segments.every((segment) => segment.speaker === 'narrator' && segment.text));
 });

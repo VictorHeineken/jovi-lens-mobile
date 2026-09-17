@@ -9,14 +9,13 @@ const REGISTRY = {
 };
 
 // Per-capability override vars let one provider serve chat while another
-// serves tts/stt/video — useful when the AI_PROVIDER choice (e.g. Anthropic)
+// serves tts/stt — useful when the AI_PROVIDER choice (e.g. Anthropic)
 // doesn't cover every capability. Unset overrides just fall back to AI_PROVIDER.
 const CAPABILITY_ENV = {
   chat: 'AI_CHAT_PROVIDER',
   vision: 'AI_VISION_PROVIDER',
   tts: 'AI_TTS_PROVIDER',
   stt: 'AI_STT_PROVIDER',
-  video: 'AI_VIDEO_PROVIDER',
 };
 
 function resolveProviderName(capability) {
@@ -40,9 +39,7 @@ export function getProvider(capability) {
   return { name, ...mod };
 }
 
-// Looks a provider up by exact name, bypassing env resolution — used to poll
-// a video job on the SAME provider that created it, independent of whatever
-// AI_VIDEO_PROVIDER currently resolves to (it may have changed since).
+// Looks a provider up by exact name, bypassing env resolution.
 export function getProviderByName(name) {
   const key = String(name || '').trim().toLowerCase();
   const mod = REGISTRY[key];

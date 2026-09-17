@@ -101,8 +101,8 @@ function SavedLessons({ lessons = [] }) {
   if (!lessons.length) return null;
   return (
     <div className="plan-videos">
-      <span className="studio-subtitle"><Icon name="bookmark" size={13} /> Aulas salvas na trilha</span>
-      {lessons.map((lesson) => <a className="plan-video-link" href={lesson.url} target="_blank" rel="noopener noreferrer" key={lesson.id}><span><Icon name="play" size={12} /><strong>{lesson.title}</strong></span><small>{lesson.channelTitle}</small><Icon name="arrow-up-right" size={13} /></a>)}
+      <span className="studio-subtitle"><Icon name="bookmark" size={13} /> Buscas de aula salvas</span>
+      {lessons.map((lesson) => <a className="plan-video-link" href={lesson.url} target="_blank" rel="noopener noreferrer" key={lesson.id}><span><Icon name="search" size={12} /><strong>{lesson.title}</strong></span><small>{lesson.channelTitle}</small><Icon name="arrow-up-right" size={13} /></a>)}
     </div>
   );
 }

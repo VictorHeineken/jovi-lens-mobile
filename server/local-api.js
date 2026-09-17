@@ -3,8 +3,7 @@ import analyzeImage from '../api/analyze-image.js';
 import subjectAI from '../api/subject-ai.js';
 import tts from '../api/tts.js';
 import transcribe from '../api/transcribe.js';
-import videoLesson from '../api/video-lesson.js';
-import youtubeRecommendations from '../api/youtube-recommendations.js';
+import videoRecommendations from '../api/video-recommendations.js';
 import authGoogle from '../api/auth/google.js';
 
 const POST_ROUTES = {
@@ -12,8 +11,7 @@ const POST_ROUTES = {
   '/api/subject-ai': subjectAI,
   '/api/tts': tts,
   '/api/transcribe': transcribe,
-  '/api/video-lesson': videoLesson,
-  '/api/youtube-recommendations': youtubeRecommendations,
+  '/api/video-recommendations': videoRecommendations,
   // This handler existed but was reachable from nowhere: no client called it and it
   // was not routed here, so Google Sign-In could not work locally even with a
   // client id set. Routed now; it answers 503 until GOOGLE_CLIENT_ID is configured,
@@ -21,10 +19,7 @@ const POST_ROUTES = {
   '/api/auth/google': authGoogle,
 };
 
-// GET routes (video-lesson doubles as a polling endpoint).
-const GET_ROUTES = {
-  '/api/video-lesson': videoLesson,
-};
+const GET_ROUTES = {};
 
 const HOST = process.env.JOVI_API_HOST || '127.0.0.1';
 const PORT = Number(process.env.JOVI_API_PORT || 8787);

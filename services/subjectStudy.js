@@ -1,6 +1,7 @@
 import { getSubjectDemo } from '../shared/demoResponses.js';
 import { isDemoMode } from './env.js';
 import { apiFetch } from './apiClient.js';
+import { getLearningPreferences } from './storage.js';
 
 // Only the request half lives here. The subject aggregation is identical on both
 // clients and lives in shared/subjects.js; this file keeps what is genuinely
@@ -9,10 +10,11 @@ import { apiFetch } from './apiClient.js';
 // action ∈ questions | exam | plan | podcast-script | lesson-script
 export async function generateSubjectContent(subject, { action, format } = {}) {
   const payloadSubject = { name: subject.name, notes: subject.notes, ...(format ? { format } : {}) };
+  const preferences = getLearningPreferences();
 
   if (isDemoMode()) {
     await new Promise((resolve) => setTimeout(resolve, 700));
-    return { ...getSubjectDemo({ action, subject: payloadSubject }), provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' };
+    return { ...getSubjectDemo({ action, subject: payloadSubject, preferences }), provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' };
   }
 
   let response;
@@ -20,7 +22,7 @@ export async function generateSubjectContent(subject, { action, format } = {}) {
     response = await apiFetch('/api/subject-ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, subject: payloadSubject }),
+      body: JSON.stringify({ action, subject: payloadSubject, preferences }),
     });
   } catch {
     throw new Error('Sem conexão no momento. Confira a internet ou ative o modo demonstração.');

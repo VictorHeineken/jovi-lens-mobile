@@ -17,13 +17,12 @@ editadas por título, matéria, subtema, tags, resumo e texto. A câmera também
 `DOCUMENTOS` para salvar várias páginas na mesma sessão, com contraste de leitura e metadados de
 ordenação. O Perfil oferece exportação, restauração e limpeza dos dados locais, sempre com confirmação.
 
-No Estúdio da matéria, a aba Vídeo aula também pode buscar aulas reais no YouTube. A Azure OpenAI
-transforma a matéria, os subtemas e as preferências do estudante em uma consulta; o backend consulta a
-YouTube Data API v3 e retorna links oficiais, filtrando idioma, região, duração e reprodução externa.
-`YOUTUBE_API_KEY` fica somente no backend.
+No Estúdio da matéria, a aba Vídeo aula também recomenda buscas de aulas em vídeo. A IA transforma a
+matéria, os subtemas e as preferências do estudante em cards com consulta sugerida, foco didático e
+critérios para escolher uma boa aula. O backend não usa a YouTube Data API.
 
 Cada recomendação pode receber feedback, ser salva na trilha da matéria e aparecer na aba Plano. Quando
-existe um simulado concluído, os subtemas com pior desempenho entram automaticamente na próxima busca.
+existe um simulado concluído, os subtemas com pior desempenho entram automaticamente na próxima recomendação.
 
 O modo de documentos é uma captura sequencial local; ele ainda não faz correção geométrica automática,
 detecção de bordas ou sincronização em nuvem.

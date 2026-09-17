@@ -42,14 +42,11 @@ const reactRules = {
   // is changed without a device to verify on. Left visible, not silenced.
   //
   // immutability (4 reports, 2 files) has two UNRELATED triggers, not one:
-  // (1) `player.currentTime = 0` / `player.play()` in LessonPlayer.jsx — expo-video's
-  // documented API; useVideoPlayer deliberately returns a mutable controller, not
-  // immutable data, so the rule's model doesn't fit an imperative media handle.
-  // (2) `beginNarration` referenced inside a closure before its own `function
+  // (1) `beginNarration` referenced inside a closure before its own `function
   // beginNarration() {}` declaration later in the same component, in both
   // components/LessonPlayer.jsx and web/components/LessonPlayer.jsx — a
   // forward-reference the rule flags defensively. Not a runtime bug (function
-  // declarations hoist), just a second false-positive shape from the same rule.
+  // declarations hoist), just a false-positive shape from the rule.
   'react-hooks/set-state-in-effect': 'warn',
   'react-hooks/immutability': 'warn',
 };

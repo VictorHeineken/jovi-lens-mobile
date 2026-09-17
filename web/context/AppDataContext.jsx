@@ -19,22 +19,54 @@ import {
   DEFAULT_LEARNING_PREFERENCES,
 } from '../services/storage.js';
 import { aggregateSubjects } from '../../shared/subjects.js';
+import { mergeDemoSubjectArtifacts } from '../../shared/demoSubjectArtifacts.js';
 
 const AppDataContext = createContext(null);
 
 const ASSET_BASE = '/demo-assets';
 
 const studyAssets = {
-  history: [`${ASSET_BASE}/history-factory.jpg`, `${ASSET_BASE}/history-workers.jpg`, `${ASSET_BASE}/history-railway.jpg`],
+  history: [
+    `${ASSET_BASE}/history-factory.jpg`,
+    `${ASSET_BASE}/history-workers.jpg`,
+    `${ASSET_BASE}/history-railway.jpg`,
+    `${ASSET_BASE}/history-spinning-jenny.jpg`,
+    `${ASSET_BASE}/history-child-labor.jpg`,
+    `${ASSET_BASE}/history-crystal-palace.jpg`,
+  ],
   programming: [`${ASSET_BASE}/programming-code.jpg`, `${ASSET_BASE}/programming-javascript.jpg`, `${ASSET_BASE}/programming-frontend.jpg`],
   books: [`${ASSET_BASE}/books-library.jpg`, `${ASSET_BASE}/books-open.jpg`, `${ASSET_BASE}/books-shelves.jpg`],
   photography: [`${ASSET_BASE}/camera-vintage.jpg`, `${ASSET_BASE}/camera-collection.jpg`, `${ASSET_BASE}/photography-film.jpg`],
+  math: [`${ASSET_BASE}/math-blackboard.jpg`],
+  physics: [`${ASSET_BASE}/physics-pendulum.jpg`],
+  chemistry: [`${ASSET_BASE}/chemistry-beakers.jpg`],
+  biology: [`${ASSET_BASE}/biology-cells.jpg`],
+  geography: [`${ASSET_BASE}/geography-globe.jpg`],
+  arts: [`${ASSET_BASE}/arts-palette.jpg`],
 };
 
 const samples = [
-  { id: 'sample-1', src: `${ASSET_BASE}/demo-default-photo.jpg`, createdAt: '2026-08-25T20:00:00.000Z', source: 'sample', label: 'Livro', aiAvailable: true },
-  { id: 'sample-3', src: `${ASSET_BASE}/demo-resultado-encontrado.jpg`, createdAt: '2026-08-23T15:10:00.000Z', source: 'sample', label: 'Resultado', aiAvailable: false },
-  { id: 'sample-4', src: `${ASSET_BASE}/demo-buscando-texto.jpg`, createdAt: '2026-08-22T11:45:00.000Z', source: 'sample', label: 'Pesquisa', aiAvailable: false },
+  { id: 'sample-1', src: studyAssets.history[0], createdAt: '2026-08-25T19:20:00.000Z', source: 'sample', label: 'Fábrica de velas do século 19', aiAvailable: true },
+  { id: 'sample-2', src: studyAssets.history[1], createdAt: '2026-08-25T11:05:00.000Z', source: 'sample', label: 'Operários saindo da fábrica', aiAvailable: true },
+  { id: 'sample-3', src: studyAssets.history[2], createdAt: '2026-08-24T16:40:00.000Z', source: 'sample', label: 'Locomotiva a vapor de 1814', aiAvailable: true },
+  { id: 'sample-19', src: studyAssets.history[3], createdAt: '2026-08-24T12:25:00.000Z', source: 'sample', label: 'Spinning Jenny e mecanização têxtil', aiAvailable: true },
+  { id: 'sample-20', src: studyAssets.history[4], createdAt: '2026-08-24T10:10:00.000Z', source: 'sample', label: 'Jovem trabalhador em fábrica de algodão', aiAvailable: true },
+  { id: 'sample-21', src: studyAssets.history[5], createdAt: '2026-08-23T18:05:00.000Z', source: 'sample', label: 'Crystal Palace e Grande Exposição de 1851', aiAvailable: true },
+  { id: 'sample-4', src: studyAssets.programming[0], createdAt: '2026-08-24T09:15:00.000Z', source: 'sample', label: 'Código em Python', aiAvailable: true },
+  { id: 'sample-5', src: studyAssets.programming[1], createdAt: '2026-08-23T14:50:00.000Z', source: 'sample', label: 'Código em JavaScript', aiAvailable: true },
+  { id: 'sample-6', src: studyAssets.programming[2], createdAt: '2026-08-23T08:30:00.000Z', source: 'sample', label: 'Editor visual de frontend', aiAvailable: true },
+  { id: 'sample-7', src: studyAssets.books[0], createdAt: '2026-08-22T17:10:00.000Z', source: 'sample', label: 'Estante de livros da biblioteca', aiAvailable: true },
+  { id: 'sample-8', src: studyAssets.books[1], createdAt: '2026-08-22T10:05:00.000Z', source: 'sample', label: 'Livro aberto para leitura', aiAvailable: true },
+  { id: 'sample-9', src: `${ASSET_BASE}/demo-default-photo.jpg`, createdAt: '2026-08-21T15:25:00.000Z', source: 'sample', label: 'Capa do livro fotografado', aiAvailable: true },
+  { id: 'sample-10', src: studyAssets.photography[0], createdAt: '2026-08-21T09:40:00.000Z', source: 'sample', label: 'Parede de câmeras vintage', aiAvailable: true },
+  { id: 'sample-11', src: studyAssets.photography[1], createdAt: '2026-08-20T13:15:00.000Z', source: 'sample', label: 'Vitrine de câmeras raras', aiAvailable: true },
+  { id: 'sample-12', src: studyAssets.photography[2], createdAt: '2026-08-20T08:00:00.000Z', source: 'sample', label: 'Filme fotográfico de 35mm', aiAvailable: true },
+  { id: 'sample-13', src: studyAssets.math[0], createdAt: '2026-08-19T18:30:00.000Z', source: 'sample', label: 'Quadro com criptografia e equações', aiAvailable: true },
+  { id: 'sample-14', src: studyAssets.physics[0], createdAt: '2026-08-19T10:20:00.000Z', source: 'sample', label: 'Experimento de pêndulo em livro de física', aiAvailable: true },
+  { id: 'sample-15', src: studyAssets.chemistry[0], createdAt: '2026-08-18T16:05:00.000Z', source: 'sample', label: 'Béqueres de laboratório', aiAvailable: true },
+  { id: 'sample-16', src: studyAssets.biology[0], createdAt: '2026-08-18T09:35:00.000Z', source: 'sample', label: 'Células vistas ao microscópio', aiAvailable: true },
+  { id: 'sample-17', src: studyAssets.geography[0], createdAt: '2026-08-17T15:45:00.000Z', source: 'sample', label: 'Globo terrestre histórico', aiAvailable: true },
+  { id: 'sample-18', src: studyAssets.arts[0], createdAt: '2026-08-17T08:15:00.000Z', source: 'sample', label: 'Paleta de artista com tinta a óleo', aiAvailable: true },
 ];
 
 // Fontes reais (Wikimedia Commons, domínio público/CC0) documentadas em public/demo-assets/SOURCES.md
@@ -42,6 +74,9 @@ const THEME_SOURCES = {
   historyFactory: { label: 'Apollokerzenfabrik innen (Historisches Museum der Stadt Wien)', url: 'https://commons.wikimedia.org/wiki/File:Apollokerzenfabrik_innen.jpg' },
   historyWorkers: { label: 'M&K Industrial Revolution, 1900', url: 'https://commons.wikimedia.org/wiki/File:MandK_Industrial_Revolution_1900.jpg' },
   historyRailway: { label: 'Locomotiva a vapor, 1814 (Library of Congress)', url: 'https://commons.wikimedia.org/wiki/File:Early_steam_locomotive_with_toothed_%22propelling_wheel%22_which_gripped_a_ribbed_rail_while_other_wheels_rode_on_a_smooth_rail,_and_two_coal_cars_LCCN2006691760.jpg' },
+  historySpinningJenny: { label: "Havgreaves' Spinning Jenny", url: 'https://commons.wikimedia.org/wiki/File:Havgreaves%27_Spinning_Jenny.jpg' },
+  historyChildLabor: { label: 'Youngster working in Carolina cotton mill, 1908', url: 'https://commons.wikimedia.org/wiki/File:Youngster_working_in_Carolina_cotton_mill,_1908.jpg' },
+  historyCrystalPalace: { label: 'Crystal Palace, 1851', url: 'https://commons.wikimedia.org/wiki/File:Crystal_Palace.PNG' },
   programmingCode: { label: 'Python Code', url: 'https://commons.wikimedia.org/wiki/File:Python_Code.jpg' },
   programmingJavascript: { label: 'JavaScript code', url: 'https://commons.wikimedia.org/wiki/File:JavaScript_code.png' },
   programmingFrontend: { label: 'Morfik Visual Designer', url: 'https://commons.wikimedia.org/wiki/File:MorfikVisualDesigner.png' },
@@ -50,13 +85,19 @@ const THEME_SOURCES = {
   cameraVintage: { label: 'Vintage camera', url: 'https://commons.wikimedia.org/wiki/File:Vintage_camera.jpg' },
   cameraCollection: { label: 'Collection of old cameras', url: 'https://commons.wikimedia.org/wiki/File:Collection_of_old_cameras.jpg' },
   photographyFilm: { label: '300 35mm film frame', url: 'https://commons.wikimedia.org/wiki/File:300_35mm_film_frame.jpg' },
+  mathBlackboard: { label: 'Mathematics (cryptography) on a blackboard', url: 'https://commons.wikimedia.org/wiki/File:Mathematics_(cryptography)_on_a_blackboard.jpg' },
+  physicsPendulum: { label: 'Practical physics (1922)', url: 'https://commons.wikimedia.org/wiki/File:Practical_physics_(1922)_(14785046215).jpg' },
+  chemistryBeakers: { label: 'Beakers', url: 'https://commons.wikimedia.org/wiki/File:Beakers.jpg' },
+  biologyCells: { label: 'Purple cells', url: 'https://commons.wikimedia.org/wiki/File:Purple_cells.jpg' },
+  geographyGlobe: { label: 'German terrestrial globe, circa 1725', url: 'https://commons.wikimedia.org/wiki/File:German_terrestrial_globe,_circa_1725.jpg' },
+  artsPalette: { label: "Palette, artist's (AM 1961.64-1)", url: 'https://commons.wikimedia.org/wiki/File:Palette,_artist%27s_(AM_1961.64-1).jpg' },
 };
 
 const sampleNotes = [
   {
     id: 'sample-note-1',
     seed: true,
-    recordId: 'sample-3',
+    recordId: 'sample-1',
     image: studyAssets.history[0],
     images: [studyAssets.history[0]],
     title: 'Como uma fábrica do século 19 organizava a produção',
@@ -77,7 +118,7 @@ const sampleNotes = [
   {
     id: 'sample-note-2',
     seed: true,
-    recordId: 'sample-4',
+    recordId: 'sample-2',
     image: studyAssets.history[1],
     images: [studyAssets.history[1]],
     title: 'A multidão que saía das fábricas no início do século 20',
@@ -98,7 +139,7 @@ const sampleNotes = [
   {
     id: 'sample-note-3',
     seed: true,
-    recordId: 'sample-1',
+    recordId: 'sample-3',
     image: studyAssets.history[2],
     images: [studyAssets.history[2]],
     title: 'A engenharia das primeiras locomotivas a vapor',
@@ -117,9 +158,72 @@ const sampleNotes = [
     createdAt: '2026-08-24T16:40:00.000Z',
   },
   {
+    id: 'sample-note-19',
+    seed: true,
+    recordId: 'sample-19',
+    image: studyAssets.history[3],
+    images: [studyAssets.history[3]],
+    title: 'Spinning Jenny: quando a máquina acelerou o fio',
+    summary: 'A Spinning Jenny multiplicou a produção de fios e ajuda a explicar por que o setor têxtil foi uma das portas de entrada da Revolução Industrial.',
+    keyPoints: [
+      'A mecanização têxtil aumentou a produtividade antes mesmo das fábricas modernas estarem consolidadas',
+      'Uma única pessoa podia operar vários fusos, produzindo mais fio em menos tempo',
+      'O ganho técnico pressionou oficinas e trabalhadores a se adaptarem a um ritmo produtivo mais rápido',
+    ],
+    text: 'A imagem da Spinning Jenny mostra uma máquina simples, mas decisiva: ao multiplicar fusos, ela permitia produzir muito mais fio do que a roca manual. Esse avanço explica por que tecidos ficaram no centro da industrialização britânica e por que tecnologia não aparece isolada: ela muda custos, ritmo de trabalho e a relação entre artesãos, empresários e mercado.',
+    category: 'História',
+    subcategory: 'Mecanização têxtil',
+    topicPath: ['Mecanização têxtil'],
+    sources: [THEME_SOURCES.historySpinningJenny],
+    favorite: false,
+    createdAt: '2026-08-24T12:25:00.000Z',
+  },
+  {
+    id: 'sample-note-20',
+    seed: true,
+    recordId: 'sample-20',
+    image: studyAssets.history[4],
+    images: [studyAssets.history[4]],
+    title: 'Trabalho infantil e a pressão por leis fabris',
+    summary: 'Fotografias de crianças em fábricas ajudam a discutir jornadas longas, baixa proteção social e o surgimento de reformas trabalhistas.',
+    keyPoints: [
+      'Crianças eram empregadas porque recebiam menos e cabiam em espaços estreitos das máquinas',
+      'A rotina industrial expunha trabalhadores jovens a acidentes, poeira e jornadas exaustivas',
+      'Denúncias públicas e mobilização social pressionaram por leis de limitação de jornada e idade mínima',
+    ],
+    text: 'A foto de um jovem trabalhador em uma fábrica de algodão torna concreta uma consequência social da industrialização: nem todo avanço técnico significou melhora imediata de vida. A produção crescia, mas o custo humano aparecia em acidentes, exploração infantil e debates sobre o papel do Estado na proteção dos trabalhadores.',
+    category: 'História',
+    subcategory: 'Trabalho infantil e leis fabris',
+    topicPath: ['Trabalho infantil e leis fabris'],
+    sources: [THEME_SOURCES.historyChildLabor],
+    favorite: true,
+    createdAt: '2026-08-24T10:10:00.000Z',
+  },
+  {
+    id: 'sample-note-21',
+    seed: true,
+    recordId: 'sample-21',
+    image: studyAssets.history[5],
+    images: [studyAssets.history[5]],
+    title: 'Crystal Palace: a indústria exibida como espetáculo',
+    summary: 'A Grande Exposição de 1851 transformou máquinas, produtos e materiais industriais em vitrine de poder econômico e tecnológico.',
+    keyPoints: [
+      'O Crystal Palace simbolizou confiança vitoriana no progresso técnico e na produção industrial',
+      'A exposição reuniu máquinas, matérias-primas e produtos de várias regiões do mundo',
+      'O evento mostra que industrialização também envolve consumo, império, competição e propaganda',
+    ],
+    text: 'O Crystal Palace não era uma fábrica, mas uma vitrine do mundo industrial. Ao reunir máquinas e mercadorias em uma estrutura de ferro e vidro, a Grande Exposição de 1851 apresentava a indústria como sinal de modernidade, poder nacional e integração global. É um bom fechamento para ligar técnica, trabalho e mercado.',
+    category: 'História',
+    subcategory: 'Exposições industriais e consumo',
+    topicPath: ['Exposições industriais e consumo'],
+    sources: [THEME_SOURCES.historyCrystalPalace],
+    favorite: false,
+    createdAt: '2026-08-23T18:05:00.000Z',
+  },
+  {
     id: 'sample-note-4',
     seed: true,
-    recordId: 'sample-3',
+    recordId: 'sample-4',
     image: studyAssets.programming[0],
     images: [studyAssets.programming[0]],
     title: 'Primeiros passos com Python',
@@ -136,7 +240,7 @@ const sampleNotes = [
   {
     id: 'sample-note-5',
     seed: true,
-    recordId: 'sample-4',
+    recordId: 'sample-5',
     image: studyAssets.programming[1],
     images: [studyAssets.programming[1]],
     title: 'Como o JavaScript deixa uma página interativa',
@@ -157,7 +261,7 @@ const sampleNotes = [
   {
     id: 'sample-note-6',
     seed: true,
-    recordId: 'sample-1',
+    recordId: 'sample-6',
     image: studyAssets.programming[2],
     images: [studyAssets.programming[2]],
     title: 'O que define a camada de frontend de um site',
@@ -178,7 +282,7 @@ const sampleNotes = [
   {
     id: 'sample-note-7',
     seed: true,
-    recordId: 'sample-3',
+    recordId: 'sample-7',
     image: studyAssets.books[0],
     images: [studyAssets.books[0]],
     title: 'Por que organizar referências em uma biblioteca ajuda a estudar',
@@ -199,7 +303,7 @@ const sampleNotes = [
   {
     id: 'sample-note-8',
     seed: true,
-    recordId: 'sample-4',
+    recordId: 'sample-8',
     image: studyAssets.books[1],
     images: [studyAssets.books[1]],
     title: 'Ler com atenção: o que muda na leitura ativa',
@@ -220,7 +324,7 @@ const sampleNotes = [
   {
     id: 'sample-note-9',
     seed: true,
-    recordId: 'sample-1',
+    recordId: 'sample-9',
     image: `${ASSET_BASE}/demo-default-photo.jpg`,
     images: [`${ASSET_BASE}/demo-default-photo.jpg`, studyAssets.books[2]],
     title: 'The Photography Storytelling Workshop',
@@ -237,7 +341,7 @@ const sampleNotes = [
   {
     id: 'sample-note-10',
     seed: true,
-    recordId: 'sample-3',
+    recordId: 'sample-10',
     image: studyAssets.photography[0],
     images: [studyAssets.photography[0]],
     title: 'O que uma parede de câmeras vintage revela sobre a evolução da fotografia',
@@ -258,7 +362,7 @@ const sampleNotes = [
   {
     id: 'sample-note-11',
     seed: true,
-    recordId: 'sample-4',
+    recordId: 'sample-11',
     image: studyAssets.photography[1],
     images: [studyAssets.photography[1]],
     title: 'Por que colecionadores guardam câmeras em vitrines fechadas',
@@ -279,7 +383,7 @@ const sampleNotes = [
   {
     id: 'sample-note-12',
     seed: true,
-    recordId: 'sample-1',
+    recordId: 'sample-12',
     image: studyAssets.photography[2],
     images: [studyAssets.photography[2]],
     title: 'Como funcionava um filme fotográfico de 35mm',
@@ -297,6 +401,132 @@ const sampleNotes = [
     favorite: false,
     createdAt: '2026-08-20T08:00:00.000Z',
   },
+  {
+    id: 'sample-note-13',
+    seed: true,
+    recordId: 'sample-13',
+    image: studyAssets.math[0],
+    images: [studyAssets.math[0]],
+    title: 'Criptografia no quadro: por que potências modulares importam',
+    summary: 'Um quadro com contas de criptografia mostra como a matemática discreta transforma operações simples em proteção de dados.',
+    keyPoints: [
+      'A aritmética modular trabalha com restos de divisão, como um relógio que volta ao início',
+      'Potências modulares são fáceis de calcular em uma direção e difíceis de inverter sem a chave',
+      'Protocolos como Diffie-Hellman usam essa assimetria para combinar segredos pela internet',
+    ],
+    text: 'A lousa mostra expressões típicas de criptografia: números elevados a potências e reduzidos por módulo. A ideia central é que algumas operações matemáticas são rápidas para quem conhece os parâmetros certos, mas muito custosas de desfazer por tentativa. É esse desequilíbrio que permite criar chaves seguras mesmo quando parte da conversa acontece em público.',
+    category: 'Matemática',
+    subcategory: 'Criptografia e aritmética modular',
+    topicPath: ['Criptografia e aritmética modular'],
+    sources: [THEME_SOURCES.mathBlackboard],
+    favorite: false,
+    createdAt: '2026-08-19T18:30:00.000Z',
+  },
+  {
+    id: 'sample-note-14',
+    seed: true,
+    recordId: 'sample-14',
+    image: studyAssets.physics[0],
+    images: [studyAssets.physics[0]],
+    title: 'O pêndulo simples e a medição do tempo',
+    summary: 'Um experimento clássico de pêndulo ajuda a entender período, gravidade e conservação de energia mecânica.',
+    keyPoints: [
+      'O período do pêndulo depende principalmente do comprimento do fio e da gravidade local',
+      'Para pequenas amplitudes, a massa do corpo tem pouca influência no tempo de oscilação',
+      'A energia alterna entre potencial gravitacional e cinética durante o movimento',
+    ],
+    text: 'A figura de um livro antigo de física mostra um pêndulo em condições controladas: comprimento conhecido, deslocamento pequeno e repetição de oscilações. Ao medir o tempo de várias idas e voltas, o estudante reduz erro experimental e observa uma regra importante: alongar o fio aumenta o período, enquanto trocar a massa não altera quase nada no modelo ideal.',
+    category: 'Física',
+    subcategory: 'Oscilações e energia',
+    topicPath: ['Oscilações e energia'],
+    sources: [THEME_SOURCES.physicsPendulum],
+    favorite: true,
+    createdAt: '2026-08-19T10:20:00.000Z',
+  },
+  {
+    id: 'sample-note-15',
+    seed: true,
+    recordId: 'sample-15',
+    image: studyAssets.chemistry[0],
+    images: [studyAssets.chemistry[0]],
+    title: 'Béqueres: medição aproximada e preparo de soluções',
+    summary: 'Béqueres são recipientes versáteis para misturar, aquecer e transferir líquidos, mas não são o instrumento mais preciso de medida.',
+    keyPoints: [
+      'A escala lateral do béquer serve para estimativas, não para medições volumétricas exatas',
+      'O bico facilita transferir líquidos com menor perda durante o despejo',
+      'Para volumes precisos, usa-se pipeta, bureta ou balão volumétrico',
+    ],
+    text: 'Na imagem, três béqueres de tamanhos diferentes mostram por que esse vidro é tão comum em laboratório: ele suporta mistura, aquecimento moderado e transferência de líquidos. A marcação lateral ajuda a se orientar, mas a leitura não tem precisão suficiente para uma titulação ou preparo rigoroso de solução padrão.',
+    category: 'Química',
+    subcategory: 'Vidrarias e medidas',
+    topicPath: ['Vidrarias e medidas'],
+    sources: [THEME_SOURCES.chemistryBeakers],
+    favorite: false,
+    createdAt: '2026-08-18T16:05:00.000Z',
+  },
+  {
+    id: 'sample-note-16',
+    seed: true,
+    recordId: 'sample-16',
+    image: studyAssets.biology[0],
+    images: [studyAssets.biology[0]],
+    title: 'Células ao microscópio e a organização da vida',
+    summary: 'Uma imagem microscópica de células evidencia que tecidos vivos são formados por unidades pequenas, especializadas e organizadas.',
+    keyPoints: [
+      'A célula é a unidade estrutural e funcional dos seres vivos',
+      'Corantes e técnicas de microscopia destacam estruturas que seriam pouco visíveis',
+      'Diferenças de forma e densidade ajudam a identificar estados celulares e tipos de tecido',
+    ],
+    text: 'A fotografia mostra células tingidas em tons de roxo, permitindo distinguir limites, núcleos e regiões mais densas. Em Biologia, imagens assim não são apenas ilustrações bonitas: elas permitem observar padrões de organização, divisão e especialização que conectam a escala microscópica ao funcionamento de órgãos e tecidos.',
+    category: 'Biologia',
+    subcategory: 'Citologia e microscopia',
+    topicPath: ['Citologia e microscopia'],
+    sources: [THEME_SOURCES.biologyCells],
+    favorite: false,
+    createdAt: '2026-08-18T09:35:00.000Z',
+  },
+  {
+    id: 'sample-note-17',
+    seed: true,
+    recordId: 'sample-17',
+    image: studyAssets.geography[0],
+    images: [studyAssets.geography[0]],
+    title: 'Globo terrestre e a diferença entre mapa e superfície real',
+    summary: 'Um globo histórico ajuda a entender projeções cartográficas, orientação e a dificuldade de representar a Terra em uma folha plana.',
+    keyPoints: [
+      'O globo preserva melhor relações de forma e distância do que um mapa plano',
+      'Toda projeção cartográfica distorce alguma combinação de área, forma, distância ou direção',
+      'Globos históricos registram também a visão de mundo e os limites do conhecimento de sua época',
+    ],
+    text: 'A foto de um globo terrestre do século XVIII mostra a Terra como uma superfície curva, não como um retângulo. Quando essa esfera é transformada em mapa plano, alguma distorção é inevitável. Por isso, estudar projeções cartográficas é estudar escolhas: o que preservar, o que deformar e para qual finalidade o mapa será usado.',
+    category: 'Geografia',
+    subcategory: 'Cartografia e projeções',
+    topicPath: ['Cartografia e projeções'],
+    sources: [THEME_SOURCES.geographyGlobe],
+    favorite: false,
+    createdAt: '2026-08-17T15:45:00.000Z',
+  },
+  {
+    id: 'sample-note-18',
+    seed: true,
+    recordId: 'sample-18',
+    image: studyAssets.arts[0],
+    images: [studyAssets.arts[0]],
+    title: 'Paleta de pintura: cor, mistura e processo artístico',
+    summary: 'Uma paleta de artista preserva rastros de mistura, escolha cromática e decisões tomadas antes da tinta chegar à tela.',
+    keyPoints: [
+      'A paleta revela relações entre cores usadas em uma obra',
+      'Misturar tintas permite ajustar saturação, temperatura e valor tonal',
+      'Marcas de uso mostram o processo do artista, não apenas o resultado final',
+    ],
+    text: 'A imagem mostra uma paleta de madeira coberta por tinta a óleo seca. Antes de uma cor aparecer na tela, ela costuma ser testada, misturada e comparada na paleta. Observar esse objeto ajuda a estudar arte como processo: escolhas de contraste, harmonia e intensidade acontecem durante a preparação da cor.',
+    category: 'Artes',
+    subcategory: 'Cor e composição',
+    topicPath: ['Cor e composição'],
+    sources: [THEME_SOURCES.artsPalette],
+    favorite: false,
+    createdAt: '2026-08-17T08:15:00.000Z',
+  },
 ];
 
 function getInitialNotes() {
@@ -306,6 +536,7 @@ function getInitialNotes() {
     if (!sample) return note;
     return {
       ...note,
+      recordId: sample.recordId,
       image: sample.image,
       images: sample.images,
       topicPath: Array.isArray(note.topicPath) && note.topicPath.length > 1 ? note.topicPath : sample.topicPath,
@@ -317,6 +548,12 @@ function getInitialNotes() {
   if (!changed) return stored;
   persistNotes(merged);
   return merged;
+}
+
+function getInitialSubjectArtifacts() {
+  const { artifacts, changed } = mergeDemoSubjectArtifacts(getSubjectArtifacts());
+  if (changed) persistSubjectArtifacts(artifacts);
+  return artifacts;
 }
 
 export function AppDataProvider({ children }) {
@@ -338,7 +575,7 @@ export function AppDataProvider({ children }) {
   });
   const [plan, setPlanState] = useState(() => getPlan());
   const [user, setUserState] = useState(() => getUser());
-  const [subjectArtifacts, setSubjectArtifactsState] = useState(() => getSubjectArtifacts());
+  const [subjectArtifacts, setSubjectArtifactsState] = useState(getInitialSubjectArtifacts);
   const [learningPreferences, setLearningPreferencesState] = useState(() => getLearningPreferences());
 
   useEffect(() => {
@@ -507,8 +744,9 @@ export function AppDataProvider({ children }) {
     persistPlan({ type: 'free' });
     setUserState(null);
     persistUser(null);
-    setSubjectArtifactsState({});
-    persistSubjectArtifacts({});
+    const { artifacts } = mergeDemoSubjectArtifacts({});
+    setSubjectArtifactsState(artifacts);
+    persistSubjectArtifacts(artifacts);
     setLearningPreferencesState(DEFAULT_LEARNING_PREFERENCES);
     persistLearningPreferences(DEFAULT_LEARNING_PREFERENCES);
   }, []);

@@ -28,6 +28,7 @@ export async function ensureMediaDirExists() {
 }
 
 export const DEFAULT_LEARNING_PREFERENCES = {
+  studyGoal: 'vestibular',
   videoStyle: 'animated',
   duration: 'standard',
   level: 'intermediate',

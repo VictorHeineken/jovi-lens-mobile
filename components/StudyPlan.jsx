@@ -148,13 +148,13 @@ function SavedLessons({ lessons = [] }) {
     <View className="gap-2">
       <View className="flex-row items-center gap-1.5">
         <Icon name="bookmark" size={13} color="#64748b" />
-        <Text className="text-[12px] font-semibold text-slate-500">Aulas salvas na trilha</Text>
+        <Text className="text-[12px] font-semibold text-slate-500">Buscas de aula salvas</Text>
       </View>
       {lessons.map((lesson) => (
         <Pressable accessibilityRole="button" key={lesson.id} onPress={() => Linking.openURL(lesson.url)} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
           <View className="flex-1 gap-0.5">
             <View className="flex-row items-center gap-1.5">
-              <Icon name="play" size={12} color="#4f46e5" />
+              <Icon name="search" size={12} color="#4f46e5" />
               <Text className="flex-1 text-[13px] font-semibold text-slate-900" numberOfLines={1}>{lesson.title}</Text>
             </View>
             <Text className="text-[11px] text-slate-400">{lesson.channelTitle}</Text>

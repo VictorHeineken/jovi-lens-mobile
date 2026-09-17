@@ -8,6 +8,6 @@ export async function completeWithDemo({ action = 'analyze', question = '' }) {
   return { result: getDemoAction({ action, question }), provider: 'demo', model: 'jovi-lens-demo' };
 }
 
-export async function completeSubjectWithDemo({ action = 'questions', subject = {} }) {
-  return { result: getSubjectDemo({ action, subject }), provider: 'demo', model: 'jovi-lens-demo' };
+export async function completeSubjectWithDemo({ action = 'questions', subject = {}, preferences = {} }) {
+  return { result: getSubjectDemo({ action, subject, preferences }), provider: 'demo', model: 'jovi-lens-demo' };
 }

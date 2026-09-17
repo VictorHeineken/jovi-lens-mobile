@@ -10,6 +10,7 @@ const SUBJECT_KEY = 'jovi_mobile_subject_artifacts_v1';
 const LEARNING_PREFERENCES_KEY = 'jovi_mobile_learning_preferences_v1';
 
 export const DEFAULT_LEARNING_PREFERENCES = {
+  studyGoal: 'vestibular',
   videoStyle: 'animated',
   duration: 'standard',
   level: 'intermediate',

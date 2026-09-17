@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
+import { DEMO_SUBJECT_ARTIFACTS } from '../shared/demoSubjectArtifacts.js';
 
 function formatClock(seconds) {
   const m = Math.floor(Math.max(0, seconds) / 60);
@@ -20,7 +21,7 @@ function computeByTopic(questions, answers) {
   return byTopic;
 }
 
-export default function SubjectExam({ subject, savedResult, onResult }) {
+export default function SubjectExam({ subject, savedExam, savedResult, onResult }) {
   const [phase, setPhase] = useState('idle'); // idle | loading | running | done
   const [exam, setExam] = useState(null);
   const [error, setError] = useState('');
@@ -29,12 +30,20 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
   const [result, setResult] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const timerRef = useRef(null);
+  const generationTimeoutRef = useRef(null);
   const answersRef = useRef({});
   const examRef = useRef(null);
   const finishedRef = useRef(false);
   const mountedRef = useRef(true);
 
-  useEffect(() => () => { mountedRef.current = false; clearInterval(timerRef.current); }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearInterval(timerRef.current);
+      clearTimeout(generationTimeoutRef.current);
+    };
+  }, []);
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { examRef.current = exam; }, [exam]);
   // Auto-submit when the clock runs out (kept out of the setState updater so
@@ -88,6 +97,46 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
     }
   }
 
+  function openReadyResult() {
+    if (!savedResult) return;
+    clearInterval(timerRef.current);
+    setExam(savedExam || { subject: subject.name, durationMinutes: 10, questions: savedResult.questions || [] });
+    examRef.current = savedExam || { subject: subject.name, durationMinutes: 10, questions: savedResult.questions || [] };
+    setResult(savedResult);
+    setPhase('done');
+  }
+
+  function getReadyExam() {
+    return savedExam
+      || (savedResult?.questions?.length ? { subject: subject.name, durationMinutes: 10, questions: savedResult.questions } : null)
+      || DEMO_SUBJECT_ARTIFACTS[subject.name]?.exam?.data
+      || null;
+  }
+
+  function practiceReadyExam() {
+    const readyExam = getReadyExam();
+    if (!readyExam?.questions?.length) return start();
+    clearInterval(timerRef.current);
+    clearTimeout(generationTimeoutRef.current);
+    setError('');
+    setAnswers({});
+    answersRef.current = {};
+    finishedRef.current = false;
+    setResult(null);
+    setCurrent(0);
+    setPhase('loading');
+    generationTimeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current) return;
+      setExam(readyExam);
+      examRef.current = readyExam;
+      setSecondsLeft((readyExam.durationMinutes || 10) * 60);
+      setPhase('running');
+      timerRef.current = setInterval(() => {
+        setSecondsLeft((value) => Math.max(0, value - 1));
+      }, 1000);
+    }, 2000);
+  }
+
   if (phase === 'idle') {
     return (
       <View className="gap-3">
@@ -106,9 +155,15 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
           </View>
         ) : null}
         {error ? <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View> : null}
-        <Pressable accessibilityRole="button" onPress={start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        {savedResult ? (
+          <Pressable accessibilityRole="button" onPress={openReadyResult} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-3">
+            <Icon name="history" size={16} color="#475569" />
+            <Text className="text-[14px] font-semibold text-slate-600">Ver último resultado</Text>
+          </Pressable>
+        ) : null}
+        <Pressable accessibilityRole="button" onPress={getReadyExam() ? practiceReadyExam : start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="target" size={16} color="#ffffff" />
-          <Text className="text-[14px] font-semibold text-white">Iniciar simulado</Text>
+          <Text className="text-[14px] font-semibold text-white">Fazer simulado</Text>
         </Pressable>
       </View>
     );
@@ -118,7 +173,7 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
     return (
       <View className="flex-row items-center gap-2 py-4">
         <ActivityIndicator color="#4f46e5" />
-        <Text className="text-[13px] text-slate-500">Montando seu simulado de {subject.name}...</Text>
+        <Text className="text-[13px] text-slate-500">Gerando novo simulado de {subject.name}...</Text>
       </View>
     );
   }
@@ -168,7 +223,7 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
             );
           })}
         </View>
-        <Pressable accessibilityRole="button" onPress={start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        <Pressable accessibilityRole="button" onPress={getReadyExam() ? practiceReadyExam : start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="rotate" size={15} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Refazer simulado</Text>
         </Pressable>
