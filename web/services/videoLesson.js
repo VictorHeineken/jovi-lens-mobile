@@ -1,4 +1,5 @@
 import { isDemoMode } from './imageAnalysis.js';
+import { apiFetch } from './apiClient.js';
 
 // Starts the Sora opening clip. Returns { available:false } in Demo Mode or when
 // the server reports Sora isn't configured — the lesson then uses a title card.
@@ -6,7 +7,7 @@ export async function startOpeningClip({ prompt, seconds = 5 }) {
   if (isDemoMode() || !prompt) return { available: false };
   let response;
   try {
-    response = await fetch('/api/video-lesson', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, seconds }) });
+    response = await apiFetch('/api/video-lesson', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, seconds }) });
   } catch {
     return { available: false };
   }
@@ -19,7 +20,7 @@ export async function startOpeningClip({ prompt, seconds = 5 }) {
 export async function pollOpeningClip(jobId) {
   let response;
   try {
-    response = await fetch(`/api/video-lesson?jobId=${encodeURIComponent(jobId)}`);
+    response = await apiFetch(`/api/video-lesson?jobId=${encodeURIComponent(jobId)}`);
   } catch {
     return { status: 'failed' };
   }

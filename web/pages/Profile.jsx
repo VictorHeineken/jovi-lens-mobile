@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { isDemoMode } from '../services/imageAnalysis.js';
 import { createBackup, downloadBackup, readBackupFile } from '../services/dataTransfer.js';
+import { isGoogleSignInConfigured, renderGoogleSignInButton, signOutGoogle } from '../services/googleAuth.js';
 
 const DEMO_USER = {
   id: 'demo-student',
@@ -15,10 +16,22 @@ export default function Profile() {
   const { user, setUser, plan, setPlan, records, notes, aiHistory, subjectArtifacts, learningPreferences, setLearningPreferences, restoreLocalData, clearLocalData } = useAppData();
   const [authMessage, setAuthMessage] = useState('');
   const fileRef = useRef(null);
+  const googleButtonRef = useRef(null);
   const demoMode = isDemoMode();
 
   const trialActive = plan.type === 'trial' && new Date(plan.endsAt) > new Date();
   const daysLeft = trialActive ? Math.max(1, Math.ceil((new Date(plan.endsAt) - new Date()) / 86400000)) : 0;
+
+  useEffect(() => {
+    if (user || !isGoogleSignInConfigured()) return;
+    renderGoogleSignInButton(googleButtonRef.current, ({ user: googleUser, error }) => {
+      if (error) setAuthMessage(error);
+      else {
+        setUser(googleUser);
+        setAuthMessage('Login com Google realizado.');
+      }
+    });
+  }, [user, setUser]);
 
   function enterDemoAccount() {
     setUser(DEMO_USER);
@@ -26,8 +39,9 @@ export default function Profile() {
   }
 
   function leaveDemoAccount() {
+    signOutGoogle();
     setUser(null);
-    setAuthMessage('Você saiu da conta de demonstração.');
+    setAuthMessage('Você saiu da conta.');
   }
 
   function activateCopilot() {
@@ -96,6 +110,12 @@ export default function Profile() {
         </div>
         {user && <button className="text-button" onClick={leaveDemoAccount}>Sair</button>}
       </section>
+
+      {!user && isGoogleSignInConfigured() && <section className="google-signin-card">
+        <h2>Entrar com sua conta Google</h2>
+        <p>Sua cota de uso da IA passa a ser controlada pela sua conta em vez do seu endereço na rede.</p>
+        <div className="google-button-slot" ref={googleButtonRef} />
+      </section>}
 
       {!user && <section className="demo-auth-card">
         <div className="demo-card-top"><span className="plan-label">Fluxo de apresentação</span><span className="demo-badge">DEMO · SEM LOGIN REAL</span></div>

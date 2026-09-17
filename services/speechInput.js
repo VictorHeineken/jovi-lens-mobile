@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { AudioModule, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
 import { ExpoSpeechRecognitionModule, ExpoWebSpeechRecognition } from 'expo-speech-recognition';
 import { isDemoMode } from './env.js';
-import { apiUrl } from './apiClient.js';
+import { apiFetch } from './apiClient.js';
 
 export function speechRecognitionAvailable() {
   try {
@@ -94,7 +94,7 @@ async function startServerRecording({ onFinal, onError, onEnd, onState }) {
       const base64 = await FileSystem.readAsStringAsync(recorder.uri, { encoding: FileSystem.EncodingType.Base64 });
       // RecordingPresets.HIGH_QUALITY writes an .m4a (AAC/MPEG4) file on both
       // platforms — matches one of api/transcribe.js's accepted mime types.
-      const response = await fetch(apiUrl('/api/transcribe'), {
+      const response = await apiFetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ audio: base64, mimeType: 'audio/m4a' }),

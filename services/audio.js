@@ -1,7 +1,7 @@
 import { createAudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import { isDemoMode } from './env.js';
-import { apiUrl } from './apiClient.js';
+import { apiFetch } from './apiClient.js';
 
 // "Browser" pitch differentiates speakers when only one pt-BR voice exists for
 // the on-device fallback (expo-speech, RN's equivalent of speechSynthesis).
@@ -38,7 +38,7 @@ function ensureVoiceLookup() {
 async function fetchLiveTts(text, voice) {
   let response;
   try {
-    response = await fetch(apiUrl('/api/tts'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
+    response = await apiFetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
   } catch {
     liveTtsAvailable = false;
     return null;

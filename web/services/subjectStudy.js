@@ -1,5 +1,6 @@
 import { getSubjectDemo } from '../../shared/demoResponses.js';
 import { isDemoMode } from './imageAnalysis.js';
+import { apiFetch } from './apiClient.js';
 
 // Only the request half lives here. The subject aggregation is identical on both
 // clients and lives in shared/subjects.js; this file keeps what is genuinely
@@ -17,7 +18,7 @@ export async function generateSubjectContent(subject, { action, format } = {}) {
 
   let response;
   try {
-    response = await fetch('/api/subject-ai', {
+    response = await apiFetch('/api/subject-ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, subject: payloadSubject }),

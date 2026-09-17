@@ -2,9 +2,40 @@
 // Extracted from api/analyze-image.js so every endpoint reuses the same
 // client identification, rate limiting and payload validation.
 
+import { timingSafeEqual } from 'node:crypto';
+import { verifySession } from './session.js';
+
 const rateBuckets = new Map();
 
+// Static shared-secret gate — see auth-plan.md Phase 1. This is a speed bump
+// against casual/accidental use of the paid AI quota by other devices on the
+// same LAN, not real authentication: the key ships inside the app bundle and
+// web build, so anyone who extracts it can still call the API directly.
+// Phase 2 (device attestation + per-account quota) replaces/augments this.
+export function hasValidApiKey(req) {
+  const expected = process.env.JOVI_API_KEY;
+  if (!expected) return true; // unset = feature opt-in, same pattern as GOOGLE_CLIENT_ID
+  const provided = String(req.headers['x-api-key'] || '');
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+// Reads the app-issued session from `Authorization: Bearer <token>` (see
+// api/_lib/session.js and auth-plan.md Phase 2). `provided` distinguishes "no
+// header" (fine — falls back to IP-based limiting, logged-out use stays
+// allowed) from "header present but invalid/expired" (the caller should
+// reject with 401 rather than silently falling back, so a stale token can't
+// quietly ride on IP-based limits after logout/expiry).
+export function sessionUser(req) {
+  const header = String(req.headers['authorization'] || '');
+  if (!header.startsWith('Bearer ')) return { provided: false, user: null };
+  return { provided: true, user: verifySession(header.slice(7)) };
+}
+
 export function clientKey(req) {
+  const { user } = sessionUser(req);
+  if (user) return `user:${user.sub}`;
   // Prefer the transport-level peer address (set by the local server from the
   // socket) — never key primarily on a client-supplied X-Forwarded-For, whose
   // left-most entry the client controls and could rotate to defeat the limiter.

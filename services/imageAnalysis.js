@@ -7,7 +7,7 @@ import * as Linking from 'expo-linking';
 import { getDemoAction, getDemoAnalysis } from '../shared/demoResponses.js';
 import { demoAssetModule } from './demoAssets.js';
 import { isDemoMode } from './env.js';
-import { apiUrl } from './apiClient.js';
+import { apiFetch } from './apiClient.js';
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -77,7 +77,7 @@ async function requestAnalysis(src, { action = 'analyze', question = '', context
 
   let response;
   try {
-    response = await fetch(apiUrl('/api/analyze-image'), {
+    response = await apiFetch('/api/analyze-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: base64, mimeType, action, question, context }),

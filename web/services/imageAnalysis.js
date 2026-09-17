@@ -1,4 +1,5 @@
 import { getDemoAction, getDemoAnalysis } from '../../shared/demoResponses.js';
+import { apiFetch } from './apiClient.js';
 
 const CLIENT_DEMO_MODE = String(import.meta.env?.VITE_JOVI_LENS_DEMO_MODE ?? 'true').toLowerCase() === 'true';
 const MAX_FILE_SIZE = 12 * 1024 * 1024;
@@ -72,7 +73,7 @@ async function requestAnalysis(src, { action = 'analyze', question = '', context
 
   let response;
   try {
-    response = await fetch('/api/analyze-image', {
+    response = await apiFetch('/api/analyze-image', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: base64, mimeType, action, question, context }),
