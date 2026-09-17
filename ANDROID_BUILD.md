@@ -153,7 +153,10 @@ bash scripts/phone-dev.sh 192.168.1.50 --install android/app/build/outputs/apk/r
 Ele pareia, descobre a porta de conexão (mDNS, ou scan de portas quando o mDNS não funciona, como
 no WSL), cria `adb reverse tcp:8787 tcp:8787`, sobe o servidor só em `127.0.0.1` e abre o app. Se
 o celular dormir e a conexão cair, ele reconecta. **Ctrl+C** derruba o servidor, remove o túnel e
-desconecta. Exige um APK compilado com `EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8787`, e o app só
+desconecta. Se faltar o adb ou o Node 20.6+, o script baixa os dois em `~/.jovi-lens` (sem
+precisar de administrador) e os coloca no PATH via `~/.zshrc` (macOS) ou `~/.bashrc` (Git Bash,
+WSL); use `--no-install` para desativar. Precisa apenas de `curl` e do `.env` — que não está no
+repositório: copie-o da outra máquina, com o mesmo `JOVI_API_KEY` embutido no APK. Exige um APK compilado com `EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8787`, e o app só
 alcança o backend enquanto o script está rodando.
 
 ### Opção A — adb por Wi-Fi, manual
