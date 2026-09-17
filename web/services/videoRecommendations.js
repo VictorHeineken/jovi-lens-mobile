@@ -13,6 +13,17 @@ const DEMO_GOAL_LABELS = {
   school_exam: 'prova da escola',
   general: 'revisão geral',
 };
+const DEMO_PRACTICE_LABELS = {
+  concept_first: 'conceitos explicados',
+  questions_first: 'questões resolvidas',
+  mixed: 'explicação e exercícios',
+};
+const DEMO_REVIEW_LABELS = {
+  spaced: 'revisão espaçada',
+  retrieval: 'teste ativo',
+  interleaved: 'comparação de temas',
+  flashcards: 'flashcards',
+};
 
 function searchUrl(query) {
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
@@ -22,12 +33,14 @@ function demoRecommendations(subject, preferences = {}) {
   const name = String(subject?.name || 'a matéria').trim();
   const style = DEMO_STYLE_LABELS[preferences.videoStyle] || DEMO_STYLE_LABELS.balanced;
   const goal = DEMO_GOAL_LABELS[preferences.studyGoal] || DEMO_GOAL_LABELS.vestibular;
-  const query = `${name} aula ${goal} ${style}`.slice(0, 180);
+  const practice = DEMO_PRACTICE_LABELS[preferences.practiceMode] || DEMO_PRACTICE_LABELS.mixed;
+  const review = DEMO_REVIEW_LABELS[preferences.reviewMethod] || DEMO_REVIEW_LABELS.spaced;
+  const query = `${name} aula ${goal} ${practice} ${review} ${style}`.slice(0, 180);
   return {
     mode: 'demo',
     query,
     focus: `Busca de demonstração para ${name}.`,
-    reason: `prioriza ${goal} e uma aula ${style}`,
+    reason: `prioriza ${goal}, ${practice}, ${review} e uma aula ${style}`,
     videos: [{
       id: 'demo-video-search',
       title: `Aula-base de ${name}`,
@@ -37,8 +50,8 @@ function demoRecommendations(subject, preferences = {}) {
       thumbnail: '',
       url: searchUrl(query),
       searchQuery: query,
-      didacticReason: 'Procure uma aula que explique primeiro, resolva depois e termine com uma revisão curta.',
-      watchFor: ['Explicação passo a passo', 'Exercício resolvido', 'Resumo no final'],
+      didacticReason: `Procure uma aula que combine ${practice} com ${review}, sem perder clareza.`,
+      watchFor: ['Explicação passo a passo', 'Exercício resolvido', 'Resumo no final', review],
       estimatedMinutes: preferences.duration === 'short' ? 12 : preferences.duration === 'long' ? 45 : 25,
     }],
   };

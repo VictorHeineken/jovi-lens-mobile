@@ -12,6 +12,19 @@ const GOAL_TERMS = {
   general: ['revisão', 'fundamentos', 'aula'],
 };
 
+const PRACTICE_TERMS = {
+  concept_first: ['conceitos', 'explicação'],
+  questions_first: ['questões', 'resolução'],
+  mixed: ['explicação exercícios'],
+};
+
+const REVIEW_TERMS = {
+  spaced: ['revisão espaçada'],
+  retrieval: ['teste ativo', 'questões'],
+  interleaved: ['comparação de temas'],
+  flashcards: ['flashcards', 'resumo'],
+};
+
 const STYLE_REASONS = {
   animated: 'prioriza ritmo, recursos visuais e exemplos dinâmicos',
   balanced: 'equilibra explicação, exemplos e ritmo de estudo',
@@ -24,6 +37,19 @@ const GOAL_REASONS = {
   enem: 'com foco em ENEM',
   school_exam: 'com foco em prova da escola',
   general: 'com foco em revisão geral',
+};
+
+const PRACTICE_REASONS = {
+  concept_first: 'começando por conceito',
+  questions_first: 'começando por questões',
+  mixed: 'alternando explicação e prática',
+};
+
+const REVIEW_REASONS = {
+  spaced: 'com revisão espaçada',
+  retrieval: 'com teste ativo',
+  interleaved: 'misturando subtemas',
+  flashcards: 'com flashcards',
 };
 
 const DURATION_HINTS = {
@@ -41,7 +67,9 @@ const asList = (value, max = 4) => Array.isArray(value)
 function preferenceTerms(preferences = {}) {
   const goal = GOAL_TERMS[preferences.studyGoal] || GOAL_TERMS.vestibular;
   const style = STYLE_TERMS[preferences.videoStyle] || STYLE_TERMS.balanced;
-  return [goal[0], ...style.slice(0, 2)].filter(Boolean);
+  const practice = PRACTICE_TERMS[preferences.practiceMode] || PRACTICE_TERMS.mixed;
+  const review = REVIEW_TERMS[preferences.reviewMethod] || REVIEW_TERMS.spaced;
+  return [goal[0], practice[0], review[0], ...style.slice(0, 1)].filter(Boolean);
 }
 
 function searchUrl(query) {
@@ -60,13 +88,15 @@ export function fallbackVideoSearchQuery(subject, preferences = {}) {
     ? [...new Set(subject.notes.flatMap((note) => [note?.subtheme, note?.subcategory]).filter(Boolean))].slice(0, 3)
     : [];
   const weakTopics = Array.isArray(subject?.weakTopics) ? subject.weakTopics.slice(0, 2) : [];
-  return [name, ...weakTopics, ...subthemes, ...preferenceTerms(preferences).slice(0, 2), 'aula'].join(' ').slice(0, 180);
+  return [name, ...weakTopics, ...subthemes, ...preferenceTerms(preferences).slice(0, 4), 'aula'].join(' ').slice(0, 180);
 }
 
 export function styleMatchReason(preferences = {}) {
   const style = STYLE_REASONS[preferences.videoStyle] || STYLE_REASONS.balanced;
   const goal = GOAL_REASONS[preferences.studyGoal] || GOAL_REASONS.vestibular;
-  return `${goal}; ${style}`;
+  const practice = PRACTICE_REASONS[preferences.practiceMode] || PRACTICE_REASONS.mixed;
+  const review = REVIEW_REASONS[preferences.reviewMethod] || REVIEW_REASONS.spaced;
+  return `${goal}; ${practice}; ${review}; ${style}`;
 }
 
 export function normalizeVideoRecommendations(plan = {}, subject = {}, preferences = {}, meta = {}) {

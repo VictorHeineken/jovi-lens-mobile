@@ -51,13 +51,15 @@ test('getSubjectDemo builds questions from the notes it is given', () => {
   const result = getSubjectDemo({
     action: 'questions',
     subject: { name: 'História', notes: [{ subtheme: 'Revolução Industrial', title: 'As fábricas de Viena' }] },
-    preferences: { studyGoal: 'enem' },
+    preferences: { studyGoal: 'enem', practiceMode: 'questions_first', reviewMethod: 'retrieval' },
   });
   assert.equal(result.subject, 'História');
   assert.equal(result.questions.length, 1);
   assert.match(result.questions[0].question, /Revolução Industrial/);
   assert.match(result.questions[0].question, /ENEM/);
   assert.match(result.questions[0].question, /As fábricas de Viena/);
+  assert.match(result.questions[0].answer, /questões primeiro/);
+  assert.match(result.questions[0].answer, /teste ativo/);
   assert.equal(result.questions[0].topic, 'Revolução Industrial');
 });
 
@@ -104,6 +106,20 @@ test('getSubjectDemo exam returns the flat shape SubjectExam reads', () => {
     // `q.topic`, so both fields are load-bearing, not decorative.
     assert.ok(item.topic, 'each question needs a topic for the per-topic breakdown');
   });
+});
+
+test('getSubjectDemo plan reflects global study strategy, pace and review method', () => {
+  const result = getSubjectDemo({
+    action: 'plan',
+    subject: { name: 'História', notes: [{ subtheme: 'Indústria' }, { subtheme: 'Transporte' }] },
+    preferences: { studyContext: 'exam_season', weeklyPace: 'intense', practiceMode: 'questions_first', reviewMethod: 'interleaved' },
+  });
+
+  assert.match(result.overview, /período de provas/);
+  assert.match(result.overview, /ritmo intensivo/);
+  assert.equal(result.sessions[0].durationMinutes, 45);
+  assert.ok(result.sessions[0].tasks.some((task) => /Resolver primeiro/.test(task)));
+  assert.ok(result.sessions[0].tasks.some((task) => /Comparar este subtema/.test(task)));
 });
 
 test('getSubjectDemo podcast drive mode is hands-free friendly', () => {

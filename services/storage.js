@@ -29,6 +29,10 @@ export async function ensureMediaDirExists() {
 
 export const DEFAULT_LEARNING_PREFERENCES = {
   studyGoal: 'vestibular',
+  studyContext: 'classes',
+  weeklyPace: 'regular',
+  practiceMode: 'mixed',
+  reviewMethod: 'spaced',
   videoStyle: 'animated',
   duration: 'standard',
   level: 'intermediate',

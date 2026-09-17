@@ -19,6 +19,10 @@ function safeInput(body) {
   }));
   const preferences = body?.preferences && typeof body.preferences === 'object' ? {
     studyGoal: typeof body.preferences.studyGoal === 'string' ? body.preferences.studyGoal : 'vestibular',
+    studyContext: typeof body.preferences.studyContext === 'string' ? body.preferences.studyContext : 'classes',
+    weeklyPace: typeof body.preferences.weeklyPace === 'string' ? body.preferences.weeklyPace : 'regular',
+    practiceMode: typeof body.preferences.practiceMode === 'string' ? body.preferences.practiceMode : 'mixed',
+    reviewMethod: typeof body.preferences.reviewMethod === 'string' ? body.preferences.reviewMethod : 'spaced',
     videoStyle: typeof body.preferences.videoStyle === 'string' ? body.preferences.videoStyle : 'balanced',
     duration: typeof body.preferences.duration === 'string' ? body.preferences.duration : 'standard',
     level: typeof body.preferences.level === 'string' ? body.preferences.level : 'intermediate',

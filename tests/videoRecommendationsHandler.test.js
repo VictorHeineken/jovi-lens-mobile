@@ -54,7 +54,7 @@ test('video recommendations handler returns demo search cards without external A
           notes: [{ title: 'Lançamento oblíquo', summary: 'Movimento em duas dimensões.', subtheme: 'Cinemática' }],
           weakTopics: ['decomposição vetorial'],
         },
-        preferences: { studyGoal: 'enem', videoStyle: 'exam', duration: 'short', level: 'intermediate' },
+        preferences: { studyGoal: 'enem', videoStyle: 'exam', duration: 'short', level: 'intermediate', practiceMode: 'questions_first', reviewMethod: 'retrieval' },
       },
     }), res);
 
@@ -62,6 +62,8 @@ test('video recommendations handler returns demo search cards without external A
     assert.equal(res.body.mode, 'demo');
     assert.ok(res.body.videos.length > 0);
     assert.match(res.body.query, /ENEM/i);
+    assert.match(res.body.reason, /questões/i);
+    assert.match(res.body.reason, /teste ativo/i);
     assert.match(res.body.videos[0].url, /^https:\/\/www\.youtube\.com\/results\?search_query=/);
     assert.equal(res.body.videos[0].channelTitle, 'Busca sugerida');
   } finally {

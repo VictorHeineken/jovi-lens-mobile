@@ -11,6 +11,10 @@ const LEARNING_PREFERENCES_KEY = 'jovi_mobile_learning_preferences_v1';
 
 export const DEFAULT_LEARNING_PREFERENCES = {
   studyGoal: 'vestibular',
+  studyContext: 'classes',
+  weeklyPace: 'regular',
+  practiceMode: 'mixed',
+  reviewMethod: 'spaced',
   videoStyle: 'animated',
   duration: 'standard',
   level: 'intermediate',

@@ -5,12 +5,17 @@ import {
   normalizeVideoRecommendations,
 } from '../api/_lib/videoRecommendations.js';
 
-test('fallbackVideoSearchQuery keeps the subject, weak topics and learning style', () => {
-  const query = fallbackVideoSearchQuery({ name: 'Física', notes: [{ subtheme: 'Cinemática' }], weakTopics: ['Lançamento oblíquo'] }, { studyGoal: 'vestibular', videoStyle: 'animated' });
+test('fallbackVideoSearchQuery keeps the subject, weak topics and learning preferences', () => {
+  const query = fallbackVideoSearchQuery(
+    { name: 'Física', notes: [{ subtheme: 'Cinemática' }], weakTopics: ['Lançamento oblíquo'] },
+    { studyGoal: 'vestibular', videoStyle: 'animated', practiceMode: 'questions_first', reviewMethod: 'retrieval' },
+  );
   assert.match(query, /Física/);
   assert.match(query, /Cinemática/);
   assert.match(query, /Lançamento oblíquo/);
   assert.match(query, /vestibular/);
+  assert.match(query, /questões/);
+  assert.match(query, /teste ativo/);
   assert.match(query, /animada/);
 });
 

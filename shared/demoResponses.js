@@ -111,18 +111,46 @@ function preferenceSeed(preferences = {}) {
     school_exam: { label: 'prova da escola', questionHint: 'com cobrança direta do conteúdo da avaliação', task: 'Revisar definições e causas que podem cair na prova' },
     general: { label: 'revisão geral', questionHint: 'para consolidar fundamentos', task: 'Explicar o tema em voz alta com suas palavras' },
   }[preferences.studyGoal];
-  return { goal: goal || { label: 'vestibular', questionHint: 'com raciocínio de prova e comparação entre ideias', task: 'Resolver duas questões estilo vestibular' } };
+  const studyContext = {
+    classes: { label: 'acompanhar aulas', planHint: 'ligando o conteúdo atual aos fundamentos e próximas revisões' },
+    exam_season: { label: 'período de provas', planHint: 'priorizando revisão ativa, pontos fracos e simulados objetivos' },
+    catch_up: { label: 'recuperar atrasos', planHint: 'reconstruindo fundamentos antes de aumentar a dificuldade' },
+    maintenance: { label: 'manter revisão', planHint: 'preservando memória com retomadas curtas e prática distribuída' },
+  }[preferences.studyContext];
+  const pace = {
+    light: { label: 'ritmo leve', minutes: 20, task: 'Fechar com uma revisão oral de 2 minutos' },
+    regular: { label: 'ritmo regular', minutes: 30, task: 'Registrar uma dúvida e um acerto do dia' },
+    intense: { label: 'ritmo intensivo', minutes: 45, task: 'Fazer uma rodada extra de questões cronometradas' },
+  }[preferences.weeklyPace];
+  const practice = {
+    concept_first: { label: 'entender primeiro', task: 'Explicar o conceito antes de resolver' },
+    questions_first: { label: 'questões primeiro', task: 'Resolver primeiro e depois corrigir os erros' },
+    mixed: { label: 'explicação e prática', task: 'Alternar uma explicação curta com uma questão' },
+  }[preferences.practiceMode];
+  const review = {
+    spaced: { label: 'revisão espaçada', task: 'Agendar uma retomada curta antes de esquecer' },
+    retrieval: { label: 'teste ativo', task: 'Tentar lembrar sem consultar a resposta' },
+    interleaved: { label: 'mistura de temas', task: 'Comparar este subtema com outro já estudado' },
+    flashcards: { label: 'flashcards', task: 'Criar três cartões de pergunta e resposta' },
+  }[preferences.reviewMethod];
+  return {
+    goal: goal || { label: 'vestibular', questionHint: 'com raciocínio de prova e comparação entre ideias', task: 'Resolver duas questões estilo vestibular' },
+    studyContext: studyContext || { label: 'acompanhar aulas', planHint: 'ligando o conteúdo atual aos fundamentos e próximas revisões' },
+    pace: pace || { label: 'ritmo regular', minutes: 30, task: 'Registrar uma dúvida e um acerto do dia' },
+    practice: practice || { label: 'explicação e prática', task: 'Alternar uma explicação curta com uma questão' },
+    review: review || { label: 'revisão espaçada', task: 'Agendar uma retomada curta antes de esquecer' },
+  };
 }
 
 export function getSubjectDemo({ action = 'questions', subject = {}, preferences = {} } = {}) {
   const { name, topics, titles } = subjectSeed(subject);
-  const { goal } = preferenceSeed(preferences);
+  const { goal, studyContext, pace, practice, review } = preferenceSeed(preferences);
 
   if (action === 'questions') {
     const difficulties = ['fácil', 'média', 'difícil'];
     const questions = topics.slice(0, 8).map((topic, i) => ({
       question: `Pensando em ${goal.label}, sobre ${topic} em ${name}: ${titles.length ? `o que "${pick(titles, i, topic)}" ajuda a entender?` : `qual é a ideia central deste tema?`}`,
-      answer: `Retome o conceito de ${topic.toLowerCase()} conectando-o ao restante de ${name}, ${goal.questionHint}. Explique com suas palavras e dê um exemplo próprio.`,
+      answer: `Retome o conceito de ${topic.toLowerCase()} conectando-o ao restante de ${name}, ${goal.questionHint}. Use ${practice.label} e feche com ${review.label}.`,
       topic,
       difficulty: difficulties[i % difficulties.length],
     }));
@@ -139,7 +167,7 @@ export function getSubjectDemo({ action = 'questions', subject = {}, preferences
         `${topic} substitui todos os outros temas da matéria.`,
       ],
       answerIndex: 0,
-      explanation: `Em ${name}, ${topic.toLowerCase()} funciona como um pilar que dá sentido aos outros subtemas — por isso a primeira alternativa está correta.`,
+      explanation: `Em ${name}, ${topic.toLowerCase()} funciona como um pilar que dá sentido aos outros subtemas. Para ${goal.label}, vale corrigir por ${review.label}.`,
       topic,
     }));
     return { subject: name, durationMinutes: 10, questions };
@@ -149,11 +177,11 @@ export function getSubjectDemo({ action = 'questions', subject = {}, preferences
     const sessions = topics.slice(0, 5).map((topic, i) => ({
       label: `Dia ${i + 1}`,
       focus: topic,
-      durationMinutes: 30,
-      tasks: [`Reler as notas de ${topic}`, goal.task, i === 0 ? 'Mapear dúvidas em uma folha' : `Relacionar ${topic} com ${pick(topics, i - 1, 'outro tema')}`],
+      durationMinutes: pace.minutes,
+      tasks: [`Reler as notas de ${topic}`, practice.task, goal.task, review.task, i === 0 ? pace.task : `Relacionar ${topic} com ${pick(topics, i - 1, 'outro tema')}`],
     }));
     const spacedReview = topics.slice(0, 4).map((topic, i) => ({ topic, when: ['em 1 dia', 'em 3 dias', 'em 1 semana', 'em 2 semanas'][i % 4] }));
-    return { subject: name, overview: `Plano curto para consolidar ${name} com foco em ${goal.label}: revise um subtema por dia e reforce com revisão espaçada.`, sessions, spacedReview };
+    return { subject: name, overview: `Plano para consolidar ${name} com foco em ${goal.label}, ${studyContext.label} e ${pace.label}: ${studyContext.planHint}.`, sessions, spacedReview };
   }
 
   if (action === 'podcast-script') {
@@ -161,10 +189,10 @@ export function getSubjectDemo({ action = 'questions', subject = {}, preferences
     if (format === 'drive') {
       const segments = [
         { speaker: 'narrator', text: `Vamos nessa. Este é seu episódio de ${name} para ouvir sem olhar para a tela.` },
-        { speaker: 'narrator', text: `Primeiro, o mapa: suas notas passam por ${topics.slice(0, 3).join(', ')}. Como seu foco é ${goal.label}, vamos ligar uma coisa na outra com exemplos úteis para revisão.` },
+        { speaker: 'narrator', text: `Primeiro, o mapa: suas notas passam por ${topics.slice(0, 3).join(', ')}. Como seu foco é ${goal.label}, vamos ligar uma coisa na outra com exemplos úteis para ${review.label}.` },
         ...topics.slice(0, 8).map((topic, index) => ({
           speaker: 'narrator',
-          text: `Bloco ${index + 1}: ${topic}. Guarde a ideia central. Depois, pense em como esse ponto conversa com o restante de ${name}.`,
+          text: `Bloco ${index + 1}: ${topic}. Guarde a ideia central. Depois, faça um pequeno ${review.label}: tente lembrar a relação desse ponto com o restante de ${name}.`,
         })),
         { speaker: 'narrator', text: `Resumo final: escolha um ponto que ficou claro e um ponto que ainda merece revisão. Quando parar, volte ao app e marque isso no seu plano.` },
       ];
@@ -174,7 +202,7 @@ export function getSubjectDemo({ action = 'questions', subject = {}, preferences
       const segments = [
         { speaker: 'narrator', text: `Bem-vindo. Hoje a revisão é sobre ${name}, sem pressa e sem enrolação.` },
         ...topics.slice(0, 6).map((topic) => ({ speaker: 'narrator', text: `Vamos para ${topic}. O ponto principal é entender onde isso entra no todo, não decorar uma frase solta.` })),
-        { speaker: 'narrator', text: `Para fechar: retome uma nota por dia e teste o que aprendeu com um quiz alinhado ao seu foco em ${goal.label}. Pequeno, mas constante.` },
+        { speaker: 'narrator', text: `Para fechar: retome uma nota por dia, no seu ${pace.label}, e teste o que aprendeu com um quiz alinhado ao seu foco em ${goal.label}. Pequeno, mas constante.` },
       ];
       return { subject: name, format: 'single', title: `Revisão guiada · ${name}`, durationMinutes: 8, takeaways: topics.slice(0, 4), segments };
     }
@@ -187,19 +215,19 @@ export function getSubjectDemo({ action = 'questions', subject = {}, preferences
       segments.push({ speaker: 'B', text: `Muda o quadro. ${topic} ajuda a explicar uma consequência prática, daquelas que aparecem na prova e na vida real.` });
     });
     segments.push({ speaker: 'A', text: `Resumindo pra quem está estudando ${name}?` });
-    segments.push({ speaker: 'B', text: `Um subtema por vez. Depois, um quiz curto. O segredo aqui não é estudar muito de uma vez; é voltar antes de esquecer.` });
+    segments.push({ speaker: 'B', text: `Um subtema por vez. Depois, um quiz curto e ${review.label}. O segredo aqui não é estudar muito de uma vez; é voltar antes de esquecer.` });
     return { subject: name, format: 'dialogue', title: `Conversa sobre ${name}`, durationMinutes: 10, takeaways: topics.slice(0, 4), segments };
   }
 
   // lesson-script
   const slides = [
-    { heading: `Visão geral de ${name}`, bullets: topics.slice(0, 3), narration: `Nesta aula vamos percorrer ${name}, do essencial ao mais avançado, com foco em ${goal.label}.` },
+    { heading: `Visão geral de ${name}`, bullets: topics.slice(0, 3), narration: `Nesta aula vamos percorrer ${name}, do essencial ao mais avançado, com foco em ${goal.label} e ${practice.label}.` },
     ...topics.slice(0, 5).map((topic) => ({
       heading: topic,
       bullets: [`O que é ${topic}`, `Por que importa em ${name}`, 'Exemplo prático'],
       narration: `Vamos entender ${topic}. Observe como ele se relaciona com os outros temas de ${name} e fixe a ideia com um exemplo seu.`,
     })),
-    { heading: 'Próximos passos', bullets: ['Refazer o quiz', 'Revisar em 3 dias', 'Anotar dúvidas'], narration: `Para consolidar ${name}, refaça o quiz, revise em alguns dias e registre o que ainda gera dúvida.` },
+    { heading: 'Próximos passos', bullets: ['Refazer o quiz', review.task, 'Anotar dúvidas'], narration: `Para consolidar ${name}, refaça o quiz, use ${review.label} e registre o que ainda gera dúvida.` },
   ];
   return { subject: name, title: `Aula personalizada · ${name}`, slides };
 }

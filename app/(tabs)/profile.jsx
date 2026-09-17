@@ -22,6 +22,28 @@ const STUDY_GOAL_OPTIONS = [
   { value: 'school_exam', label: 'Prova da escola' },
   { value: 'general', label: 'Revisão geral' },
 ];
+const STUDY_CONTEXT_OPTIONS = [
+  { value: 'classes', label: 'Acompanhar aulas' },
+  { value: 'exam_season', label: 'Período de provas' },
+  { value: 'catch_up', label: 'Recuperar atrasos' },
+  { value: 'maintenance', label: 'Manter revisão' },
+];
+const WEEKLY_PACE_OPTIONS = [
+  { value: 'light', label: 'Leve · 15 min/dia' },
+  { value: 'regular', label: 'Regular · 30 min/dia' },
+  { value: 'intense', label: 'Intensivo · 60 min/dia' },
+];
+const PRACTICE_MODE_OPTIONS = [
+  { value: 'concept_first', label: 'Entender primeiro' },
+  { value: 'questions_first', label: 'Questões primeiro' },
+  { value: 'mixed', label: 'Misto' },
+];
+const REVIEW_METHOD_OPTIONS = [
+  { value: 'spaced', label: 'Revisão espaçada' },
+  { value: 'retrieval', label: 'Teste ativo' },
+  { value: 'interleaved', label: 'Misturar temas' },
+  { value: 'flashcards', label: 'Flashcards' },
+];
 const VIDEO_STYLE_OPTIONS = [
   { value: 'animated', label: 'Animada e visual' },
   { value: 'balanced', label: 'Equilibrada' },
@@ -243,7 +265,18 @@ export default function ProfileScreen() {
             </View>
             <Icon name="sparkle" size={18} color="#4f46e5" />
           </View>
+          <View className="flex-row flex-wrap gap-1.5">
+            {['Perguntas alinhadas', 'Simulado no foco', 'Vídeos no seu foco'].map((item) => (
+              <View key={item} className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1">
+                <Text className="text-[11px] font-semibold text-indigo-600">{item}</Text>
+              </View>
+            ))}
+          </View>
           <PreferenceField label="Objetivo principal" options={STUDY_GOAL_OPTIONS} value={learningPreferences.studyGoal} onChange={(v) => updateLearningPreference('studyGoal', v)} />
+          <PreferenceField label="Estratégia geral" options={STUDY_CONTEXT_OPTIONS} value={learningPreferences.studyContext} onChange={(v) => updateLearningPreference('studyContext', v)} />
+          <PreferenceField label="Ritmo de estudo" options={WEEKLY_PACE_OPTIONS} value={learningPreferences.weeklyPace} onChange={(v) => updateLearningPreference('weeklyPace', v)} />
+          <PreferenceField label="Como praticar" options={PRACTICE_MODE_OPTIONS} value={learningPreferences.practiceMode} onChange={(v) => updateLearningPreference('practiceMode', v)} />
+          <PreferenceField label="Revisão preferida" options={REVIEW_METHOD_OPTIONS} value={learningPreferences.reviewMethod} onChange={(v) => updateLearningPreference('reviewMethod', v)} />
           <PreferenceField label="Estilo da aula" options={VIDEO_STYLE_OPTIONS} value={learningPreferences.videoStyle} onChange={(v) => updateLearningPreference('videoStyle', v)} />
           <PreferenceField label="Duração preferida" options={DURATION_OPTIONS} value={learningPreferences.duration} onChange={(v) => updateLearningPreference('duration', v)} />
           <PreferenceField label="Nível atual" options={LEVEL_OPTIONS} value={learningPreferences.level} onChange={(v) => updateLearningPreference('level', v)} />

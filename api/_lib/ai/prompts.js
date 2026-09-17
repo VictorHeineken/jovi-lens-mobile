@@ -70,7 +70,29 @@ export function learningPreferenceContext(preferences = {}) {
   };
   const levelLabels = { beginner: 'iniciante', intermediate: 'intermediário', advanced: 'avançado' };
   const durationLabels = { short: 'estudos curtos', standard: 'sessões médias', long: 'aprofundamento' };
-  return `Preferências do estudante: objetivo principal = ${goalLabels[preferences.studyGoal] || goalLabels.vestibular}; nível = ${levelLabels[preferences.level] || levelLabels.intermediate}; tempo preferido = ${durationLabels[preferences.duration] || durationLabels.standard}. Use essas preferências para escolher dificuldade, exemplos, linguagem e prioridade dos subtemas.`;
+  const studyContextLabels = {
+    classes: 'acompanhamento das aulas: conecte o conteúdo atual com fundamentos e próximas revisões',
+    exam_season: 'período de provas: priorize revisão ativa, pontos fracos e simulados objetivos',
+    catch_up: 'recuperar atrasos: reconstrua fundamentos antes de aumentar a dificuldade',
+    maintenance: 'manter revisão: preserve memória com retomadas curtas e prática distribuída',
+  };
+  const paceLabels = {
+    light: 'ritmo leve, cerca de 15 minutos por dia',
+    regular: 'ritmo regular, cerca de 30 minutos por dia',
+    intense: 'ritmo intensivo, cerca de 60 minutos por dia',
+  };
+  const practiceLabels = {
+    concept_first: 'entender o conceito antes das questões',
+    questions_first: 'começar por questões e explicar os erros',
+    mixed: 'alternar explicação curta e prática',
+  };
+  const reviewLabels = {
+    spaced: 'revisão espaçada',
+    retrieval: 'teste ativo de memória antes de consultar resposta',
+    interleaved: 'misturar subtemas para comparar ideias',
+    flashcards: 'flashcards e cartões de revisão',
+  };
+  return `Preferências do estudante: objetivo principal = ${goalLabels[preferences.studyGoal] || goalLabels.vestibular}; estratégia geral = ${studyContextLabels[preferences.studyContext] || studyContextLabels.classes}; ritmo = ${paceLabels[preferences.weeklyPace] || paceLabels.regular}; prática = ${practiceLabels[preferences.practiceMode] || practiceLabels.mixed}; revisão = ${reviewLabels[preferences.reviewMethod] || reviewLabels.spaced}; nível = ${levelLabels[preferences.level] || levelLabels.intermediate}; tempo preferido = ${durationLabels[preferences.duration] || durationLabels.standard}. Use essas preferências para escolher dificuldade, exemplos, linguagem, prioridade dos subtemas, tamanho das sessões e tipo de tarefa.`;
 }
 
 export function buildSubjectQuestionsPrompt(subject, preferences = {}) {
@@ -89,7 +111,7 @@ Contexto:\n${ctx.text}`;
 
 export function buildStudyPlanPrompt(subject, preferences = {}) {
   const ctx = buildSubjectContext(subject);
-  return `${SUBJECT_PERSONA} Crie um plano de estudos adaptativo e realista para a matéria "${ctx.name}", com base no que o aluno já estudou. Priorize revisão espaçada, os subtemas mais densos e o objetivo principal do aluno. ${learningPreferenceContext(preferences)} Formato exato:
+  return `${SUBJECT_PERSONA} Crie um plano de estudos adaptativo e realista para a matéria "${ctx.name}", com base no que o aluno já estudou. Priorize revisão espaçada, prática de recuperação, os subtemas mais densos e o objetivo principal do aluno. Ajuste quantidade de tarefas, duração e urgência conforme estratégia geral de estudo e ritmo semanal. ${learningPreferenceContext(preferences)} Formato exato:
 {"subject":"${ctx.name}","overview":"1-2 frases de estratégia","sessions":[{"label":"Dia 1","focus":"subtema/tema","durationMinutes":30,"tasks":["tarefa concreta"]}],"spacedReview":[{"topic":"subtema","when":"em 1 dia|em 3 dias|em 1 semana"}]}
 Gere de 4 a 6 sessões. Contexto:\n${ctx.text}`;
 }
@@ -135,12 +157,16 @@ export function buildVideoRecommendationsPrompt(subject, preferences = {}) {
   };
   const durationLabels = { short: 'curta, de até 15 minutos', standard: 'média, entre 15 e 40 minutos', long: 'aprofundada, com mais de 40 minutos' };
   const levelLabels = { beginner: 'iniciante', intermediate: 'intermediário', advanced: 'avançado' };
+  const practiceLabels = { concept_first: 'explicação conceitual antes de exercícios', questions_first: 'resolução de questões e análise de erros', mixed: 'explicação breve alternada com prática' };
+  const reviewLabels = { spaced: 'revisão espaçada', retrieval: 'teste ativo e recuperação de memória', interleaved: 'comparação entre subtemas', flashcards: 'flashcards e revisão rápida' };
   const style = styleLabels[preferences.videoStyle] || styleLabels.balanced;
   const duration = durationLabels[preferences.duration] || durationLabels.standard;
   const level = levelLabels[preferences.level] || levelLabels.intermediate;
   const goal = goalLabels[preferences.studyGoal] || goalLabels.vestibular;
+  const practice = practiceLabels[preferences.practiceMode] || practiceLabels.mixed;
+  const review = reviewLabels[preferences.reviewMethod] || reviewLabels.spaced;
   const weakTopics = Array.isArray(subject?.weakTopics) && subject.weakTopics.length ? ` O simulado indicou dificuldade nestes pontos: ${subject.weakTopics.slice(0, 5).join(', ')}. Priorize-os na consulta.` : '';
-  return `${SUBJECT_PERSONA} Você vai recomendar pesquisas de vídeo aula para a matéria "${ctx.name}" sem chamar API externa e sem inventar vídeos específicos como se fossem verificados. Use apenas o conteúdo da matéria e os subtemas abaixo. O estudante tem foco em ${goal}; prefere uma aula ${style}, ${duration}, adequada ao nível ${level}.${weakTopics} Gere de 3 a 5 cards de busca com termos em português do Brasil, foco didático e critérios para o aluno avaliar se a aula encontrada serve. Não retorne links diretos de vídeos, nomes de canais ou métricas que você não verificou. Formato exato:
+  return `${SUBJECT_PERSONA} Você vai recomendar pesquisas de vídeo aula para a matéria "${ctx.name}" sem chamar API externa e sem inventar vídeos específicos como se fossem verificados. Use apenas o conteúdo da matéria e os subtemas abaixo. O estudante tem foco em ${goal}; prefere uma aula ${style}, ${duration}, adequada ao nível ${level}, com ${practice} e ${review}.${weakTopics} Gere de 3 a 5 cards de busca com termos em português do Brasil, foco didático e critérios para o aluno avaliar se a aula encontrada serve. Não retorne links diretos de vídeos, nomes de canais ou métricas que você não verificou. Formato exato:
 {"query":"busca principal curta","focus":"o foco específico da recomendação em uma frase","recommendations":[{"title":"tipo de aula a procurar","searchQuery":"termos exatos para buscar","description":"por que esta busca ajuda","didacticReason":"o que observar na didática","watchFor":["critério objetivo"],"estimatedMinutes":20}]}
 Contexto da matéria:
 ${ctx.text}`;
