@@ -7,9 +7,9 @@ projeto — para a versão React Native, veja o [README na raiz do repositório]
 ## Rotas de apresentação
 
 - `/camera` — câmera nativa do navegador + captura; a IA é opcional por imagem.
-- `/gallery` — galeria de fotos com visualização normal, Notas, Histórico e a seção Copilot.
+- `/gallery` — galeria de fotos com visualização normal, Notas, Histórico e Perfil.
 - `/notes` — notas geradas e salvas.
-- `/copilot` — aba demonstrativa do modelo avançado, com teste de 7 dias ou conexão de uma assinatura existente.
+- `/copilot` — redireciona para `/profile` para manter compatibilidade com links antigos.
 - `/profile` — conta de demonstração e acesso demonstrativo ao Copilot, sem login ou cobrança real.
 
 Na área `/notes` e no Histórico existe busca por notas, pesquisas e mídias. Notas salvas podem ser
@@ -43,16 +43,15 @@ visualizador e oferece três ações independentes: copiar o texto lido, pesquis
 escolher "Usar IA" para iniciar uma sessão de estudo. Algumas referências de exemplo estão marcadas como
 biblioteca e não entram na análise educacional.
 
-## Conta e Copilot (demo)
+## Conta e Perfil (demo)
 
 O fluxo do perfil é propositalmente local para a apresentação: "Entrar como estudante" cria uma conta
 fictícia no `localStorage`, e "Ativar acesso Copilot · Demo" libera um plano demonstrativo. Nenhuma conta
 externa, assinatura ou cobrança é realizada.
 
-A aba `/copilot` apresenta o modelo avançado como uma extensão premium do JOVI Lens. Ela oferece dois
-caminhos de demonstração: iniciar um teste de 7 dias ou simular a conexão de uma assinatura Copilot já
-existente. Após ativar, o botão "Abrir câmera com Copilot" leva à experiência principal. O modelo e a
-assinatura são ilustrativos nesta versão.
+O acesso demonstrativo ao Copilot fica concentrado no Perfil, junto das preferências do aluno. A rota
+antiga `/copilot` continua redirecionando para `/profile`, mas não existe mais uma tela separada de
+Copilot nesta versão.
 
 ## Rodar localmente
 

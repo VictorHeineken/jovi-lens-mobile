@@ -53,7 +53,7 @@ img { display: block; max-width: 100%; }
 .stage-detail { color: var(--muted); font-size: 10px; line-height: 1.45; }
 
 /* Shared bottom navigation */
-.bottom-nav { position: absolute; z-index: 40; left: 12px; right: 12px; bottom: 12px; height: 66px; border-radius: 23px; padding: 6px 7px 8px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; background: rgba(247,249,244,.92); border: 1px solid rgba(255,255,255,.92); box-shadow: 0 12px 30px rgba(24, 39, 31, .14); backdrop-filter: blur(20px) saturate(140%); }
+.bottom-nav { position: absolute; z-index: 40; left: 12px; right: 12px; bottom: 12px; height: 66px; border-radius: 23px; padding: 6px 7px 8px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; background: rgba(247,249,244,.92); border: 1px solid rgba(255,255,255,.92); box-shadow: 0 12px 30px rgba(24, 39, 31, .14); backdrop-filter: blur(20px) saturate(140%); }
 .camera-stage .bottom-nav { background: rgba(13, 19, 20, .64); border-color: rgba(255,255,255,.13); }
 .nav-item { min-width: 0; text-decoration: none; color: #8a9491; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 17px; font-size: 9px; font-weight: 700; transition: .2s ease; }
 .nav-item:hover { color: var(--ink); transform: translateY(-1px); }
@@ -390,12 +390,11 @@ img { display: block; max-width: 100%; }
 .origin-photo-marker { position: absolute; right: 6px; bottom: 6px; width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.5); border-radius: 50%; color: #fff; background: rgba(26,25,39,.62); backdrop-filter: blur(8px); }
 .origin-document-marker { width: auto; min-width: 22px; padding: 0 5px; gap: 3px; border-radius: 999px; }
 .origin-document-marker em { font-size: 7px; font-style: normal; font-weight: 850; }
-.origin-gallery-bottom-nav { position: relative; z-index: 25; flex: none; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); height: 76px; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); border-top: 1px solid rgba(26,27,34,.07); background: rgba(250,250,252,.88); box-shadow: 0 -7px 18px rgba(29,30,37,.04); backdrop-filter: blur(22px) saturate(140%); }
-.origin-gallery-bottom-nav button { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; color: #9a9aa2; background: transparent; font-size: 7.5px; font-weight: 800; text-align: center; transition: background .2s ease, color .2s ease, transform .2s ease; }
+.origin-gallery-bottom-nav { position: relative; z-index: 25; flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); height: 76px; padding: 8px 7px max(8px, env(safe-area-inset-bottom)); border-top: 1px solid rgba(26,27,34,.07); background: rgba(250,250,252,.88); box-shadow: 0 -7px 18px rgba(29,30,37,.04); backdrop-filter: blur(22px) saturate(140%); }
+.origin-gallery-bottom-nav button { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; color: #9a9aa2; background: transparent; font-size: 8px; font-weight: 800; text-align: center; transition: background .2s ease, color .2s ease, transform .2s ease; }
 .origin-gallery-bottom-nav button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .origin-gallery-bottom-nav button:hover { color: #383740; background: #eeeeF2; transform: translateY(-1px); }
 .origin-gallery-bottom-nav button.active { color: #38337d; background: #e9e8ff; }
-.origin-gallery.copilot-active .origin-gallery-header { display: none; }
 .origin-albums-view, .origin-album-detail, .origin-recommended-view, .origin-search-view, .origin-profile-view { min-height: 350px; }
 .origin-albums-view .origin-section-heading, .origin-recommended-view .origin-section-heading, .origin-search-view .origin-section-heading { margin-bottom: 12px; }
 .origin-section-heading > button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: #686870; background: #ededf0; }
@@ -1232,44 +1231,6 @@ img { display: block; max-width: 100%; }
   .origin-note-chat span { display: none; }
   .origin-note-chat { width: 42px; padding: 0; }
 }
-
-/* Copilot access: a presentation-only premium model entry point. */
-.copilot-page { background: radial-gradient(circle at 90% 8%, rgba(201,240,120,.18), transparent 25%), linear-gradient(180deg, #f8faf6 0, #eef3ed 100%); }
-.copilot-demo-badge { display: inline-flex; align-items: center; min-height: 25px; padding: 0 9px; border-radius: 999px; color: #5d59a3; background: #e9e8ff; font-size: 8px; font-weight: 850; letter-spacing: .08em; }
-.copilot-hero { position: relative; min-height: 205px; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; margin-bottom: 13px; padding: 19px; border-radius: 24px; color: #152219; background: linear-gradient(135deg, #dff8aa 0, #c7ee82 42%, #aaa7ff 100%); box-shadow: 0 16px 32px rgba(99,122,67,.16); }
-.copilot-orbit { position: absolute; width: 210px; height: 210px; right: -78px; top: -55px; border: 1px solid rgba(255,255,255,.62); border-radius: 50%; box-shadow: 0 0 0 18px rgba(255,255,255,.12), 0 0 0 42px rgba(255,255,255,.08); }
-.copilot-hero-copy { position: relative; z-index: 1; display: grid; gap: 8px; max-width: 265px; }
-.copilot-kicker, .copilot-label, .copilot-section-heading > div > span { color: rgba(21,34,25,.62); font-size: 9px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
-.copilot-hero h2 { margin: 0; max-width: 250px; color: #152219; font-size: 23px; line-height: 1.03; letter-spacing: -.065em; }
-.copilot-hero p { margin: 0; color: rgba(21,34,25,.72); font-size: 10.5px; line-height: 1.42; }
-.copilot-model-pill { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 6px; width: max-content; min-height: 32px; padding: 0 10px; border: 1px solid rgba(255,255,255,.48); border-radius: 999px; color: #2c3d2d; background: rgba(255,255,255,.45); font-size: 9px; font-weight: 800; backdrop-filter: blur(12px); }
-.copilot-status-card { display: grid; gap: 12px; margin-bottom: 13px; padding: 16px; border: 1px solid #e5e6e5; border-radius: 21px; background: #fff; box-shadow: 0 10px 26px rgba(29,38,31,.06); }
-.copilot-status-card.active { border-color: rgba(102,88,237,.22); box-shadow: 0 12px 29px rgba(76,66,200,.1); }
-.copilot-status-top { display: flex; align-items: center; gap: 10px; }
-.copilot-status-icon { width: 40px; height: 40px; display: grid; place-items: center; flex: none; border-radius: 14px; color: #716cb5; background: #eeecff; }
-.copilot-status-card.active .copilot-status-icon { color: #28552b; background: #e9f8c7; }
-.copilot-status-top > div:last-child { min-width: 0; display: grid; gap: 4px; }
-.copilot-status-top h2 { overflow: hidden; margin: 0; color: #292d2b; font-size: 15px; letter-spacing: -.04em; text-overflow: ellipsis; white-space: nowrap; }
-.copilot-status-description { margin: 0; color: #6f7973; font-size: 10.5px; line-height: 1.45; }
-.copilot-options { display: grid; gap: 8px; }
-.copilot-primary-button, .copilot-secondary-button { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 44px; padding: 0 12px; border-radius: 13px; font-size: 10px; font-weight: 850; transition: transform .2s ease, background .2s ease; }
-.copilot-primary-button { color: #18221c; background: var(--sage); box-shadow: 0 7px 17px rgba(152,190,92,.2); }
-.copilot-secondary-button { color: #514ca0; background: #eeecff; }
-.copilot-primary-button:hover, .copilot-secondary-button:hover { transform: translateY(-1px); }
-.copilot-demo-note { color: #a0a8a2; font-size: 8px; line-height: 1.35; }
-.copilot-benefits { display: grid; gap: 12px; padding: 15px; border: 1px solid #e5e6e5; border-radius: 21px; background: rgba(255,255,255,.82); }
-.copilot-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.copilot-section-heading h2 { margin: 4px 0 0; color: #303631; font-size: 16px; letter-spacing: -.04em; }
-.copilot-section-heading > svg { color: #716cb5; }
-.copilot-benefit-list { display: grid; gap: 8px; }
-.copilot-benefit-list > div { display: flex; align-items: flex-start; gap: 9px; padding: 10px 0; border-top: 1px solid #edf0ed; }
-.copilot-benefit-list > div:first-child { border-top: 0; }
-.copilot-benefit-list > div > span { width: 30px; height: 30px; display: grid; place-items: center; flex: none; border-radius: 10px; color: #5d59a3; background: #eeecff; }
-.copilot-benefit-list p { display: grid; gap: 3px; margin: 0; }
-.copilot-benefit-list strong { color: #3c4540; font-size: 10px; }
-.copilot-benefit-list small { color: #7d8680; font-size: 9px; line-height: 1.35; }
-.copilot-message { margin-bottom: 6px; }
-.copilot-embedded { height: auto; min-height: 0; overflow: visible; padding: 0; background: transparent; }
 
 /* ---------------------------------------------------------------------------
    Subject Studio: matéria-level tools (perguntas, simulado, plano, podcast, aula)

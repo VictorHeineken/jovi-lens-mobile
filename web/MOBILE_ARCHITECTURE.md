@@ -5,9 +5,9 @@ Esta versão transforma o protótipo React existente em uma experiência mobile-
 ## Entradas de apresentação
 
 - `/camera`: abre diretamente a experiência de câmera.
-- `/gallery`: abre diretamente a galeria, com Fotos, Álbuns, Notas, Histórico e Copilot na navegação inferior.
+- `/gallery`: abre diretamente a galeria, com Fotos, Álbuns, Notas, Histórico e Perfil na navegação inferior.
 - `/notes`: histórico de notas inteligentes salvas.
-- `/copilot`: aba demonstrativa do modelo avançado e seus caminhos de acesso.
+- `/copilot`: redireciona para `/profile` para compatibilidade com links antigos.
 - `/profile`: conta de demonstração, trial fictício e acesso demonstrativo ao Copilot.
 
 Em telas desktop/tablet, o shell renderiza o app dentro de uma moldura baseada na proporção do JOVI X300 Ultra (393 × 852 lógico), com punch-hole central e acabamento verde-sálvia inspirado na referência atual da marca. Em um telefone real, a moldura e os botões físicos desaparecem e o app ocupa `100dvh` com safe areas.
@@ -45,7 +45,7 @@ O perfil não dispara login externo. O botão de entrada cria a estudante fictí
 
 O trial de 7 dias e a ativação do Copilot também são estados locais e explicitamente identificados como demo. Não existe checkout, assinatura ou cobrança neste protótipo; uma integração real pode ser adicionada depois sem misturar essa experiência com a camada visual.
 
-A aba Copilot permite iniciar o trial de 7 dias ou simular que a pessoa já possui uma assinatura paga. Ambos os caminhos atualizam o plano local e exibem o modelo avançado como selecionado. O CTA de câmera apenas conduz à experiência existente; a troca de modelo real continua fora do escopo desta demonstração.
+O acesso demonstrativo ao Copilot fica no Perfil, junto das preferências do aluno, backup e privacidade local. A tela separada de Copilot foi removida para evitar duplicidade visual no fluxo de apresentação; `/copilot` apenas redireciona para o Perfil.
 
 ## Persistência
 
