@@ -61,7 +61,7 @@ const SORT_OPTIONS = [
   { value: 'date', label: 'Mais recentes' },
 ];
 
-export default function Profile() {
+export default function Profile({ embedded = false }) {
   const { user, setUser, plan, setPlan, records, notes, aiHistory, subjectArtifacts, learningPreferences, setLearningPreferences, restoreLocalData, clearLocalData } = useAppData();
   const [authMessage, setAuthMessage] = useState('');
   const fileRef = useRef(null);
@@ -144,11 +144,16 @@ export default function Profile() {
       ? 'Copilot liberado'
       : 'Estude com mais profundidade';
 
+  const Container = embedded ? 'section' : 'main';
+  const containerClassName = embedded ? 'profile-page origin-profile-view' : 'light-page profile-page';
+
   return (
-    <main className="light-page profile-page">
-      <header className="mobile-header">
-        <div><div className="eyebrow"><Icon name="user" size={13} /> Seu espaço</div><h1>Perfil</h1></div>
-      </header>
+    <Container className={containerClassName}>
+      {!embedded && (
+        <header className="mobile-header">
+          <div><div className="eyebrow"><Icon name="user" size={13} /> Seu espaço</div><h1>Perfil</h1></div>
+        </header>
+      )}
 
       <section className="profile-card">
         <div className="avatar placeholder"><span>{user ? 'AB' : <Icon name="user" size={19} />}</span></div>
@@ -219,7 +224,7 @@ export default function Profile() {
       </section>
       <input ref={fileRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={importData} />
       {authMessage && <div className="inline-message" role="status"><Icon name="info" size={15} /> {authMessage}</div>}
-    </main>
+    </Container>
   );
 }
 

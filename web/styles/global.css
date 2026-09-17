@@ -390,12 +390,13 @@ img { display: block; max-width: 100%; }
 .origin-photo-marker { position: absolute; right: 6px; bottom: 6px; width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.5); border-radius: 50%; color: #fff; background: rgba(26,25,39,.62); backdrop-filter: blur(8px); }
 .origin-document-marker { width: auto; min-width: 22px; padding: 0 5px; gap: 3px; border-radius: 999px; }
 .origin-document-marker em { font-size: 7px; font-style: normal; font-weight: 850; }
-.origin-gallery-bottom-nav { position: relative; z-index: 25; flex: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); height: 76px; padding: 8px 7px max(8px, env(safe-area-inset-bottom)); border-top: 1px solid rgba(26,27,34,.07); background: rgba(250,250,252,.88); box-shadow: 0 -7px 18px rgba(29,30,37,.04); backdrop-filter: blur(22px) saturate(140%); }
-.origin-gallery-bottom-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; color: #9a9aa2; background: transparent; font-size: 8px; font-weight: 800; text-align: center; transition: background .2s ease, color .2s ease, transform .2s ease; }
+.origin-gallery-bottom-nav { position: relative; z-index: 25; flex: none; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); height: 76px; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); border-top: 1px solid rgba(26,27,34,.07); background: rgba(250,250,252,.88); box-shadow: 0 -7px 18px rgba(29,30,37,.04); backdrop-filter: blur(22px) saturate(140%); }
+.origin-gallery-bottom-nav button { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border-radius: 14px; color: #9a9aa2; background: transparent; font-size: 7.5px; font-weight: 800; text-align: center; transition: background .2s ease, color .2s ease, transform .2s ease; }
+.origin-gallery-bottom-nav button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .origin-gallery-bottom-nav button:hover { color: #383740; background: #eeeeF2; transform: translateY(-1px); }
 .origin-gallery-bottom-nav button.active { color: #38337d; background: #e9e8ff; }
 .origin-gallery.copilot-active .origin-gallery-header { display: none; }
-.origin-albums-view, .origin-album-detail, .origin-recommended-view, .origin-search-view { min-height: 350px; }
+.origin-albums-view, .origin-album-detail, .origin-recommended-view, .origin-search-view, .origin-profile-view { min-height: 350px; }
 .origin-albums-view .origin-section-heading, .origin-recommended-view .origin-section-heading, .origin-search-view .origin-section-heading { margin-bottom: 12px; }
 .origin-section-heading > button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: #686870; background: #ededf0; }
 .origin-album-grid { display: grid; gap: 7px; }
