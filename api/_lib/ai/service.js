@@ -194,9 +194,24 @@ function normalizeSubject(action, result, subjectName, meta) {
 
   if (action === 'podcast-script') {
     const segments = (Array.isArray(result?.segments) ? result.segments : []).slice(0, 24).map((seg) => ({
-      speaker: ['A', 'B', 'narrator'].includes(String(seg?.speaker)) ? seg.speaker : 'narrator',
+      speaker: ['A', 'B', 'narrator', 'coach', 'feedback'].includes(String(seg?.speaker)) ? seg.speaker : 'narrator',
       text: asText(seg?.text, '', 900),
     })).filter((seg) => seg.text);
+    const interactions = (Array.isArray(result?.interactions) ? result.interactions : []).slice(0, 8).map((item, index) => {
+      const options = (Array.isArray(item?.options) ? item.options : []).slice(0, 4).map((option, optionIndex) => ({
+        id: asText(option?.id, `${index + 1}-${optionIndex + 1}`, 40),
+        text: asText(option?.text, '', 300),
+        correct: Boolean(option?.correct),
+      })).filter((option) => option.text);
+      return {
+        id: asText(item?.id, `drive-${index + 1}`, 60),
+        topic: asText(item?.topic, 'Revisão', 80),
+        prompt: asText(item?.prompt, '', 400),
+        options,
+        feedbackCorrect: asText(item?.feedbackCorrect, 'Boa. Esse é o raciocínio principal.', 500),
+        feedbackWrong: asText(item?.feedbackWrong, 'Quase. Volte ao conceito e compare com a alternativa correta.', 500),
+      };
+    }).filter((item) => item.prompt && item.options.length >= 2);
     const requestedFormat = ['dialogue', 'single', 'drive'].includes(String(result?.format)) ? result.format : 'dialogue';
     return {
       ...base,
@@ -205,6 +220,7 @@ function normalizeSubject(action, result, subjectName, meta) {
       durationMinutes: clampInt(result?.durationMinutes, 4, 45, Math.max(5, Math.round(segments.reduce((sum, seg) => sum + seg.text.length, 0) / 850))),
       takeaways: asList(result?.takeaways, 5),
       segments,
+      interactions,
     };
   }
 

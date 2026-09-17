@@ -5,10 +5,10 @@ import { apiFetch } from './apiClient.js';
 
 // "Browser" pitch differentiates speakers when only one pt-BR voice exists for
 // the on-device fallback (expo-speech, RN's equivalent of speechSynthesis).
-// The live path sends the role itself ('A'/'B'/'narrator') to /api/tts — the
+// The live path sends the role itself ('A'/'B'/'narrator'/'coach'/'feedback') to /api/tts — the
 // active provider maps it to a real voice ID server-side.
-const BROWSER_PITCH = { A: 1.08, B: 0.94, narrator: 1 };
-const BROWSER_RATE = { A: 0.92, B: 0.88, narrator: 0.9 };
+const BROWSER_PITCH = { A: 1.08, B: 0.94, narrator: 1, coach: 1.04, feedback: 0.96 };
+const BROWSER_RATE = { A: 0.92, B: 0.88, narrator: 0.9, coach: 0.91, feedback: 0.88 };
 
 let liveTtsAvailable = null; // null unknown | true | false (not configured / failed)
 

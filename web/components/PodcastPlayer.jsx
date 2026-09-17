@@ -3,7 +3,7 @@ import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { narration } from '../services/audio.js';
 
-const SPEAKER_LABEL = { A: 'Ana', B: 'Especialista', narrator: 'Narrador' };
+const SPEAKER_LABEL = { A: 'Ana', B: 'Especialista', narrator: 'Narrador', coach: 'IA', feedback: 'Feedback' };
 const FORMAT_LABEL = {
   dialogue: 'Conversa · 2 vozes',
   single: 'Episódio · narrador',
@@ -17,6 +17,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [playback, setPlayback] = useState({ index: -1, state: 'idle', mode: null });
+  const [coachAnswers, setCoachAnswers] = useState({});
 
   useEffect(() => () => narration.stop(), []);
 
@@ -29,6 +30,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
       const result = await generateSubjectContent(subject, { action: 'podcast-script', format: nextFormat });
       if (!result.segments?.length) throw new Error('Não foi possível gerar o roteiro agora.');
       setScript(result);
+      setCoachAnswers({});
       onSave?.(result);
     } catch (err) {
       setError(err.message || 'Falha ao gerar o podcast.');
@@ -45,6 +47,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
       narration.stop();
       setPlayback({ index: -1, state: 'idle', mode: null });
       setScript(savedScript);
+      setCoachAnswers({});
       setError('');
       return;
     }
@@ -95,7 +98,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
       {script.format === 'drive' && (
         <div className="podcast-drive">
           <span><Icon name="route" size={13} /> Modo carro</span>
-          <p>Roteiro contínuo, com retomadas curtas e sem atividades que dependem da tela.</p>
+          <p>A IA conversa com você, faz perguntas da matéria e dá feedback para a resposta escolhida.</p>
           {currentLabel && <small>{currentLabel}</small>}
         </div>
       )}
@@ -115,6 +118,8 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
         </div>
       )}
       {playback.mode === 'browser' && (isPlaying || isPaused) && <p className="podcast-mode-hint"><Icon name="info" size={12} /> Narração pela voz do dispositivo.</p>}
+
+      {script.format === 'drive' && <DriveCoach script={script} answers={coachAnswers} onAnswer={(id, value) => setCoachAnswers((current) => ({ ...current, [id]: value }))} />}
 
       <div className="podcast-transcript">
         {script.segments.map((segment, index) => (
@@ -154,5 +159,46 @@ function FormatChooser({ format, onChoose }) {
         <Icon name="route" size={14} /> No carro
       </button>
     </div>
+  );
+}
+
+function DriveCoach({ script, answers, onAnswer }) {
+  const interactions = Array.isArray(script.interactions) ? script.interactions : [];
+  if (!interactions.length) return null;
+
+  return (
+    <section className="podcast-coach" aria-label="Treino interativo no carro">
+      <div className="podcast-coach-head">
+        <span><Icon name="sparkle" size={13} /> Bate-papo com IA</span>
+        <small>Responda em voz alta e toque na opção para ver o feedback.</small>
+      </div>
+      {interactions.map((item, index) => {
+        const selectedId = answers[item.id];
+        const selected = item.options?.find((option) => option.id === selectedId);
+        return (
+          <article className="podcast-coach-card" key={item.id || item.prompt}>
+            <span className="podcast-coach-topic">{String(index + 1).padStart(2, '0')} · {item.topic}</span>
+            <strong>{item.prompt}</strong>
+            <div>
+              {(item.options || []).map((option) => (
+                <button
+                  key={option.id}
+                  className={selectedId === option.id ? 'selected' : ''}
+                  onClick={() => onAnswer(item.id, option.id)}
+                >
+                  {option.text}
+                </button>
+              ))}
+            </div>
+            {selected && (
+              <p className={selected.correct ? 'correct' : 'wrong'}>
+                <Icon name={selected.correct ? 'check' : 'info'} size={13} />
+                {selected.correct ? item.feedbackCorrect : item.feedbackWrong}
+              </p>
+            )}
+          </article>
+        );
+      })}
+    </section>
   );
 }

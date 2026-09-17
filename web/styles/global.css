@@ -1416,6 +1416,20 @@ img { display: block; max-width: 100%; }
 .podcast-drive small { color: var(--muted); font-size: 9px; }
 .podcast-skip-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .podcast-skip-controls button { min-height: 36px; border-radius: 12px; color: #56615b; background: #fff; box-shadow: var(--shadow-soft); font-size: 10px; font-weight: 800; }
+.podcast-coach { display: grid; gap: 8px; padding: 11px; border-radius: 16px; background: #17251f; color: #fff; box-shadow: 0 12px 28px rgba(20,31,26,.18); }
+.podcast-coach-head { display: grid; gap: 3px; }
+.podcast-coach-head span { display: inline-flex; align-items: center; gap: 6px; color: var(--sage); font-size: 10px; font-weight: 850; }
+.podcast-coach-head small { color: rgba(255,255,255,.62); font-size: 9px; line-height: 1.35; }
+.podcast-coach-card { display: grid; gap: 8px; padding: 10px; border-radius: 13px; background: rgba(255,255,255,.08); }
+.podcast-coach-topic { color: rgba(201,240,120,.82); font-size: 8px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.podcast-coach-card strong { color: #fff; font-size: 11px; line-height: 1.35; }
+.podcast-coach-card > div { display: grid; gap: 6px; }
+.podcast-coach-card button { padding: 8px 9px; border-radius: 10px; color: rgba(255,255,255,.78); background: rgba(255,255,255,.08); font-size: 9.5px; font-weight: 750; line-height: 1.3; text-align: left; }
+.podcast-coach-card button.selected { color: #17251f; background: var(--sage); }
+.podcast-coach-card p { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 9px; border-radius: 10px; font-size: 9.5px; line-height: 1.35; }
+.podcast-coach-card p.correct { color: #eaffd4; background: rgba(143,191,90,.2); }
+.podcast-coach-card p.wrong { color: #ffe0e6; background: rgba(207,125,140,.22); }
+.podcast-coach-card p svg { flex: none; margin-top: 1px; }
 .podcast-takeaways { display: grid; gap: 7px; }
 .podcast-takeaways > div { display: flex; flex-wrap: wrap; gap: 5px; }
 .podcast-takeaways > div span { padding: 5px 8px; border-radius: 999px; color: var(--muted); background: #eef2ec; font-size: 9px; font-weight: 750; }

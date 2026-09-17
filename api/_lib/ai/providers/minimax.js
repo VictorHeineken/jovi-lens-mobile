@@ -22,6 +22,8 @@ const ROLE_VOICE = {
   A: process.env.MINIMAX_VOICE_A || 'Portuguese_ChattyGirl',
   B: process.env.MINIMAX_VOICE_B || 'Portuguese_WiseScholar',
   narrator: process.env.MINIMAX_VOICE_NARRATOR || 'Portuguese_Narrator',
+  coach: process.env.MINIMAX_VOICE_COACH || process.env.MINIMAX_VOICE_A || 'Portuguese_ChattyGirl',
+  feedback: process.env.MINIMAX_VOICE_FEEDBACK || process.env.MINIMAX_VOICE_B || 'Portuguese_WiseScholar',
 };
 
 // T2A allows up to 10,000 chars/request (vs. Azure's 4096) — larger chunks,

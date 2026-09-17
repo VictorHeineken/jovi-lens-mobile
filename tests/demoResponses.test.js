@@ -122,7 +122,7 @@ test('getSubjectDemo plan reflects global study strategy, pace and review method
   assert.ok(result.sessions[0].tasks.some((task) => /Comparar este subtema/.test(task)));
 });
 
-test('getSubjectDemo podcast drive mode is hands-free friendly', () => {
+test('getSubjectDemo podcast drive mode behaves like an AI coach', () => {
   const result = getSubjectDemo({
     action: 'podcast-script',
     subject: { name: 'Biologia', format: 'drive', notes: [{ subtheme: 'Citologia' }, { subtheme: 'Mitose' }] },
@@ -131,6 +131,11 @@ test('getSubjectDemo podcast drive mode is hands-free friendly', () => {
   assert.equal(result.format, 'drive');
   assert.equal(typeof result.durationMinutes, 'number');
   assert.ok(Array.isArray(result.takeaways));
+  assert.ok(Array.isArray(result.interactions));
+  assert.ok(result.interactions.length >= 2);
   assert.ok(result.segments.length >= 4);
-  assert.ok(result.segments.every((segment) => segment.speaker === 'narrator' && segment.text));
+  assert.ok(result.segments.some((segment) => segment.speaker === 'coach'));
+  assert.ok(result.segments.some((segment) => segment.speaker === 'feedback'));
+  assert.ok(result.segments.every((segment) => segment.text));
+  assert.ok(result.interactions.every((item) => item.prompt && item.feedbackCorrect && item.feedbackWrong));
 });

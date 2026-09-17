@@ -4,7 +4,7 @@ import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { narration } from '../services/audio.js';
 
-const SPEAKER_LABEL = { A: 'Ana', B: 'Especialista', narrator: 'Narrador' };
+const SPEAKER_LABEL = { A: 'Ana', B: 'Especialista', narrator: 'Narrador', coach: 'IA', feedback: 'Feedback' };
 const FORMAT_LABEL = {
   dialogue: 'Conversa · 2 vozes',
   single: 'Episódio · narrador',
@@ -18,6 +18,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [playback, setPlayback] = useState({ index: -1, state: 'idle', mode: null });
+  const [coachAnswers, setCoachAnswers] = useState({});
 
   useEffect(() => () => narration.stop(), []);
 
@@ -30,6 +31,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
       const result = await generateSubjectContent(subject, { action: 'podcast-script', format: nextFormat });
       if (!result.segments?.length) throw new Error('Não foi possível gerar o roteiro agora.');
       setScript(result);
+      setCoachAnswers({});
       onSave?.(result);
     } catch (err) {
       setError(err.message || 'Falha ao gerar o podcast.');
@@ -46,6 +48,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
       narration.stop();
       setPlayback({ index: -1, state: 'idle', mode: null });
       setScript(savedScript);
+      setCoachAnswers({});
       setError('');
       return;
     }
@@ -114,7 +117,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
             <Icon name="route" size={13} color="#4f46e5" />
             <Text className="text-[12px] font-semibold text-indigo-700">Modo carro</Text>
           </View>
-          <Text className="text-[13px] leading-5 text-slate-700">Roteiro contínuo, com retomadas curtas e sem atividades que dependem da tela.</Text>
+          <Text className="text-[13px] leading-5 text-slate-700">A IA conversa com você, faz perguntas da matéria e dá feedback para a resposta escolhida.</Text>
           {currentLabel ? <Text className="text-[12px] text-slate-500">{currentLabel}</Text> : null}
         </View>
       ) : null}
@@ -168,6 +171,14 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
         </View>
       ) : null}
 
+      {script.format === 'drive' ? (
+        <DriveCoach
+          script={script}
+          answers={coachAnswers}
+          onAnswer={(id, value) => setCoachAnswers((current) => ({ ...current, [id]: value }))}
+        />
+      ) : null}
+
       <View className="gap-2">
         {script.segments.map((segment, index) => {
           const active = playback.index === index;
@@ -205,6 +216,57 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
         <Icon name="rotate" size={14} color="#475569" />
         <Text className="text-[13px] font-medium text-slate-600">Gerar novo episódio</Text>
       </Pressable>
+    </View>
+  );
+}
+
+function DriveCoach({ script, answers, onAnswer }) {
+  const interactions = Array.isArray(script.interactions) ? script.interactions : [];
+  if (!interactions.length) return null;
+
+  return (
+    <View className="gap-3 rounded-2xl bg-slate-950 p-3">
+      <View className="gap-1">
+        <View className="flex-row items-center gap-1.5">
+          <Icon name="sparkle" size={13} color="#bef264" />
+          <Text className="text-[12px] font-semibold text-lime-200">Bate-papo com IA</Text>
+        </View>
+        <Text className="text-[12px] leading-4 text-slate-300">Responda em voz alta e toque na opção para ver o feedback.</Text>
+      </View>
+      {interactions.map((item, index) => {
+        const selectedId = answers[item.id];
+        const selected = item.options?.find((option) => option.id === selectedId);
+        return (
+          <View key={item.id || item.prompt} className="gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
+            <Text className="text-[10px] font-semibold uppercase tracking-wide text-lime-200">{String(index + 1).padStart(2, '0')} · {item.topic}</Text>
+            <Text className="text-[14px] font-semibold leading-5 text-white">{item.prompt}</Text>
+            <View className="gap-2">
+              {(item.options || []).map((option) => {
+                const active = selectedId === option.id;
+                return (
+                  <Pressable
+                    key={option.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => onAnswer(item.id, option.id)}
+                    className={`rounded-xl border px-3 py-2.5 ${active ? 'border-lime-300 bg-lime-300' : 'border-white/10 bg-white/10'}`}
+                  >
+                    <Text className={`text-[12px] font-medium leading-4 ${active ? 'text-slate-950' : 'text-slate-100'}`}>{option.text}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {selected ? (
+              <View className={`flex-row gap-1.5 rounded-xl px-3 py-2 ${selected.correct ? 'bg-emerald-500/15' : 'bg-amber-400/15'}`}>
+                <Icon name={selected.correct ? 'check' : 'info'} size={13} color={selected.correct ? '#6ee7b7' : '#fcd34d'} />
+                <Text className={`flex-1 text-[12px] leading-4 ${selected.correct ? 'text-emerald-100' : 'text-amber-100'}`}>
+                  {selected.correct ? item.feedbackCorrect : item.feedbackWrong}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
     </View>
   );
 }

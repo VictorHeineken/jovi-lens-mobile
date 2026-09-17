@@ -17,6 +17,9 @@ test('História demo studio is preloaded with presentation artifacts', () => {
   assert.equal(history.podcasts.data.formats.drive.format, 'drive');
   assert.ok(history.podcasts.data.formats.single.segments.every((segment) => segment.speaker === 'narrator'));
   assert.ok(history.podcasts.data.formats.drive.durationMinutes === 10);
+  assert.ok(history.podcasts.data.formats.drive.segments.some((segment) => segment.speaker === 'coach'));
+  assert.ok(history.podcasts.data.formats.drive.segments.some((segment) => segment.speaker === 'feedback'));
+  assert.ok(history.podcasts.data.formats.drive.interactions.length >= 3);
   assert.ok(history.questions.data.questions.some((item) => item.topic === 'Mecanização têxtil'));
   assert.ok(history.questions.data.questions.some((item) => item.topic === 'Trabalho infantil e leis fabris'));
   assert.ok(history.videoRecommendations.data.videos.some((video) => video.saved && video.url.includes('youtube.com/watch?v=')));

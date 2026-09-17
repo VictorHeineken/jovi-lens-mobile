@@ -187,16 +187,28 @@ export function getSubjectDemo({ action = 'questions', subject = {}, preferences
   if (action === 'podcast-script') {
     const format = ['dialogue', 'single', 'drive'].includes(subject.format) ? subject.format : 'dialogue';
     if (format === 'drive') {
+      const reviewTopics = topics.slice(0, 3);
+      const interactions = reviewTopics.map((topic, index) => ({
+        id: `drive-${index + 1}`,
+        topic,
+        prompt: `Como ${topic} se conecta com ${name}?`,
+        options: [
+          { id: 'a', text: `${topic} ajuda a explicar uma parte central de ${name}.`, correct: true },
+          { id: 'b', text: `${topic} não tem relação com o restante da matéria.`, correct: false },
+        ],
+        feedbackCorrect: `Certo. ${topic} deve ser ligado ao mapa geral da matéria, não decorado isoladamente.`,
+        feedbackWrong: `Revise ${topic}: ele precisa aparecer conectado aos outros subtemas de ${name}.`,
+      }));
       const segments = [
-        { speaker: 'narrator', text: `Vamos nessa. Este é seu episódio de ${name} para ouvir sem olhar para a tela.` },
-        { speaker: 'narrator', text: `Primeiro, o mapa: suas notas passam por ${topics.slice(0, 3).join(', ')}. Como seu foco é ${goal.label}, vamos ligar uma coisa na outra com exemplos úteis para ${review.label}.` },
-        ...topics.slice(0, 8).map((topic, index) => ({
-          speaker: 'narrator',
-          text: `Bloco ${index + 1}: ${topic}. Guarde a ideia central. Depois, faça um pequeno ${review.label}: tente lembrar a relação desse ponto com o restante de ${name}.`,
-        })),
-        { speaker: 'narrator', text: `Resumo final: escolha um ponto que ficou claro e um ponto que ainda merece revisão. Quando parar, volte ao app e marque isso no seu plano.` },
+        { speaker: 'coach', text: `Vamos nessa. Eu vou revisar ${name} com você, fazendo perguntas rápidas. Responda em voz alta antes de continuar.` },
+        { speaker: 'coach', text: `Primeiro, o mapa: suas notas passam por ${reviewTopics.join(', ')}. Como seu foco é ${goal.label}, tente responder com exemplos úteis para ${review.label}.` },
+        ...interactions.flatMap((item, index) => [
+          { speaker: 'coach', text: `Pergunta ${index + 1}: ${item.prompt} Responda em uma frase.` },
+          { speaker: 'feedback', text: item.feedbackCorrect },
+        ]),
+        { speaker: 'coach', text: `Resumo final: se alguma resposta ficou insegura, volte ao tema no plano. Se saiu bem, faça um quiz curto quando parar o carro.` },
       ];
-      return { subject: name, format: 'drive', title: `No carro · ${name}`, durationMinutes: 12, takeaways: topics.slice(0, 5), segments };
+      return { subject: name, format: 'drive', title: `No carro · treino com IA · ${name}`, durationMinutes: 12, takeaways: reviewTopics, segments, interactions };
     }
     if (format === 'single') {
       const segments = [
