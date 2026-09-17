@@ -9,8 +9,10 @@ import LessonPlayer from './LessonPlayer.jsx';
 import VideoRecommendations from './VideoRecommendations.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { useAppData } from '../context/AppDataContext.jsx';
+import { buildSubjectInsights } from '../shared/subjectInsights.js';
 
 const TABS = [
+  { id: 'overview', label: 'Visão', icon: 'layers' },
   { id: 'questions', label: 'Perguntas', icon: 'question' },
   { id: 'exam', label: 'Simulado', icon: 'target' },
   { id: 'podcast', label: 'Podcast', icon: 'waveform' },
@@ -20,7 +22,7 @@ const TABS = [
 
 export default function SubjectStudio({ subject, onClose }) {
   const { saveSubjectArtifact, getSubjectArtifact } = useAppData();
-  const [tab, setTab] = useState('questions');
+  const [tab, setTab] = useState('overview');
   const topInset = useTopInset();
   const bottomInset = useBottomInset(16);
 
@@ -35,6 +37,16 @@ export default function SubjectStudio({ subject, onClose }) {
   const savedPodcasts = getSubjectArtifact(subject.name, 'podcasts')?.data || null;
   const savedLesson = getSubjectArtifact(subject.name, 'lesson')?.data || null;
   const savedVideoRecommendations = getSubjectArtifact(subject.name, 'videoRecommendations')?.data || null;
+  const insightArtifacts = {
+    questions: savedQuestions ? { data: savedQuestions } : null,
+    exam: savedExam ? { data: savedExam } : null,
+    examResult: examResult ? { data: examResult } : null,
+    plan: savedPlan ? { data: savedPlan } : null,
+    podcast: savedPodcast ? { data: savedPodcast } : null,
+    videoRecommendations: savedVideoRecommendations ? { data: savedVideoRecommendations } : null,
+    lesson: savedLesson ? { data: savedLesson } : null,
+  };
+  const insights = buildSubjectInsights(subject, insightArtifacts);
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose} accessibilityViewIsModal>
@@ -92,6 +104,7 @@ export default function SubjectStudio({ subject, onClose }) {
         </ScrollView>
 
         <ScrollView className="flex-1 border-t border-slate-100" contentContainerClassName="px-4 pt-4" contentContainerStyle={{ paddingBottom: bottomInset }}>
+          {tab === 'overview' ? <SubjectOverview subject={subject} insights={insights} /> : null}
           {tab === 'questions' ? <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} /> : null}
           {tab === 'exam' ? <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} /> : null}
           {tab === 'podcast' ? (
@@ -124,6 +137,108 @@ export default function SubjectStudio({ subject, onClose }) {
         </ScrollView>
       </View>
     </Modal>
+  );
+}
+
+function SubjectOverview({ subject, insights }) {
+  return (
+    <View className="gap-4">
+      <View className="gap-1">
+        <View className="flex-row items-center gap-1.5">
+          <Icon name="layers" size={13} color="#4f46e5" />
+          <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Painel inteligente</Text>
+        </View>
+        <Text className="text-[17px] font-bold text-slate-900">Mapa, revisão e domínio de {subject.name}</Text>
+        <Text className="text-[13px] leading-5 text-slate-600">Uma visão pronta para mostrar o que estudar, onde está fraco e como revisar hoje.</Text>
+      </View>
+
+      <InsightBlock icon="route" title="Mapa da matéria">
+        <View className="gap-2">
+          {insights.map.map((item) => (
+            <View key={item.topic} className="flex-row items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+              <View className="h-8 w-8 items-center justify-center rounded-xl bg-indigo-50">
+                <Text className="text-[11px] font-bold text-indigo-600">{String(item.order).padStart(2, '0')}</Text>
+              </View>
+              <View className="flex-1">
+                <Text className="text-[13px] font-bold text-slate-900">{item.topic}</Text>
+                <Text className="text-[11px] text-slate-500">{item.status}{item.mastery !== null ? ` · ${item.mastery}%` : ` · ${item.noteCount} nota${item.noteCount === 1 ? '' : 's'}`}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </InsightBlock>
+
+      <InsightBlock icon="target" title="Radar de dificuldade">
+        <View className="gap-2">
+          {insights.radar.slice(0, 6).map((item) => (
+            <View key={item.topic} className="gap-1 rounded-2xl bg-white px-3 py-3">
+              <View className="flex-row items-center justify-between gap-3">
+                <View className="flex-1">
+                  <Text className="text-[13px] font-bold text-slate-900">{item.topic}</Text>
+                  <Text className="text-[11px] text-slate-500">{item.label}</Text>
+                </View>
+                <Text className="text-[12px] font-bold text-indigo-600">{item.percent}%</Text>
+              </View>
+              <View className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <View className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.max(6, item.percent)}%` }} />
+              </View>
+            </View>
+          ))}
+        </View>
+      </InsightBlock>
+
+      <InsightBlock icon="clock" title="Revisão do dia">
+        <View className="gap-2">
+          {insights.reviewToday.map((task) => (
+            <View key={`${task.label}-${task.topic}`} className="gap-1 rounded-2xl bg-emerald-50 px-3 py-3">
+              <Text className="text-[11px] font-semibold text-emerald-700">{task.label} · {task.minutes} min</Text>
+              <Text className="text-[13px] font-bold text-slate-900">{task.text}</Text>
+              <Text className="text-[11px] text-slate-500">{task.topic}</Text>
+            </View>
+          ))}
+        </View>
+      </InsightBlock>
+
+      <InsightBlock icon="cards" title="Flashcards automáticos">
+        <View className="gap-2">
+          {insights.flashcards.slice(0, 6).map((card, index) => (
+            <View key={`${card.front}-${index}`} className="gap-1 rounded-2xl bg-indigo-50 px-3 py-3">
+              <Text className="text-[11px] font-semibold text-indigo-600">{card.topic}</Text>
+              <Text className="text-[13px] font-bold text-slate-900">{card.front}</Text>
+              <Text className="text-[12px] leading-5 text-slate-600">{card.back}</Text>
+            </View>
+          ))}
+        </View>
+      </InsightBlock>
+
+      <InsightBlock icon="history" title={subject.name === 'História' ? 'Linha do tempo de História' : 'Sequência de estudo'}>
+        <View className="gap-2">
+          {insights.timeline.map((item) => (
+            <View key={item.topic} className="flex-row gap-3 rounded-2xl bg-white px-3 py-3">
+              <View className="h-7 w-7 items-center justify-center rounded-full bg-slate-900">
+                <Text className="text-[11px] font-bold text-white">{item.marker}</Text>
+              </View>
+              <View className="flex-1 gap-1">
+                <Text className="text-[13px] font-bold text-slate-900">{item.topic}</Text>
+                <Text className="text-[12px] leading-5 text-slate-600">{item.text}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </InsightBlock>
+    </View>
+  );
+}
+
+function InsightBlock({ icon, title, children }) {
+  return (
+    <View className="gap-2 rounded-2xl bg-slate-50 p-3">
+      <View className="flex-row items-center gap-1.5">
+        <Icon name={icon} size={15} color="#4f46e5" />
+        <Text className="text-[14px] font-bold text-slate-900">{title}</Text>
+      </View>
+      {children}
+    </View>
   );
 }
 
