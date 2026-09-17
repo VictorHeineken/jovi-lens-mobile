@@ -9,6 +9,7 @@ import useDialogAccessibility from './useDialogAccessibility.js';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { buildSubjectInsights } from '../../shared/subjectInsights.js';
+import { getPresentationExamResult } from '../../shared/demoSubjectArtifacts.js';
 
 const TABS = [
   { id: 'overview', label: 'Visão', icon: 'layers' },
@@ -26,7 +27,8 @@ export default function SubjectStudio({ subject, onClose }) {
 
   if (!subject) return null;
 
-  const examResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
+  const rawExamResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
+  const examResult = getPresentationExamResult(subject, rawExamResult);
   const savedExam = getSubjectArtifact(subject.name, 'exam')?.data || null;
   const savedPlan = getSubjectArtifact(subject.name, 'plan')?.data || null;
   const savedPlanProgress = getSubjectArtifact(subject.name, 'planProgress')?.data || {};

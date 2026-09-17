@@ -10,6 +10,7 @@ import VideoRecommendations from './VideoRecommendations.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { buildSubjectInsights } from '../shared/subjectInsights.js';
+import { getPresentationExamResult } from '../shared/demoSubjectArtifacts.js';
 
 const TABS = [
   { id: 'overview', label: 'Visão', icon: 'layers' },
@@ -28,7 +29,8 @@ export default function SubjectStudio({ subject, onClose }) {
 
   if (!subject) return null;
 
-  const examResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
+  const rawExamResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
+  const examResult = getPresentationExamResult(subject, rawExamResult);
   const savedExam = getSubjectArtifact(subject.name, 'exam')?.data || null;
   const savedPlan = getSubjectArtifact(subject.name, 'plan')?.data || null;
   const savedPlanProgress = getSubjectArtifact(subject.name, 'planProgress')?.data || {};
@@ -94,7 +96,7 @@ export default function SubjectStudio({ subject, onClose }) {
                 onPress={() => setTab(item.id)}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
-                className={`flex-row items-center gap-1.5 rounded-full border px-3 py-2 ${active ? 'border-indigo-600 bg-indigo-600' : 'border-slate-200 bg-white'}`}
+                className={`min-w-[104px] flex-row items-center justify-center gap-1.5 rounded-full border px-3 py-2 ${active ? 'border-indigo-600 bg-indigo-600' : 'border-slate-200 bg-white'}`}
               >
                 <Icon name={item.icon} size={15} color={active ? '#ffffff' : '#475569'} />
                 <Text className={`text-[13px] font-medium ${active ? 'text-white' : 'text-slate-600'}`}>{item.label}</Text>

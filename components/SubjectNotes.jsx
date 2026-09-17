@@ -132,7 +132,7 @@ export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenS
               </Pressable>
 
               {isOpen ? (
-                <View className="gap-3 border-t border-slate-100 px-4 py-4">
+                <View className="min-h-[590px] gap-3 border-t border-slate-100 px-4 py-4">
                   {onOpenStudio ? (
                     <Pressable accessibilityRole="button" onPress={() => onOpenStudio(subject.subject)} className="flex-row items-center gap-3 rounded-2xl bg-indigo-600 px-4 py-3.5">
                       <View className="h-9 w-9 items-center justify-center rounded-full bg-white/15">
@@ -155,9 +155,9 @@ export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenS
                           onPress={() => setActiveSubtheme((current) => ({ ...current, [subject.subject]: item.name }))}
                           accessibilityRole="tab"
                           accessibilityState={{ selected: active }}
-                          className={`rounded-full border px-3 py-1.5 ${active ? 'border-indigo-600 bg-indigo-600' : 'border-slate-200 bg-white'}`}
+                          className={`min-w-[152px] items-center rounded-full border px-3 py-1.5 ${active ? 'border-indigo-600 bg-indigo-600' : 'border-slate-200 bg-white'}`}
                         >
-                          <Text className={`text-[12px] font-medium ${active ? 'text-white' : 'text-slate-600'}`}>{item.name}</Text>
+                          <Text numberOfLines={1} className={`text-[12px] font-medium ${active ? 'text-white' : 'text-slate-600'}`}>{item.name}</Text>
                         </Pressable>
                       );
                     })}

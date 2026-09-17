@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEMO_SUBJECT_ARTIFACTS } from '../shared/demoSubjectArtifacts.js';
+import { DEMO_SUBJECT_ARTIFACTS, getPresentationExamResult } from '../shared/demoSubjectArtifacts.js';
 import { buildSubjectInsights } from '../shared/subjectInsights.js';
 
 const historySubject = {
@@ -41,4 +41,43 @@ test('buildSubjectInsights falls back for subjects without exam results', () => 
   assert.equal(insights.radar[0].label, 'Pouca base');
   assert.ok(insights.reviewToday[0].text.includes('Cartografia'));
   assert.equal(insights.timeline[0].topic, 'Cartografia');
+});
+
+test('history presentation exam covers every subtheme', () => {
+  const subject = {
+    name: 'História',
+    subthemes: [
+      'Indústria e fábricas',
+      'Trabalhadores e movimento operário',
+      'Transporte e máquinas a vapor',
+      'Mecanização têxtil',
+      'Trabalho infantil e leis fabris',
+      'Exposições industriais e consumo',
+    ],
+  };
+  const result = DEMO_SUBJECT_ARTIFACTS.História.examResult.data;
+
+  assert.equal(result.total, 7);
+  subject.subthemes.forEach((topic) => {
+    assert.ok(result.byTopic[topic], `${topic} should have an exam diagnosis`);
+  });
+});
+
+test('history presentation result replaces empty local result', () => {
+  const subject = {
+    name: 'História',
+    subthemes: ['Indústria e fábricas', 'Trabalhadores e movimento operário'],
+  };
+  const localZero = {
+    subject: 'História',
+    score: 0,
+    total: 6,
+    percent: 0,
+    byTopic: { 'Indústria e fábricas': { correct: 0, total: 1 } },
+  };
+
+  const result = getPresentationExamResult(subject, localZero);
+
+  assert.equal(result.percent, DEMO_SUBJECT_ARTIFACTS.História.examResult.data.percent);
+  assert.equal(result.total, DEMO_SUBJECT_ARTIFACTS.História.examResult.data.total);
 });

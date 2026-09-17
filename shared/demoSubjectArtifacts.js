@@ -89,6 +89,13 @@ const examQuestions = [
     topic: 'Mecanização têxtil',
   },
   {
+    question: 'As primeiras leis fabris nasceram principalmente para responder a:',
+    options: ['Excesso de férias dos operários', 'Críticas ao trabalho infantil e às jornadas abusivas', 'Fim da urbanização industrial', 'Proibição de sindicatos patronais'],
+    answerIndex: 1,
+    explanation: 'A denúncia de crianças em ambientes perigosos e jornadas longas pressionou por limites legais ao trabalho nas fábricas.',
+    topic: 'Trabalho infantil e leis fabris',
+  },
+  {
     question: 'O Crystal Palace e a Grande Exposição de 1851 ajudam a entender:',
     options: ['A indústria como vitrine de progresso e poder econômico', 'O fim da produção industrial inglesa', 'A rejeição completa às máquinas', 'A volta da economia rural isolada'],
     answerIndex: 0,
@@ -99,17 +106,18 @@ const examQuestions = [
 
 const examResult = {
   subject: 'História',
-  score: 5,
-  total: 6,
-  percent: 83,
+  score: 6,
+  total: 7,
+  percent: 86,
   byTopic: {
     'Indústria e fábricas': { correct: 2, total: 2 },
     'Trabalhadores e movimento operário': { correct: 0, total: 1 },
     'Transporte e máquinas a vapor': { correct: 1, total: 1 },
     'Mecanização têxtil': { correct: 1, total: 1 },
+    'Trabalho infantil e leis fabris': { correct: 1, total: 1 },
     'Exposições industriais e consumo': { correct: 1, total: 1 },
   },
-  answers: { 0: 1, 1: 1, 2: 3, 3: 1, 4: 0, 5: 0 },
+  answers: { 0: 1, 1: 1, 2: 3, 3: 1, 4: 0, 5: 1, 6: 0 },
   questions: examQuestions,
   takenAt: SAVED_AT,
 };
@@ -330,24 +338,36 @@ const plan = {
   sessions: [
     {
       label: 'Sessão 1',
-      focus: 'Mecanização têxtil e fábricas',
+      focus: 'Mecanização têxtil',
       durationMinutes: 20,
-      tasks: ['Revisar a nota da Spinning Jenny', 'Explicar divisão do trabalho em voz alta', 'Anotar uma consequência técnica e uma social'],
+      tasks: ['Revisar a nota da Spinning Jenny', 'Explicar por que uma máquina muda a escala de produção', 'Anotar uma consequência técnica e uma social'],
     },
     {
       label: 'Sessão 2',
+      focus: 'Indústria e fábricas',
+      durationMinutes: 25,
+      tasks: ['Explicar divisão do trabalho em voz alta', 'Comparar oficina artesanal e fábrica', 'Responder uma questão sobre produtividade e controle'],
+    },
+    {
+      label: 'Sessão 3',
       focus: 'Trabalhadores e movimento operário',
       durationMinutes: 25,
       tasks: ['Rever o diagnóstico do simulado', 'Comparar jornada fixa e trabalho artesanal', 'Abrir a busca salva sobre movimento operário'],
     },
     {
-      label: 'Sessão 3',
+      label: 'Sessão 4',
+      focus: 'Trabalho infantil e leis fabris',
+      durationMinutes: 18,
+      tasks: ['Ler a nota sobre trabalho infantil', 'Diferenciar crítica social e lei fabril', 'Criar um exemplo de reivindicação operária'],
+    },
+    {
+      label: 'Sessão 5',
       focus: 'Transporte e máquinas a vapor',
       durationMinutes: 15,
       tasks: ['Assistir uma aula curta sobre ferrovias', 'Relacionar carvão, fábrica e mercado', 'Responder uma pergunta de síntese'],
     },
     {
-      label: 'Sessão 4',
+      label: 'Sessão 6',
       focus: 'Exposições industriais e consumo',
       durationMinutes: 15,
       tasks: ['Rever a nota do Crystal Palace', 'Explicar por que indústria também vira espetáculo', 'Conectar tecnologia, império e mercado consumidor'],
@@ -399,4 +419,18 @@ export function mergeDemoSubjectArtifacts(stored = {}) {
   });
 
   return { artifacts: next, changed };
+}
+
+export function getPresentationExamResult(subject, result) {
+  if (subject?.name !== 'História') return result;
+  const baseline = DEMO_SUBJECT_ARTIFACTS.História?.examResult?.data || null;
+  if (!baseline) return result;
+  if (!result) return baseline;
+
+  const topics = Array.isArray(subject.subthemes) ? subject.subthemes : [];
+  const byTopic = result.byTopic || {};
+  const coversEveryTopic = topics.length ? topics.every((topic) => byTopic[topic]?.total) : true;
+  const emptyResult = Number(result.percent || 0) === 0 || Number(result.total || 0) === 0;
+
+  return emptyResult || !coversEveryTopic ? baseline : result;
 }
