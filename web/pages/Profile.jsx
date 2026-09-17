@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import { useAppData } from '../context/AppDataContext.jsx';
-import { isDemoMode } from '../services/imageAnalysis.js';
 import { createBackup, downloadBackup, readBackupFile } from '../services/dataTransfer.js';
 import { isGoogleSignInConfigured, renderGoogleSignInButton, signOutGoogle } from '../services/googleAuth.js';
 
@@ -67,7 +66,6 @@ export default function Profile() {
   const [authMessage, setAuthMessage] = useState('');
   const fileRef = useRef(null);
   const googleButtonRef = useRef(null);
-  const demoMode = isDemoMode();
 
   const trialActive = plan.type === 'trial' && new Date(plan.endsAt) > new Date();
   const daysLeft = trialActive ? Math.max(1, Math.ceil((new Date(plan.endsAt) - new Date()) / 86400000)) : 0;
@@ -190,11 +188,6 @@ export default function Profile() {
         <small>Exemplo de apresentação: não há cobrança, assinatura ou login externo neste fluxo.</small>
       </section>
 
-      <section className="settings-card">
-        <div><span>Inteligência</span><strong>{demoMode ? 'Modo demonstração' : 'Azure OpenAI'}</strong></div>
-        <div><span>Conta</span><strong>Perfil local de estudante</strong></div>
-        <div><span>Cobrança</span><strong>Não configurada</strong></div>
-      </section>
       <section className="learning-preferences-card">
         <div className="learning-preferences-heading"><div><strong>Seu plano de estudo</strong><span>Usamos essas escolhas nas perguntas, simulados, podcasts, planos e recomendações de vídeo.</span></div><Icon name="sparkle" size={18} /></div>
         <div className="learning-preferences-summary" aria-label="Personalização aplicada">

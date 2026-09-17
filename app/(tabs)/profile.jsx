@@ -5,7 +5,6 @@ import Icon from '../../components/Icon.jsx';
 import { useTopInset } from '../../hooks/safeArea.js';
 import { useAnnounce } from '../../hooks/announce.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
-import { isDemoMode } from '../../services/imageAnalysis.js';
 import { createBackup, downloadBackup, readBackupFile } from '../../services/dataTransfer.js';
 import { signOutGoogle, useGoogleSignIn } from '../../services/googleAuth.js';
 
@@ -71,7 +70,6 @@ export default function ProfileScreen() {
   const [authMessage, setAuthMessage] = useState('');
   useAnnounce(authMessage);
   const topInset = useTopInset();
-  const demoMode = isDemoMode();
   const { signIn: signInWithGoogle, configured: googleConfigured } = useGoogleSignIn();
 
   const trialActive = plan.type === 'trial' && new Date(plan.endsAt) > new Date();
@@ -251,12 +249,6 @@ export default function ProfileScreen() {
           <Text className="text-[11px] text-slate-400">Exemplo de apresentação: não há cobrança, assinatura ou login externo neste fluxo.</Text>
         </View>
 
-        <View className="gap-2 rounded-2xl border border-slate-200 bg-white p-4">
-          <SettingRow label="Inteligência" value={demoMode ? 'Modo demonstração' : 'Azure OpenAI'} />
-          <SettingRow label="Conta" value="Perfil local de estudante" />
-          <SettingRow label="Cobrança" value="Não configurada" />
-        </View>
-
         <View className="gap-3 rounded-2xl border border-slate-200 bg-white p-4">
           <View className="flex-row items-start justify-between gap-2">
             <View className="flex-1">
@@ -335,15 +327,6 @@ function BenefitLine({ text }) {
     <View className="flex-row items-center gap-2">
       <Icon name="check" size={15} color="#16a34a" />
       <Text className="text-[13px] text-slate-700">{text}</Text>
-    </View>
-  );
-}
-
-function SettingRow({ label, value }) {
-  return (
-    <View className="flex-row items-center justify-between">
-      <Text className="text-[13px] text-slate-500">{label}</Text>
-      <Text className="text-[13px] font-semibold text-slate-800">{value}</Text>
     </View>
   );
 }
