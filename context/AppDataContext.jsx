@@ -38,10 +38,24 @@ const studyAssets = {
   photography: [`${ASSET_BASE}/camera-vintage.jpg`, `${ASSET_BASE}/camera-collection.jpg`, `${ASSET_BASE}/photography-film.jpg`],
 };
 
+// One dedicated record per sampleNote below (same id suffix, same createdAt),
+// each pointing at that note's own themed photo. Previously only 3 generic
+// records existed for 12 notes, so most notes displayed an unrelated photo
+// (whichever of the 3 their recordId happened to land on) — see the note's
+// own `image` field, which was already correct but never actually shown.
 const samples = [
-  { id: 'sample-1', src: `${ASSET_BASE}/demo-default-photo.jpg`, createdAt: '2026-08-25T20:00:00.000Z', source: 'sample', label: 'Livro', aiAvailable: true },
-  { id: 'sample-3', src: `${ASSET_BASE}/demo-resultado-encontrado.jpg`, createdAt: '2026-08-23T15:10:00.000Z', source: 'sample', label: 'Resultado', aiAvailable: false },
-  { id: 'sample-4', src: `${ASSET_BASE}/demo-buscando-texto.jpg`, createdAt: '2026-08-22T11:45:00.000Z', source: 'sample', label: 'Pesquisa', aiAvailable: false },
+  { id: 'sample-1', src: studyAssets.history[0], createdAt: '2026-08-25T19:20:00.000Z', source: 'sample', label: 'Fábrica de velas do século 19', aiAvailable: true },
+  { id: 'sample-2', src: studyAssets.history[1], createdAt: '2026-08-25T11:05:00.000Z', source: 'sample', label: 'Operários saindo da fábrica', aiAvailable: true },
+  { id: 'sample-3', src: studyAssets.history[2], createdAt: '2026-08-24T16:40:00.000Z', source: 'sample', label: 'Locomotiva a vapor de 1814', aiAvailable: true },
+  { id: 'sample-4', src: studyAssets.programming[0], createdAt: '2026-08-24T09:15:00.000Z', source: 'sample', label: 'Código em Python', aiAvailable: true },
+  { id: 'sample-5', src: studyAssets.programming[1], createdAt: '2026-08-23T14:50:00.000Z', source: 'sample', label: 'Código em JavaScript', aiAvailable: true },
+  { id: 'sample-6', src: studyAssets.programming[2], createdAt: '2026-08-23T08:30:00.000Z', source: 'sample', label: 'Editor visual de frontend', aiAvailable: true },
+  { id: 'sample-7', src: studyAssets.books[0], createdAt: '2026-08-22T17:10:00.000Z', source: 'sample', label: 'Estante de livros da biblioteca', aiAvailable: true },
+  { id: 'sample-8', src: studyAssets.books[1], createdAt: '2026-08-22T10:05:00.000Z', source: 'sample', label: 'Livro aberto para leitura', aiAvailable: true },
+  { id: 'sample-9', src: `${ASSET_BASE}/demo-default-photo.jpg`, createdAt: '2026-08-21T15:25:00.000Z', source: 'sample', label: 'Capa do livro fotografado', aiAvailable: true },
+  { id: 'sample-10', src: studyAssets.photography[0], createdAt: '2026-08-21T09:40:00.000Z', source: 'sample', label: 'Parede de câmeras vintage', aiAvailable: true },
+  { id: 'sample-11', src: studyAssets.photography[1], createdAt: '2026-08-20T13:15:00.000Z', source: 'sample', label: 'Vitrine de câmeras raras', aiAvailable: true },
+  { id: 'sample-12', src: studyAssets.photography[2], createdAt: '2026-08-20T08:00:00.000Z', source: 'sample', label: 'Filme fotográfico de 35mm', aiAvailable: true },
 ];
 
 // These paths and the require() keys in services/demoAssets.js are two hand-kept
@@ -75,7 +89,7 @@ const sampleNotes = [
   {
     id: 'sample-note-1',
     seed: true,
-    recordId: 'sample-3',
+    recordId: 'sample-1',
     image: studyAssets.history[0],
     images: [studyAssets.history[0]],
     title: 'Como uma fábrica do século 19 organizava a produção',
@@ -96,7 +110,7 @@ const sampleNotes = [
   {
     id: 'sample-note-2',
     seed: true,
-    recordId: 'sample-4',
+    recordId: 'sample-2',
     image: studyAssets.history[1],
     images: [studyAssets.history[1]],
     title: 'A multidão que saía das fábricas no início do século 20',
@@ -117,7 +131,7 @@ const sampleNotes = [
   {
     id: 'sample-note-3',
     seed: true,
-    recordId: 'sample-1',
+    recordId: 'sample-3',
     image: studyAssets.history[2],
     images: [studyAssets.history[2]],
     title: 'A engenharia das primeiras locomotivas a vapor',
@@ -138,7 +152,7 @@ const sampleNotes = [
   {
     id: 'sample-note-4',
     seed: true,
-    recordId: 'sample-3',
+    recordId: 'sample-4',
     image: studyAssets.programming[0],
     images: [studyAssets.programming[0]],
     title: 'Primeiros passos com Python',
@@ -155,7 +169,7 @@ const sampleNotes = [
   {
     id: 'sample-note-5',
     seed: true,
-    recordId: 'sample-4',
+    recordId: 'sample-5',
     image: studyAssets.programming[1],
     images: [studyAssets.programming[1]],
     title: 'Como o JavaScript deixa uma página interativa',
@@ -176,7 +190,7 @@ const sampleNotes = [
   {
     id: 'sample-note-6',
     seed: true,
-    recordId: 'sample-1',
+    recordId: 'sample-6',
     image: studyAssets.programming[2],
     images: [studyAssets.programming[2]],
     title: 'O que define a camada de frontend de um site',
@@ -197,7 +211,7 @@ const sampleNotes = [
   {
     id: 'sample-note-7',
     seed: true,
-    recordId: 'sample-3',
+    recordId: 'sample-7',
     image: studyAssets.books[0],
     images: [studyAssets.books[0]],
     title: 'Por que organizar referências em uma biblioteca ajuda a estudar',
@@ -218,7 +232,7 @@ const sampleNotes = [
   {
     id: 'sample-note-8',
     seed: true,
-    recordId: 'sample-4',
+    recordId: 'sample-8',
     image: studyAssets.books[1],
     images: [studyAssets.books[1]],
     title: 'Ler com atenção: o que muda na leitura ativa',
@@ -239,7 +253,7 @@ const sampleNotes = [
   {
     id: 'sample-note-9',
     seed: true,
-    recordId: 'sample-1',
+    recordId: 'sample-9',
     image: `${ASSET_BASE}/demo-default-photo.jpg`,
     images: [`${ASSET_BASE}/demo-default-photo.jpg`, studyAssets.books[2]],
     title: 'The Photography Storytelling Workshop',
@@ -256,7 +270,7 @@ const sampleNotes = [
   {
     id: 'sample-note-10',
     seed: true,
-    recordId: 'sample-3',
+    recordId: 'sample-10',
     image: studyAssets.photography[0],
     images: [studyAssets.photography[0]],
     title: 'O que uma parede de câmeras vintage revela sobre a evolução da fotografia',
@@ -277,7 +291,7 @@ const sampleNotes = [
   {
     id: 'sample-note-11',
     seed: true,
-    recordId: 'sample-4',
+    recordId: 'sample-11',
     image: studyAssets.photography[1],
     images: [studyAssets.photography[1]],
     title: 'Por que colecionadores guardam câmeras em vitrines fechadas',
@@ -298,7 +312,7 @@ const sampleNotes = [
   {
     id: 'sample-note-12',
     seed: true,
-    recordId: 'sample-1',
+    recordId: 'sample-12',
     image: studyAssets.photography[2],
     images: [studyAssets.photography[2]],
     title: 'Como funcionava um filme fotográfico de 35mm',
@@ -325,6 +339,7 @@ function getInitialNotes() {
     if (!sample) return note;
     return {
       ...note,
+      recordId: sample.recordId,
       image: sample.image,
       images: sample.images,
       topicPath: Array.isArray(note.topicPath) && note.topicPath.length > 1 ? note.topicPath : sample.topicPath,
@@ -374,6 +389,24 @@ export function AppDataProvider({ children }) {
     return () => { active = false; };
   }, []);
 
+  const addHistoryEntry = useCallback((entry) => {
+    // recordId is enough to resolve the source photo later (NotesTimeline
+    // already falls back to it via `records`) — embedding the full image
+    // here is what exhausts localStorage's quota after enough entries.
+    const { image, ...rest } = entry;
+    const historyEntry = {
+      id: `history-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      createdAt: new Date().toISOString(),
+      ...rest,
+    };
+    setAiHistory((current) => {
+      const next = [historyEntry, ...current].slice(0, 60);
+      persistHistory(next);
+      return next;
+    });
+    return historyEntry;
+  }, []);
+
   const addRecord = useCallback(async ({ src, source = 'upload', label = 'Nova imagem', aiAvailable = true, mediaType = 'image', collectionId = null, pageNumber = null }) => {
     const record = {
       id: `media-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -390,8 +423,20 @@ export function AppDataProvider({ children }) {
     recordsRef.current = [record, ...recordsRef.current];
     setRecords(recordsRef.current);
     await saveMediaRecord(record);
+    // Every new photo/video should show up in Histórico right away, not just
+    // after the user runs an AI analysis on it (that adds its own, richer
+    // entry via addHistoryEntry in SmartImageSheet).
+    addHistoryEntry({
+      recordId: record.id,
+      title: label,
+      type: mediaType === 'video' ? 'Vídeo adicionado' : 'Foto adicionada',
+      action: 'capture',
+      category: 'Fotos',
+      subcategory: source === 'camera' ? 'Câmera' : 'Galeria',
+      response: source === 'camera' ? 'Capturada com a câmera e salva na galeria.' : 'Importada e salva na galeria.',
+    });
     return record;
-  }, []);
+  }, [addHistoryEntry]);
 
   const updateRecord = useCallback(async (id, patch) => {
     const current = recordsRef.current.find((item) => item.id === id);
@@ -456,24 +501,6 @@ export function AppDataProvider({ children }) {
     setNotesState(next);
     persistNotes(next);
   }, [notes]);
-
-  const addHistoryEntry = useCallback((entry) => {
-    // recordId is enough to resolve the source photo later (NotesTimeline
-    // already falls back to it via `records`) — embedding the full image
-    // here is what exhausts localStorage's quota after enough entries.
-    const { image, ...rest } = entry;
-    const historyEntry = {
-      id: `history-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      createdAt: new Date().toISOString(),
-      ...rest,
-    };
-    setAiHistory((current) => {
-      const next = [historyEntry, ...current].slice(0, 60);
-      persistHistory(next);
-      return next;
-    });
-    return historyEntry;
-  }, []);
 
   const setPlan = useCallback((next) => {
     setPlanState(next);

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import CopilotView from '../../components/CopilotView.jsx';
 import Icon from '../../components/Icon.jsx';
 import NotesTimeline from '../../components/NotesTimeline.jsx';
 import SubjectNotes from '../../components/SubjectNotes.jsx';
@@ -13,16 +12,8 @@ import { useToast } from '../../shared/toast.js';
 import { imageSource } from '../../services/demoAssets.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 
-const GALLERY_TABS = [
-  { id: 'photos', label: 'Fotos', icon: 'gallery' },
-  { id: 'albums', label: 'Álbuns', icon: 'album' },
-  { id: 'notes', label: 'Notas', icon: 'note' },
-  { id: 'history', label: 'Histórico', icon: 'history' },
-  { id: 'copilot', label: 'Copilot', icon: 'sparkle' },
-];
-
-const PAGE_TITLE = { photos: 'Fotos', albums: 'Álbuns', notes: 'Notas', history: 'Histórico', copilot: 'Copilot' };
-const PAGE_KICKER = { photos: 'Galeria', albums: 'Álbum', notes: 'Memória da IA', history: 'Uso da IA', copilot: 'Inteligência avançada' };
+const PAGE_TITLE = { photos: 'Fotos', albums: 'Álbuns', notes: 'Notas', history: 'Histórico' };
+const PAGE_KICKER = { photos: 'Galeria', albums: 'Álbum', notes: 'Memória da IA', history: 'Uso da IA' };
 
 function dayKey(date) {
   const value = new Date(date);
@@ -64,16 +55,19 @@ export default function GalleryScreen() {
   const orderedRecords = useMemo(() => [...records].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), [records]);
   const recordGroups = useMemo(() => groupRecords(orderedRecords), [orderedRecords]);
   const albums = useMemo(() => {
+    // No fallbacks: an album with nothing that actually matches its own
+    // criteria should show 0 items, not borrow unrelated photos to look full.
     const camera = orderedRecords.filter((record) => record.source === 'camera');
     const documents = orderedRecords.filter((record) => /texto|livro|pesquisa|document/i.test(record.label || ''));
-    const studied = orderedRecords.filter((record) => record.analysis || record.aiAvailable !== false);
+    const studiedRecordIds = new Set(notes.map((note) => note.recordId));
+    const studied = orderedRecords.filter((record) => studiedRecordIds.has(record.id));
     return [
       { id: 'all', title: 'Todas as fotos', subtitle: 'Seu arquivo completo', items: orderedRecords, icon: 'gallery' },
-      { id: 'camera', title: 'Câmera', subtitle: 'Capturas feitas neste aparelho', items: camera.length ? camera : orderedRecords.slice(0, 2), icon: 'camera' },
-      { id: 'documents', title: 'Documentos', subtitle: 'Textos e páginas para consultar', items: documents.length ? documents : orderedRecords.slice(1, 3), icon: 'note' },
+      { id: 'camera', title: 'Câmera', subtitle: 'Capturas feitas neste aparelho', items: camera, icon: 'camera' },
+      { id: 'documents', title: 'Documentos', subtitle: 'Textos e páginas para consultar', items: documents, icon: 'note' },
       { id: 'studied', title: 'Estudadas', subtitle: 'Fotos que já viraram aprendizado', items: studied, icon: 'sparkle' },
     ];
-  }, [orderedRecords]);
+  }, [orderedRecords, notes]);
   const pageTitle = PAGE_TITLE[activeTab];
   const pageKicker = PAGE_KICKER[activeTab];
 
@@ -141,6 +135,7 @@ export default function GalleryScreen() {
           <View className="flex-row gap-2 rounded-full bg-slate-100 p-1" accessibilityRole="tablist" accessibilityLabel="Seções da galeria">
             <SegmentButton label="Fotos" active={activeTab === 'photos'} onPress={() => goTab('photos')} />
             <SegmentButton label="Álbuns" active={activeTab === 'albums'} onPress={() => goTab('albums')} />
+            <SegmentButton label="Histórico" active={activeTab === 'history'} onPress={() => goTab('history')} />
           </View>
         </View>
 
@@ -161,21 +156,8 @@ export default function GalleryScreen() {
           {activeTab === 'history' ? (
             <NotesTimeline notes={notes} aiHistory={aiHistory} records={orderedRecords} onOpen={openRecord} />
           ) : null}
-          {activeTab === 'copilot' ? <CopilotView embedded /> : null}
         </View>
       </ScrollView>
-
-      <View className="flex-row border-t border-slate-100 bg-white pb-6 pt-2" accessibilityLabel="Navegação da galeria">
-        {GALLERY_TABS.map((tab) => {
-          const active = activeTab === tab.id;
-          return (
-            <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} key={tab.id} onPress={() => goTab(tab.id)} className="flex-1 items-center gap-1 py-1">
-              <Icon name={tab.icon} size={19} color={active ? '#4f46e5' : '#94a3b8'} />
-              <Text className={`text-[10px] font-medium ${active ? 'text-indigo-600' : 'text-slate-400'}`}>{tab.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
 
       {message ? (
         <View className="absolute bottom-24 left-4 right-4 flex-row items-center justify-center gap-2 rounded-full bg-slate-900/90 px-4 py-2.5">
