@@ -63,13 +63,16 @@ Copie `.env.example` para `.env` na raiz e ajuste:
 AI_PROVIDER=minimax
 MINIMAX_API_KEY=<sua chave>
 
-# O servidor precisa aceitar conexões da rede — 127.0.0.1 não é alcançável pelo celular.
-JOVI_API_HOST=0.0.0.0
+JOVI_API_HOST=127.0.0.1
 JOVI_API_PORT=8787
 
-# IP da sua máquina na LAN (não use localhost). Descubra com `ip addr` / `ipconfig`.
-EXPO_PUBLIC_API_BASE_URL=http://192.168.0.66:8787
+# O celular chega ao computador por um túnel `adb reverse` (scripts/phone-dev.sh),
+# então o mesmo APK funciona em qualquer rede sem rebuild.
+EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8787
 ```
+
+Sem adb, use o IP da máquina na LAN (`EXPO_PUBLIC_API_BASE_URL=http://192.168.0.66:8787`) e
+`JOVI_API_HOST=0.0.0.0` — mas aí cada rede nova (IP novo) exige recompilar.
 
 Dois detalhes que custam um rebuild inteiro se passarem despercebidos:
 
@@ -80,6 +83,9 @@ Dois detalhes que custam um rebuild inteiro se passarem despercebidos:
 ## 3. Subir o backend
 
 O app não tem IA embarcada: todas as chamadas passam pelo backend em `api/`.
+
+**Caminho recomendado:** `scripts/phone-dev.sh` (seção 5) sobe o servidor em `127.0.0.1`, conecta
+ao celular e cria o túnel de uma vez. Os passos abaixo são para rodar o servidor sozinho, no modo LAN.
 
 ```bash
 npm install
@@ -132,7 +138,25 @@ mas não serve para publicar na Play Store.
 
 ## 5. Instalar no aparelho
 
-### Opção A — adb por Wi-Fi (recomendado)
+### Script: conectar, instalar e subir o servidor (recomendado)
+
+`scripts/phone-dev.sh` funciona no macOS (Terminal) e no Windows (Git Bash ou WSL). No celular, abra
+**Depuração sem fio → Parear dispositivo com código de pareamento** e passe o IP:porta e o código
+do diálogo:
+
+```bash
+bash scripts/phone-dev.sh 192.168.1.50:37123 123456                 # primeira vez
+bash scripts/phone-dev.sh 192.168.1.50                              # já pareado
+bash scripts/phone-dev.sh 192.168.1.50 --install android/app/build/outputs/apk/release/app-release.apk
+```
+
+Ele pareia, descobre a porta de conexão (mDNS, ou scan de portas quando o mDNS não funciona, como
+no WSL), cria `adb reverse tcp:8787 tcp:8787`, sobe o servidor só em `127.0.0.1` e abre o app. Se
+o celular dormir e a conexão cair, ele reconecta. **Ctrl+C** derruba o servidor, remove o túnel e
+desconecta. Exige um APK compilado com `EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8787`, e o app só
+alcança o backend enquanto o script está rodando.
+
+### Opção A — adb por Wi-Fi, manual
 
 No celular: **Configurações → Sobre o telefone →** toque 7× em **Número da versão**, depois
 **Configurações → Sistema → Opções do desenvolvedor → Depuração sem fio → Parear dispositivo com
