@@ -106,6 +106,10 @@ function formatElapsed(ms) {
   return `${minutes}:${String(rest).padStart(2, '0')}`;
 }
 
+function currentTimestamp() {
+  return Number(new Date());
+}
+
 export default function PresentationGuide() {
   const { setUser, setPlan, setStudyCalendar } = useAppData();
   const navigate = useNavigate();
@@ -113,7 +117,7 @@ export default function PresentationGuide() {
   const [open, setOpenState] = useState(readGuideOpen);
   const [stepIndex, setStepIndex] = useState(0);
   const [startedAt, setStartedAt] = useState(readGuideStartedAt);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(0);
   const [status, setStatus] = useState('');
   const pointerHandledRef = useRef(false);
   const step = GUIDE_STEPS[stepIndex];
@@ -127,11 +131,12 @@ export default function PresentationGuide() {
 
   useEffect(() => {
     if (!startedAt) return undefined;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    setNow(currentTimestamp());
+    const timer = window.setInterval(() => setNow(currentTimestamp()), 1000);
     return () => window.clearInterval(timer);
   }, [startedAt]);
 
-  const elapsed = startedAt ? formatElapsed(now - startedAt) : '0:00';
+  const elapsed = startedAt ? formatElapsed((now || startedAt) - startedAt) : '0:00';
 
   function setGuideOpen(value) {
     setOpenState(value);
@@ -144,8 +149,9 @@ export default function PresentationGuide() {
 
   function startClock() {
     if (startedAt) return;
-    const timestamp = Date.now();
+    const timestamp = currentTimestamp();
     setStartedAt(timestamp);
+    setNow(timestamp);
     try {
       window.sessionStorage.setItem(GUIDE_STARTED_KEY, String(timestamp));
     } catch {

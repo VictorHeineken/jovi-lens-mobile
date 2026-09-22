@@ -84,6 +84,17 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
         </Pressable>
       </View>
 
+      <DashboardBlock icon="calendar" title="Notificações inteligentes">
+        {dashboard.notifications.map((notification) => (
+          <View key={notification.id} className={`gap-1 rounded-xl px-3 py-2.5 ${notification.tone === 'risk' ? 'bg-red-50' : notification.tone === 'attention' ? 'bg-amber-50' : 'bg-indigo-50'}`}>
+            <Text className="text-[10px] font-bold uppercase tracking-wide text-indigo-500">{notification.label} · {notification.when}</Text>
+            <Text className="text-[12px] font-bold text-slate-900">{notification.title}</Text>
+            <Text className="text-[11px] text-slate-600">{notification.body}</Text>
+            <Text className="text-[10px] font-bold text-indigo-600">{notification.action}</Text>
+          </View>
+        ))}
+      </DashboardBlock>
+
       <View className="gap-2">
         <View className="rounded-2xl border border-slate-100 bg-white px-3 py-3">
           <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Pronto para a prova</Text>
@@ -125,6 +136,37 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
           </View>
         ))}
       </View>
+
+      <View className="gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 px-3 py-3">
+        <View className="flex-row items-start justify-between gap-3">
+          <View className="flex-1">
+            <Text className="text-[10px] font-bold uppercase tracking-wide text-indigo-500">Relatório final do aluno</Text>
+            <Text className="text-[16px] font-black text-slate-900">{dashboard.finalReport.grade}</Text>
+            <Text className="text-[11px] text-slate-600">{dashboard.finalReport.summary}</Text>
+          </View>
+          <Text className="text-[24px] font-black text-indigo-600">{dashboard.finalReport.progress}%</Text>
+        </View>
+        <View className="gap-1 rounded-xl bg-white px-3 py-2">
+          <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Próximo passo</Text>
+          <Text className="text-[12px] font-bold text-slate-900">{dashboard.finalReport.nextAction}</Text>
+          <Text className="text-[11px] text-slate-500">Prazo: {dashboard.finalReport.deadline}</Text>
+        </View>
+      </View>
+
+      <CollapsibleBlock icon="target" title="Ver relatório completo" open={!!openBlocks.report} onToggle={() => toggleBlock('report')}>
+        <View className="gap-2 rounded-xl bg-slate-50 px-3 py-2.5">
+          <Text className="text-[10px] font-bold uppercase tracking-wide text-indigo-500">Pontos fortes</Text>
+          {dashboard.finalReport.strengths.map((item) => <Text key={item} className="text-[11px] text-slate-600">{item}</Text>)}
+        </View>
+        <View className="gap-2 rounded-xl bg-amber-50 px-3 py-2.5">
+          <Text className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Revisar agora</Text>
+          {dashboard.finalReport.needsReview.map((item) => <Text key={item} className="text-[11px] text-slate-600">{item}</Text>)}
+        </View>
+        <View className="gap-1 rounded-xl bg-white px-3 py-2.5">
+          <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Resumo para responsáveis</Text>
+          <Text className="text-[11px] text-slate-600">{dashboard.finalReport.parentSummary}</Text>
+        </View>
+      </CollapsibleBlock>
 
       <CollapsibleBlock icon="history" title="Jornada do aluno" open={!!openBlocks.journey} onToggle={() => toggleBlock('journey')}>
         {dashboard.timeline.map((item) => (

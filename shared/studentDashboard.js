@@ -146,6 +146,8 @@ export function buildStudentDashboard({
   const readiness = buildReadinessStatus({ urgentSubject, nextExam, now });
   const audioBriefing = buildAudioBriefing({ today, readiness, urgentSubject, nextExam, now });
   const subjectAlert = buildSubjectAlert(ranking);
+  const notifications = buildSmartNotifications({ today, readiness, urgentSubject, nextExam, ranking, now });
+  const finalReport = buildFinalStudentReport({ urgentSubject, nextExam, readiness, flashcards, weeklyPlan, ranking, now });
 
   return {
     nextExam,
@@ -155,6 +157,8 @@ export function buildStudentDashboard({
     readiness,
     audioBriefing,
     subjectAlert,
+    notifications,
+    finalReport,
     flashcards,
     weeklyPlan,
     timeline,
@@ -168,6 +172,111 @@ export function buildStudentDashboard({
     headline: nextExam
       ? `Próxima prova: ${nextExam.subject} em ${daysUntilEvent(nextExam, now)} dias`
       : 'Plano geral pronto para a semana',
+  };
+}
+
+export function buildSmartNotifications({
+  today = {},
+  readiness = {},
+  urgentSubject = null,
+  nextExam = null,
+  ranking = [],
+  now = new Date(),
+} = {}) {
+  const subject = today.subject || urgentSubject?.name || nextExam?.subject || 'História';
+  const topic = today.topic || urgentSubject?.weakTopics?.[0]?.topic || nextExam?.topics?.[0] || subject;
+  const days = nextExam ? daysUntilEvent(nextExam, now) : null;
+  const riskSubject = ranking.find((item) => item.risk === 'Risco de prova' || item.risk === 'Revisar');
+  const notifications = [];
+
+  if (nextExam) {
+    notifications.push({
+      id: 'exam-reminder',
+      tone: days <= 3 ? 'risk' : days <= 7 ? 'attention' : 'ready',
+      label: 'Lembrete inteligente',
+      title: `${nextExam.subject} em ${days} dias`,
+      body: `Revise ${nextExam.topics?.[0] || topic} antes de ${formatEventDate(nextExam)}.`,
+      action: 'Abrir plano',
+      when: days <= 1 ? 'Hoje' : `${days} dias`,
+    });
+  }
+
+  notifications.push({
+    id: 'today-review',
+    tone: readiness.tone || 'attention',
+    label: 'Revisão de hoje',
+    title: `${today.minutes || 10} min de ${subject}`,
+    body: `Comece por ${topic}; é o menor bloco com maior impacto agora.`,
+    action: 'Começar revisão',
+    when: 'Agora',
+  });
+
+  notifications.push({
+    id: 'audio-drive',
+    tone: 'drive',
+    label: 'No caminho',
+    title: 'Podcast no carro',
+    body: `Use o bate-papo com IA para testar ${topic} sem olhar para a tela.`,
+    action: 'Ouvir revisão',
+    when: 'No carro',
+  });
+
+  if (riskSubject && riskSubject.subject !== subject) {
+    notifications.push({
+      id: 'risk-subject',
+      tone: 'risk',
+      label: 'Atenção',
+      title: `${riskSubject.subject} precisa de revisão`,
+      body: riskSubject.action,
+      action: 'Ver ranking',
+      when: 'Esta semana',
+    });
+  }
+
+  return notifications.slice(0, 3);
+}
+
+export function buildFinalStudentReport({
+  urgentSubject = null,
+  nextExam = null,
+  readiness = {},
+  flashcards = [],
+  weeklyPlan = [],
+  ranking = [],
+  now = new Date(),
+} = {}) {
+  const subject = urgentSubject?.name || nextExam?.subject || 'História';
+  const progress = urgentSubject?.progress ?? 0;
+  const weakTopics = urgentSubject?.weakTopics || [];
+  const strongTopics = strongTopicsFromResult(urgentSubject?.examResult).slice(0, 3);
+  const days = nextExam ? daysUntilEvent(nextExam, now) : null;
+  const nextAction = ranking.find((item) => item.subject === subject)?.action || weeklyPlan.find((item) => item.subject === subject)?.title || `Manter revisão de ${subject}`;
+  const grade = progress >= 85 ? 'Pronto para apresentar domínio' : progress >= 70 ? 'Bom, com ajustes finais' : progress >= 50 ? 'Precisa revisar antes da prova' : 'Base ainda frágil';
+
+  return {
+    subject,
+    title: `Relatório final de ${subject}`,
+    grade,
+    progress,
+    nextExamTitle: nextExam?.subject === subject ? nextExam.title : null,
+    deadline: days != null ? `${days} dias` : 'sem prova conectada',
+    summary: days != null
+      ? `${subject} está com ${progress}% de domínio e prova em ${days} dias. ${readiness.text || 'O plano prioriza revisão curta e prática ativa.'}`
+      : `${subject} está com ${progress}% de domínio. O plano mantém revisão espaçada e prática ativa.`,
+    strengths: strongTopics.length
+      ? strongTopics.map((item) => `${item.topic}: ${item.mastery}%`)
+      : flashcards.slice(0, 2).map((card) => `Boa base em ${card.topic}`),
+    needsReview: weakTopics.length
+      ? weakTopics.slice(0, 3).map((item) => `${item.topic}: ${item.mastery}%`)
+      : ['Sem lacuna crítica no último simulado'],
+    nextPlan: weeklyPlan.filter((item) => item.subject === subject).slice(0, 3).map((item) => ({
+      day: item.day,
+      title: item.title,
+      minutes: item.minutes,
+      focus: item.focus,
+    })),
+    nextAction,
+    parentSummary: `${subject}: ${progress}% de domínio. Próximo passo: ${nextAction}.`,
   };
 }
 

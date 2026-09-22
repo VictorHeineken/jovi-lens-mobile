@@ -53,6 +53,13 @@ test('buildStudentDashboard prioritizes the next Outlook exam', () => {
   assert.ok(dashboard.audioBriefing.script.includes('História'));
   assert.ok(dashboard.subjectAlert.subject);
   assert.ok(['Matéria estável', 'Matéria em atenção', 'Sem diagnóstico'].includes(dashboard.subjectAlert.label));
+  assert.equal(dashboard.notifications.length, 3);
+  assert.equal(dashboard.notifications[0].id, 'exam-reminder');
+  assert.equal(dashboard.notifications[0].action, 'Abrir plano');
+  assert.equal(dashboard.finalReport.subject, 'História');
+  assert.equal(dashboard.finalReport.progress, 86);
+  assert.ok(dashboard.finalReport.summary.includes('prova em 7 dias'));
+  assert.ok(dashboard.finalReport.needsReview.some((item) => item.includes('Trabalhadores e movimento operário')));
   assert.ok(dashboard.weeklyPlan[0].title.includes('Outlook') || dashboard.weeklyPlan[0].title.includes('Revisar'));
 });
 
@@ -135,4 +142,38 @@ test('dashboard flashcards and comparison use presentation result for História'
     'Transporte e máquinas a vapor',
   ]);
   assert.equal(dashboard.comparison.after, 86);
+});
+
+test('dashboard final report summarizes strengths, gaps and next plan', () => {
+  const dashboard = buildStudentDashboard({
+    subjects: [historySubject],
+    subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
+    studyCalendar: createDemoOutlookCalendar(now),
+    now,
+  });
+
+  assert.equal(dashboard.finalReport.title, 'Relatório final de História');
+  assert.equal(dashboard.finalReport.grade, 'Pronto para apresentar domínio');
+  assert.ok(dashboard.finalReport.strengths.length >= 1);
+  assert.ok(dashboard.finalReport.needsReview[0].includes('Trabalhadores e movimento operário'));
+  assert.ok(dashboard.finalReport.nextPlan.length >= 1);
+  assert.ok(dashboard.finalReport.parentSummary.includes('Próximo passo'));
+});
+
+test('dashboard smart notifications include exam, daily review and drive audio', () => {
+  const dashboard = buildStudentDashboard({
+    subjects: [historySubject],
+    subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
+    studyCalendar: createDemoOutlookCalendar(now),
+    now,
+  });
+
+  assert.deepEqual(dashboard.notifications.map((item) => item.id), [
+    'exam-reminder',
+    'today-review',
+    'audio-drive',
+  ]);
+  assert.equal(dashboard.notifications[0].tone, 'attention');
+  assert.ok(dashboard.notifications[1].body.includes('menor bloco'));
+  assert.ok(dashboard.notifications[2].title.includes('Podcast'));
 });

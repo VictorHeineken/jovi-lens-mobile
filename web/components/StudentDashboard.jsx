@@ -78,6 +78,20 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
         </button>
       </section>
 
+      <section className="smart-notifications-card" aria-label="Notificações inteligentes">
+        <div className="dashboard-section-head"><Icon name="calendar" size={15} /><strong>Notificações inteligentes</strong></div>
+        <div className="smart-notification-list">
+          {dashboard.notifications.map((notification) => (
+            <article className={`notification-${notification.tone}`} key={notification.id}>
+              <span>{notification.label} · {notification.when}</span>
+              <strong>{notification.title}</strong>
+              <p>{notification.body}</p>
+              <small>{notification.action}</small>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <div className="dashboard-compact-row">
         <article className={`readiness-pill ${dashboard.readiness.tone}`}>
           <span>Pronto para a prova</span>
@@ -112,6 +126,47 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
           </article>
         ))}
       </div>
+
+      <section className="final-report-card">
+        <div className="dashboard-section-head"><Icon name="note" size={15} /><strong>Relatório final do aluno</strong></div>
+        <div className="final-report-hero">
+          <div>
+            <span>{dashboard.finalReport.subject}</span>
+            <h3>{dashboard.finalReport.grade}</h3>
+            <p>{dashboard.finalReport.summary}</p>
+          </div>
+          <b>{dashboard.finalReport.progress}%</b>
+        </div>
+        <div className="final-report-metrics">
+          <span><strong>Prazo</strong>{dashboard.finalReport.deadline}</span>
+          <span><strong>Próximo passo</strong>{dashboard.finalReport.nextAction}</span>
+        </div>
+        <details className="dashboard-details final-report-details">
+          <summary><Icon name="target" size={15} /> Ver relatório completo</summary>
+          <section className="dashboard-section">
+            <div className="report-columns">
+              <article>
+                <span>Pontos fortes</span>
+                {dashboard.finalReport.strengths.map((item) => <small key={item}>{item}</small>)}
+              </article>
+              <article>
+                <span>Revisar agora</span>
+                {dashboard.finalReport.needsReview.map((item) => <small key={item}>{item}</small>)}
+              </article>
+            </div>
+            <div className="report-plan">
+              <span>Plano dos próximos dias</span>
+              {dashboard.finalReport.nextPlan.map((item) => (
+                <div key={`${item.day}-${item.focus}`}>
+                  <strong>{item.day}</strong>
+                  <small>{item.title} · {item.minutes} min</small>
+                </div>
+              ))}
+            </div>
+            <p className="report-share-copy">{dashboard.finalReport.parentSummary}</p>
+          </section>
+        </details>
+      </section>
 
       <details className="dashboard-details">
         <summary><Icon name="history" size={15} /> Jornada do aluno</summary>
