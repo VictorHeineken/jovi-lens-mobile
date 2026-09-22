@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { DEMO_SUBJECT_ARTIFACTS } from '../../shared/demoSubjectArtifacts.js';
+import { buildExamReport } from '../../shared/studentDashboard.js';
 
 function formatClock(seconds) {
   const m = Math.floor(Math.max(0, seconds) / 60);
@@ -134,7 +135,7 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
       timerRef.current = window.setInterval(() => {
         setSecondsLeft((value) => Math.max(0, value - 1));
       }, 1000);
-    }, 2000);
+    }, 1200);
   }
 
   if (phase === 'idle') {
@@ -159,11 +160,22 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
 
   if (phase === 'done' && result) {
     const weakTopics = Object.entries(result.byTopic).filter(([, v]) => v.correct < v.total);
+    const report = buildExamReport(result);
     return (
       <div className="studio-panel">
         <div className={`exam-score${result.percent >= 60 ? ' pass' : ''}`}>
           <strong>{result.percent}%</strong>
           <span>{result.score} de {result.total} corretas</span>
+        </div>
+        <div className="exam-smart-report">
+          <div>
+            <span>Relatório inteligente</span>
+            <strong>{report.grade}</strong>
+            <p>{report.summary}</p>
+          </div>
+          <ul>
+            {report.nextSteps.map((step) => <li key={step}>{step}</li>)}
+          </ul>
         </div>
         <div className="exam-diagnosis">
           <span className="studio-subtitle"><Icon name="target" size={13} /> Diagnóstico por subtema</span>

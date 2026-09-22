@@ -122,6 +122,30 @@ test('getSubjectDemo plan reflects global study strategy, pace and review method
   assert.ok(result.sessions[0].tasks.some((task) => /Comparar este subtema/.test(task)));
 });
 
+test('getSubjectDemo plan prioritizes a subject exam detected from Outlook', () => {
+  const result = getSubjectDemo({
+    action: 'plan',
+    subject: { name: 'História', notes: [{ subtheme: 'Indústria' }, { subtheme: 'Transporte' }] },
+    preferences: {
+      studyCalendar: {
+        provider: 'outlook',
+        events: [{
+          title: 'Prova de História · Revolução Industrial',
+          subject: 'História',
+          startsAt: '2026-09-28T08:00:00-03:00',
+          source: 'Outlook',
+          topics: ['Indústria', 'Transporte'],
+        }],
+      },
+    },
+  });
+
+  assert.match(result.overview, /Outlook/);
+  assert.equal(result.calendarEvent.source, 'Outlook');
+  assert.ok(result.sessions[0].tasks.some((task) => /Outlook/.test(task)));
+  assert.match(result.sessions[0].focus, /prioridade da prova/);
+});
+
 test('getSubjectDemo podcast drive mode behaves like an AI coach', () => {
   const result = getSubjectDemo({
     action: 'podcast-script',

@@ -1,3 +1,5 @@
+import { daysUntilEvent } from './studyCalendar.js';
+
 const DEMO_ANALYSIS = {
   text: 'A área de um círculo é dada por A = πr².\nSe r = 4 cm, então A = π · 4² = 16π cm².',
   language: 'pt',
@@ -133,18 +135,20 @@ function preferenceSeed(preferences = {}) {
     interleaved: { label: 'mistura de temas', task: 'Comparar este subtema com outro já estudado' },
     flashcards: { label: 'flashcards', task: 'Criar três cartões de pergunta e resposta' },
   }[preferences.reviewMethod];
+  const calendarEvent = Array.isArray(preferences.studyCalendar?.events) ? preferences.studyCalendar.events[0] || null : null;
   return {
     goal: goal || { label: 'vestibular', questionHint: 'com raciocínio de prova e comparação entre ideias', task: 'Resolver duas questões estilo vestibular' },
     studyContext: studyContext || { label: 'acompanhar aulas', planHint: 'ligando o conteúdo atual aos fundamentos e próximas revisões' },
     pace: pace || { label: 'ritmo regular', minutes: 30, task: 'Registrar uma dúvida e um acerto do dia' },
     practice: practice || { label: 'explicação e prática', task: 'Alternar uma explicação curta com uma questão' },
     review: review || { label: 'revisão espaçada', task: 'Agendar uma retomada curta antes de esquecer' },
+    calendarEvent,
   };
 }
 
 export function getSubjectDemo({ action = 'questions', subject = {}, preferences = {} } = {}) {
   const { name, topics, titles } = subjectSeed(subject);
-  const { goal, studyContext, pace, practice, review } = preferenceSeed(preferences);
+  const { goal, studyContext, pace, practice, review, calendarEvent } = preferenceSeed(preferences);
 
   if (action === 'questions') {
     const difficulties = ['fácil', 'média', 'difícil'];
@@ -174,14 +178,32 @@ export function getSubjectDemo({ action = 'questions', subject = {}, preferences
   }
 
   if (action === 'plan') {
+    const examDays = calendarEvent ? daysUntilEvent(calendarEvent, new Date('2026-09-21T12:00:00-03:00')) : null;
+    const examTopics = calendarEvent?.topics?.length ? calendarEvent.topics : topics.slice(0, 3);
     const sessions = topics.slice(0, 5).map((topic, i) => ({
       label: `Dia ${i + 1}`,
-      focus: topic,
-      durationMinutes: pace.minutes,
-      tasks: [`Reler as notas de ${topic}`, practice.task, goal.task, review.task, i === 0 ? pace.task : `Relacionar ${topic} com ${pick(topics, i - 1, 'outro tema')}`],
+      focus: examTopics.includes(topic) ? `${topic} · prioridade da prova` : topic,
+      durationMinutes: calendarEvent && i < 3 ? Math.max(pace.minutes, 35) : pace.minutes,
+      tasks: [
+        calendarEvent && i === 0 ? `Abrir no Outlook o evento "${calendarEvent.title}" e confirmar os tópicos` : `Reler as notas de ${topic}`,
+        practice.task,
+        goal.task,
+        review.task,
+        calendarEvent && i < 3 ? `Resolver uma questão focada em ${pick(examTopics, i, topic)}` : i === 0 ? pace.task : `Relacionar ${topic} com ${pick(topics, i - 1, 'outro tema')}`,
+      ],
     }));
     const spacedReview = topics.slice(0, 4).map((topic, i) => ({ topic, when: ['em 1 dia', 'em 3 dias', 'em 1 semana', 'em 2 semanas'][i % 4] }));
-    return { subject: name, overview: `Plano para consolidar ${name} com foco em ${goal.label}, ${studyContext.label} e ${pace.label}: ${studyContext.planHint}.`, sessions, spacedReview };
+    const calendarBlock = calendarEvent ? {
+      title: calendarEvent.title,
+      startsAt: calendarEvent.startsAt,
+      source: calendarEvent.source || 'Outlook',
+      topics: examTopics,
+      strategy: `Como a prova está em ${examDays} dias, o plano puxa ${examTopics.slice(0, 3).join(', ')} para as primeiras sessões.`,
+    } : null;
+    const overview = calendarEvent
+      ? `Plano ajustado pelo Outlook: ${calendarEvent.title} está em ${examDays} dias, então a revisão de ${name} começa pelos tópicos mais prováveis da prova.`
+      : `Plano para consolidar ${name} com foco em ${goal.label}, ${studyContext.label} e ${pace.label}: ${studyContext.planHint}.`;
+    return { subject: name, overview, ...(calendarBlock ? { calendarEvent: calendarBlock } : {}), sessions, spacedReview };
   }
 
   if (action === 'podcast-script') {

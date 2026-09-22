@@ -26,6 +26,8 @@ test('História demo studio is preloaded with presentation artifacts', () => {
   assert.ok(history.videoRecommendations.data.videos.every((video) => video.channelTitle && video.thumbnail));
   assert.ok(history.lesson.data.slides.length >= 8);
   assert.ok(history.plan.data.sessions.length >= 4);
+  assert.equal(history.plan.data.calendarEvent.source, 'Outlook');
+  assert.match(history.plan.data.overview, /Outlook/);
 });
 
 test('mergeDemoSubjectArtifacts fills missing demo data without overwriting user artifacts', () => {

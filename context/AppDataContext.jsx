@@ -7,6 +7,7 @@ import {
   getLearningPreferences,
   getNotes,
   getPlan,
+  getStudyCalendar,
   getSubjectArtifacts,
   getUser,
   saveMediaRecord,
@@ -14,12 +15,14 @@ import {
   setLearningPreferences as persistLearningPreferences,
   setNotes as persistNotes,
   setPlan as persistPlan,
+  setStudyCalendar as persistStudyCalendar,
   setSubjectArtifacts as persistSubjectArtifacts,
   setUser as persistUser,
   DEFAULT_LEARNING_PREFERENCES,
 } from '../services/storage.js';
 import { aggregateSubjects } from '../shared/subjects.js';
 import { mergeDemoSubjectArtifacts } from '../shared/demoSubjectArtifacts.js';
+import { EMPTY_STUDY_CALENDAR, normalizeStudyCalendar } from '../shared/studyCalendar.js';
 import { demoAssetModule } from '../services/demoAssets.js';
 
 const AppDataContext = createContext(null);
@@ -601,6 +604,7 @@ export function AppDataProvider({ children }) {
   const [user, setUserState] = useState(() => getUser());
   const [subjectArtifacts, setSubjectArtifactsState] = useState(getInitialSubjectArtifacts);
   const [learningPreferences, setLearningPreferencesState] = useState(() => getLearningPreferences());
+  const [studyCalendar, setStudyCalendarState] = useState(() => normalizeStudyCalendar(getStudyCalendar() || EMPTY_STUDY_CALENDAR));
 
   useEffect(() => {
     const loadVersion = recordsLoadVersionRef.current;
@@ -745,6 +749,12 @@ export function AppDataProvider({ children }) {
     persistLearningPreferences(preferences);
   }, []);
 
+  const setStudyCalendar = useCallback((next) => {
+    const calendar = normalizeStudyCalendar(next || EMPTY_STUDY_CALENDAR);
+    setStudyCalendarState(calendar);
+    persistStudyCalendar(calendar);
+  }, []);
+
   const restoreLocalData = useCallback(async (backup) => {
     recordsLoadVersionRef.current += 1;
     const incomingRecords = Array.isArray(backup.records) ? backup.records : [];
@@ -764,8 +774,9 @@ export function AppDataProvider({ children }) {
     setSubjectArtifactsState(backup.subjectArtifacts || {});
     persistSubjectArtifacts(backup.subjectArtifacts || {});
     setLearningPreferences(backup.learningPreferences || DEFAULT_LEARNING_PREFERENCES);
+    setStudyCalendar(backup.studyCalendar || EMPTY_STUDY_CALENDAR);
     return { records: incomingRecords.length, notes: (backup.notes || []).length };
-  }, [setLearningPreferences]);
+  }, [setLearningPreferences, setStudyCalendar]);
 
   const clearLocalData = useCallback(async () => {
     recordsLoadVersionRef.current += 1;
@@ -785,6 +796,8 @@ export function AppDataProvider({ children }) {
     persistSubjectArtifacts(artifacts);
     setLearningPreferencesState(DEFAULT_LEARNING_PREFERENCES);
     persistLearningPreferences(DEFAULT_LEARNING_PREFERENCES);
+    setStudyCalendarState(EMPTY_STUDY_CALENDAR);
+    persistStudyCalendar(EMPTY_STUDY_CALENDAR);
   }, []);
 
   // Matérias derived from saved notes (category → subthemes + note bodies).
@@ -803,9 +816,9 @@ export function AppDataProvider({ children }) {
   const getSubjectArtifact = useCallback((subjectName, key) => subjectArtifacts[subjectName]?.[key] || null, [subjectArtifacts]);
 
   const value = useMemo(() => ({
-    records, notes, aiHistory, plan, user, subjects, subjectArtifacts, learningPreferences,
-    addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, setLearningPreferences, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact,
-  }), [records, notes, aiHistory, plan, user, subjects, subjectArtifacts, learningPreferences, addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, setLearningPreferences, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact]);
+    records, notes, aiHistory, plan, user, subjects, subjectArtifacts, learningPreferences, studyCalendar,
+    addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, setLearningPreferences, setStudyCalendar, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact,
+  }), [records, notes, aiHistory, plan, user, subjects, subjectArtifacts, learningPreferences, studyCalendar, addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, setLearningPreferences, setStudyCalendar, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }

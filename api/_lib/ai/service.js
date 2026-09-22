@@ -189,7 +189,14 @@ function normalizeSubject(action, result, subjectName, meta) {
       topic: asText(r?.topic, '', 80),
       when: asText(r?.when, 'em 3 dias', 40),
     })).filter((r) => r.topic);
-    return { ...base, overview: asText(result?.overview, '', 400), sessions, spacedReview };
+    const calendarEvent = result?.calendarEvent && typeof result.calendarEvent === 'object' ? {
+      title: asText(result.calendarEvent.title, '', 160),
+      startsAt: asText(result.calendarEvent.startsAt, '', 80),
+      source: asText(result.calendarEvent.source, 'Outlook', 40),
+      topics: asList(result.calendarEvent.topics, 8),
+      strategy: asText(result.calendarEvent.strategy, '', 500),
+    } : null;
+    return { ...base, overview: asText(result?.overview, '', 400), sessions, spacedReview, ...(calendarEvent?.title ? { calendarEvent } : {}) };
   }
 
   if (action === 'podcast-script') {
@@ -259,6 +266,14 @@ export async function runSubjectAI({ action = 'questions', subject = {}, prefere
 }
 
 function normalizeLearningPreferences(preferences = {}) {
+  const calendarEvents = Array.isArray(preferences.studyCalendar?.events) ? preferences.studyCalendar.events.slice(0, 5).map((event) => ({
+    id: asText(event?.id, '', 120),
+    type: event?.type === 'assignment' ? 'assignment' : 'exam',
+    subject: asText(event?.subject, '', 80),
+    title: asText(event?.title, '', 160),
+    startsAt: asText(event?.startsAt, '', 80),
+    topics: asList(event?.topics, 8),
+  })).filter((event) => event.title && event.startsAt) : [];
   return {
     studyGoal: ['vestibular', 'enem', 'school_exam', 'general'].includes(preferences.studyGoal) ? preferences.studyGoal : 'vestibular',
     studyContext: ['classes', 'exam_season', 'catch_up', 'maintenance'].includes(preferences.studyContext) ? preferences.studyContext : 'classes',
@@ -269,6 +284,11 @@ function normalizeLearningPreferences(preferences = {}) {
     duration: ['short', 'standard', 'long'].includes(preferences.duration) ? preferences.duration : 'standard',
     level: ['beginner', 'intermediate', 'advanced'].includes(preferences.level) ? preferences.level : 'intermediate',
     sort: ['relevance', 'viewCount', 'date'].includes(preferences.sort) ? preferences.sort : 'relevance',
+    studyCalendar: calendarEvents.length ? {
+      provider: preferences.studyCalendar?.provider === 'outlook' ? 'outlook' : 'outlook',
+      syncedAt: asText(preferences.studyCalendar?.syncedAt, '', 80),
+      events: calendarEvents,
+    } : null,
   };
 }
 

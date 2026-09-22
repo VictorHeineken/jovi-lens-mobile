@@ -71,11 +71,15 @@ function formatNoteDate(value) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
 }
 
-export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenStudio, onFavorite, onRemove, onEdit }) {
+export default function SubjectNotes({ notes = [], records = [], focusSubject = '', onOpen, onOpenStudio, onFavorite, onRemove, onEdit }) {
   const [openSubject, setOpenSubject] = useState(null);
   const [activeSubtheme, setActiveSubtheme] = useState({});
   const subjects = useMemo(() => groupBySubject(notes), [notes]);
   const subthemeCount = subjects.reduce((total, subject) => total + subject.subthemes.length, 0);
+
+  useEffect(() => {
+    if (focusSubject) setOpenSubject(focusSubject);
+  }, [focusSubject]);
 
   function toggleSubject(subject) {
     setOpenSubject((current) => (current === subject ? null : subject));

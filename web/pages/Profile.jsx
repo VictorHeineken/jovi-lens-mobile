@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
+import StudentDashboard from '../components/StudentDashboard.jsx';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { createBackup, downloadBackup, readBackupFile } from '../services/dataTransfer.js';
 import { isGoogleSignInConfigured, renderGoogleSignInButton, signOutGoogle } from '../services/googleAuth.js';
+import { createDemoOutlookCalendar, daysUntilEvent, EMPTY_STUDY_CALENDAR, formatEventDate } from '../../shared/studyCalendar.js';
 
 const DEMO_USER = {
   id: 'demo-student',
@@ -62,7 +64,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function Profile({ embedded = false }) {
-  const { user, setUser, plan, setPlan, records, notes, aiHistory, subjectArtifacts, learningPreferences, setLearningPreferences, restoreLocalData, clearLocalData } = useAppData();
+  const { user, setUser, plan, setPlan, records, notes, aiHistory, subjects, subjectArtifacts, learningPreferences, setLearningPreferences, studyCalendar, setStudyCalendar, restoreLocalData, clearLocalData } = useAppData();
   const [authMessage, setAuthMessage] = useState('');
   const fileRef = useRef(null);
   const googleButtonRef = useRef(null);
@@ -107,13 +109,30 @@ export default function Profile({ embedded = false }) {
   }
 
   function exportData() {
-    downloadBackup(createBackup({ records, notes, aiHistory, plan, user, subjectArtifacts, learningPreferences }));
+    downloadBackup(createBackup({ records, notes, aiHistory, plan, user, subjectArtifacts, learningPreferences, studyCalendar }));
     setAuthMessage('Backup dos seus estudos exportado para este dispositivo.');
   }
 
   function updateLearningPreference(key, value) {
     setLearningPreferences({ ...learningPreferences, [key]: value });
     setAuthMessage('Preferências de aprendizagem atualizadas.');
+  }
+
+  function connectOutlookDemo() {
+    setStudyCalendar(createDemoOutlookCalendar());
+    setAuthMessage('Outlook conectado em modo demo. As provas detectadas já entram no plano de estudo.');
+  }
+
+  function preparePresentationDemo() {
+    setUser(DEMO_USER);
+    setPlan({ type: 'pro', demo: true, presentationMode: true, activatedAt: new Date().toISOString() });
+    setStudyCalendar(createDemoOutlookCalendar());
+    setAuthMessage('Modo apresentação pronto: estudante demo, História e provas do Outlook já estão preparados.');
+  }
+
+  function disconnectOutlookDemo() {
+    setStudyCalendar(EMPTY_STUDY_CALENDAR);
+    setAuthMessage('Calendário desconectado.');
   }
 
   async function importData(event) {
@@ -177,6 +196,15 @@ export default function Profile({ embedded = false }) {
         <button className="primary-wide demo-login-button" onClick={enterDemoAccount}><Icon name="user" size={16} /> Entrar como estudante</button>
       </section>}
 
+      <section className="presentation-mode-card">
+        <div>
+          <span className="plan-label">Modo apresentação</span>
+          <h2>Demo pronta em um toque</h2>
+          <p>Ativa a aluna demo, libera o Copilot e conecta as provas do Outlook para mostrar o fluxo completo sem criar nada na hora.</p>
+        </div>
+        <button onClick={preparePresentationDemo}><Icon name="sparkle" size={16} /> Preparar demo</button>
+      </section>
+
       <section className="plan-card">
         <div className="plan-top">
           <div><span className="plan-label">JOVI Copilot</span><h2>{planTitle}</h2></div>
@@ -212,6 +240,43 @@ export default function Profile({ embedded = false }) {
           <PreferenceSelect label="Critério de busca" options={SORT_OPTIONS} value={learningPreferences.sort} onChange={(value) => updateLearningPreference('sort', value)} />
         </div>
       </section>
+      <section className={`outlook-card${studyCalendar.connected ? ' connected' : ''}`}>
+        <div className="outlook-card-head">
+          <div><strong>Calendário de provas</strong><span>Use o Outlook para ajustar o plano por matéria com datas reais.</span></div>
+          <Icon name="calendar" size={18} />
+        </div>
+        {studyCalendar.connected ? (
+          <>
+            <div className="outlook-status"><span>Outlook conectado</span><b>{studyCalendar.account}</b></div>
+            <div className="outlook-events">
+              {studyCalendar.events.slice(0, 3).map((event) => (
+                <div className="outlook-event" key={event.id}>
+                  <span>{event.subject}</span>
+                  <strong>{event.title}</strong>
+                  <small>{formatEventDate(event)} · em {daysUntilEvent(event)} dias</small>
+                </div>
+              ))}
+            </div>
+            <div className="outlook-actions">
+              <button onClick={connectOutlookDemo}><Icon name="rotate" size={14} /> Atualizar provas</button>
+              <button onClick={disconnectOutlookDemo}><Icon name="close" size={14} /> Desconectar</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p>Ao conectar, o JOVI detecta eventos de prova e muda a prioridade do plano automaticamente.</p>
+            <button className="primary-wide" onClick={connectOutlookDemo}><Icon name="calendar" size={16} /> Conectar Outlook · Demo</button>
+          </>
+        )}
+        <small>Demo local: nenhum login Microsoft real é feito nesta versão.</small>
+      </section>
+      <StudentDashboard
+        subjects={subjects}
+        notes={notes}
+        aiHistory={aiHistory}
+        subjectArtifacts={subjectArtifacts}
+        studyCalendar={studyCalendar}
+      />
       <section className="data-tools-card">
         <div><div><strong>Seus dados</strong><span>Faça uma cópia local ou restaure um backup anterior.</span></div><Icon name="download" size={18} /></div>
         <div className="data-tools-actions"><button onClick={exportData}><Icon name="download" size={14} /> Exportar backup</button><button onClick={() => fileRef.current?.click()}><Icon name="upload" size={14} /> Importar backup</button></div>

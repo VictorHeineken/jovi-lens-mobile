@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
+import { daysUntilEvent, formatEventDate } from '../../shared/studyCalendar.js';
 
 export default function StudyPlan({ subject, savedPlan, savedProgress = {}, savedLessons = [], onSave, onProgressSave }) {
   const [plan, setPlan] = useState(savedPlan || null);
@@ -54,6 +55,7 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
   return (
     <div className="studio-panel">
       {plan.overview && <p className="studio-overview"><Icon name="sparkle" size={13} /> {plan.overview}</p>}
+      {plan.calendarEvent && <CalendarDeadline event={plan.calendarEvent} />}
       <div className="plan-progress">
         <span>{doneCount}/{totalTasks} tarefas</span>
         <div className="plan-progress-bar"><i style={{ width: `${totalTasks ? (doneCount / totalTasks) * 100 : 0}%` }} /></div>
@@ -93,6 +95,17 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
       <SavedLessons lessons={savedLessons} />
 
       <button className="studio-ghost wide" onClick={generate}><Icon name="rotate" size={14} /> Gerar novo plano</button>
+    </div>
+  );
+}
+
+function CalendarDeadline({ event }) {
+  return (
+    <div className="plan-deadline">
+      <span><Icon name="calendar" size={13} /> Prova detectada no {event.source || 'Outlook'}</span>
+      <strong>{event.title}</strong>
+      <small>{formatEventDate(event)} · em {daysUntilEvent(event)} dias</small>
+      {event.strategy && <p>{event.strategy}</p>}
     </div>
   );
 }

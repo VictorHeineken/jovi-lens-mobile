@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import Icon from '../../components/Icon.jsx';
+import StudentDashboard from '../../components/StudentDashboard.jsx';
 import { useTopInset } from '../../hooks/safeArea.js';
 import { useAnnounce } from '../../hooks/announce.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 import { createBackup, downloadBackup, readBackupFile } from '../../services/dataTransfer.js';
 import { signOutGoogle, useGoogleSignIn } from '../../services/googleAuth.js';
+import { createDemoOutlookCalendar, daysUntilEvent, EMPTY_STUDY_CALENDAR, formatEventDate } from '../../shared/studyCalendar.js';
 
 const DEMO_USER = {
   id: 'demo-student',
@@ -66,7 +68,7 @@ const SORT_OPTIONS = [
 ];
 
 export default function ProfileScreen() {
-  const { user, setUser, plan, setPlan, records, notes, aiHistory, subjectArtifacts, learningPreferences, setLearningPreferences, restoreLocalData, clearLocalData } = useAppData();
+  const { user, setUser, plan, setPlan, records, notes, aiHistory, subjects, subjectArtifacts, learningPreferences, setLearningPreferences, studyCalendar, setStudyCalendar, restoreLocalData, clearLocalData } = useAppData();
   const [authMessage, setAuthMessage] = useState('');
   useAnnounce(authMessage);
   const topInset = useTopInset();
@@ -113,13 +115,30 @@ export default function ProfileScreen() {
   }
 
   async function exportData() {
-    await downloadBackup(createBackup({ records, notes, aiHistory, plan, user, subjectArtifacts, learningPreferences }));
+    await downloadBackup(createBackup({ records, notes, aiHistory, plan, user, subjectArtifacts, learningPreferences, studyCalendar }));
     setAuthMessage('Backup dos seus estudos exportado para este dispositivo.');
   }
 
   function updateLearningPreference(key, value) {
     setLearningPreferences({ ...learningPreferences, [key]: value });
     setAuthMessage('Preferências de aprendizagem atualizadas.');
+  }
+
+  function connectOutlookDemo() {
+    setStudyCalendar(createDemoOutlookCalendar());
+    setAuthMessage('Outlook conectado em modo demo. As provas detectadas já entram no plano de estudo.');
+  }
+
+  function preparePresentationDemo() {
+    setUser(DEMO_USER);
+    setPlan({ type: 'pro', demo: true, presentationMode: true, activatedAt: new Date().toISOString() });
+    setStudyCalendar(createDemoOutlookCalendar());
+    setAuthMessage('Modo apresentação pronto: estudante demo, História e provas do Outlook já estão preparados.');
+  }
+
+  function disconnectOutlookDemo() {
+    setStudyCalendar(EMPTY_STUDY_CALENDAR);
+    setAuthMessage('Calendário desconectado.');
   }
 
   async function importData() {
@@ -218,6 +237,21 @@ export default function ProfileScreen() {
           </View>
         ) : null}
 
+        <View className="gap-3 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+          <View className="flex-row items-start justify-between gap-2">
+            <View className="flex-1">
+              <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Modo apresentação</Text>
+              <Text className="text-[16px] font-bold text-slate-900">Demo pronta em um toque</Text>
+              <Text className="text-[12px] text-slate-600">Ativa a aluna demo, libera o Copilot e conecta as provas do Outlook para mostrar o fluxo completo sem criar nada na hora.</Text>
+            </View>
+            <Icon name="sparkle" size={18} color="#4f46e5" />
+          </View>
+          <Pressable accessibilityRole="button" onPress={preparePresentationDemo} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+            <Icon name="sparkle" size={16} color="#ffffff" />
+            <Text className="text-[14px] font-semibold text-white">Preparar demo</Text>
+          </Pressable>
+        </View>
+
         <View className="gap-3 rounded-2xl border border-slate-200 bg-white p-4">
           <View className="flex-row items-center justify-between">
             <View>
@@ -274,6 +308,60 @@ export default function ProfileScreen() {
           <PreferenceField label="Nível atual" options={LEVEL_OPTIONS} value={learningPreferences.level} onChange={(v) => updateLearningPreference('level', v)} />
           <PreferenceField label="Critério de busca" options={SORT_OPTIONS} value={learningPreferences.sort} onChange={(v) => updateLearningPreference('sort', v)} />
         </View>
+
+        <View className={`gap-3 rounded-2xl border p-4 ${studyCalendar.connected ? 'border-indigo-200 bg-indigo-50' : 'border-slate-200 bg-white'}`}>
+          <View className="flex-row items-start justify-between gap-2">
+            <View className="flex-1">
+              <Text className="text-[15px] font-bold text-slate-900">Calendário de provas</Text>
+              <Text className="text-[12px] text-slate-500">Use o Outlook para ajustar o plano por matéria com datas reais.</Text>
+            </View>
+            <Icon name="calendar" size={18} color="#4f46e5" />
+          </View>
+          {studyCalendar.connected ? (
+            <>
+              <View className="rounded-xl bg-white px-3 py-2">
+                <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Outlook conectado</Text>
+                <Text className="text-[12px] text-slate-600">{studyCalendar.account}</Text>
+              </View>
+              <View className="gap-2">
+                {studyCalendar.events.slice(0, 3).map((event) => (
+                  <View key={event.id} className="rounded-xl border border-indigo-100 bg-white px-3 py-2.5">
+                    <Text className="text-[10px] font-bold uppercase tracking-wide text-indigo-500">{event.subject}</Text>
+                    <Text className="text-[13px] font-bold text-slate-900">{event.title}</Text>
+                    <Text className="text-[11px] text-slate-500">{formatEventDate(event)} · em {daysUntilEvent(event)} dias</Text>
+                  </View>
+                ))}
+              </View>
+              <View className="flex-row gap-2">
+                <Pressable accessibilityRole="button" onPress={connectOutlookDemo} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5">
+                  <Icon name="rotate" size={14} color="#ffffff" />
+                  <Text className="text-[12px] font-semibold text-white">Atualizar</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={disconnectOutlookDemo} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2.5">
+                  <Icon name="close" size={14} color="#475569" />
+                  <Text className="text-[12px] font-semibold text-slate-600">Desconectar</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text className="text-[13px] leading-5 text-slate-600">Ao conectar, o JOVI detecta eventos de prova e muda a prioridade do plano automaticamente.</Text>
+              <Pressable accessibilityRole="button" onPress={connectOutlookDemo} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+                <Icon name="calendar" size={16} color="#ffffff" />
+                <Text className="text-[14px] font-semibold text-white">Conectar Outlook · Demo</Text>
+              </Pressable>
+            </>
+          )}
+          <Text className="text-[11px] text-slate-400">Demo local: nenhum login Microsoft real é feito nesta versão.</Text>
+        </View>
+
+        <StudentDashboard
+          subjects={subjects}
+          notes={notes}
+          aiHistory={aiHistory}
+          subjectArtifacts={subjectArtifacts}
+          studyCalendar={studyCalendar}
+        />
 
         <View className="gap-3 rounded-2xl border border-slate-200 bg-white p-4">
           <View className="flex-row items-start justify-between gap-2">

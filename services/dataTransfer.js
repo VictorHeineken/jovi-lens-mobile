@@ -4,7 +4,7 @@ import * as Sharing from 'expo-sharing';
 const BACKUP_VERSION = 1;
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 
-export function createBackup({ records = [], notes = [], aiHistory = [], plan = { type: 'free' }, user = null, subjectArtifacts = {}, learningPreferences = {} } = {}) {
+export function createBackup({ records = [], notes = [], aiHistory = [], plan = { type: 'free' }, user = null, subjectArtifacts = {}, learningPreferences = {}, studyCalendar = null } = {}) {
   return {
     app: 'jovi-lens',
     version: BACKUP_VERSION,
@@ -16,6 +16,7 @@ export function createBackup({ records = [], notes = [], aiHistory = [], plan = 
     user,
     subjectArtifacts,
     learningPreferences,
+    studyCalendar,
   };
 }
 
@@ -56,5 +57,6 @@ export async function readBackupFile(file) {
     user: data.user && typeof data.user === 'object' ? data.user : null,
     subjectArtifacts: data.subjectArtifacts && typeof data.subjectArtifacts === 'object' ? data.subjectArtifacts : {},
     learningPreferences: data.learningPreferences && typeof data.learningPreferences === 'object' ? data.learningPreferences : {},
+    studyCalendar: data.studyCalendar && typeof data.studyCalendar === 'object' ? data.studyCalendar : null,
   };
 }

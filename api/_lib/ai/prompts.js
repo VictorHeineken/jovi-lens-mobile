@@ -92,7 +92,11 @@ export function learningPreferenceContext(preferences = {}) {
     interleaved: 'misturar subtemas para comparar ideias',
     flashcards: 'flashcards e cartões de revisão',
   };
-  return `Preferências do estudante: objetivo principal = ${goalLabels[preferences.studyGoal] || goalLabels.vestibular}; estratégia geral = ${studyContextLabels[preferences.studyContext] || studyContextLabels.classes}; ritmo = ${paceLabels[preferences.weeklyPace] || paceLabels.regular}; prática = ${practiceLabels[preferences.practiceMode] || practiceLabels.mixed}; revisão = ${reviewLabels[preferences.reviewMethod] || reviewLabels.spaced}; nível = ${levelLabels[preferences.level] || levelLabels.intermediate}; tempo preferido = ${durationLabels[preferences.duration] || durationLabels.standard}. Use essas preferências para escolher dificuldade, exemplos, linguagem, prioridade dos subtemas, tamanho das sessões e tipo de tarefa.`;
+  const events = Array.isArray(preferences.studyCalendar?.events) ? preferences.studyCalendar.events : [];
+  const calendarLine = events.length
+    ? ` Calendário conectado (${preferences.studyCalendar.provider || 'Outlook'}): ${events.map((event) => `${event.title} em ${event.startsAt}${event.topics?.length ? `; tópicos: ${event.topics.join(', ')}` : ''}`).join(' | ')}. Use essas datas para definir urgência real por matéria.`
+    : '';
+  return `Preferências do estudante: objetivo principal = ${goalLabels[preferences.studyGoal] || goalLabels.vestibular}; estratégia geral = ${studyContextLabels[preferences.studyContext] || studyContextLabels.classes}; ritmo = ${paceLabels[preferences.weeklyPace] || paceLabels.regular}; prática = ${practiceLabels[preferences.practiceMode] || practiceLabels.mixed}; revisão = ${reviewLabels[preferences.reviewMethod] || reviewLabels.spaced}; nível = ${levelLabels[preferences.level] || levelLabels.intermediate}; tempo preferido = ${durationLabels[preferences.duration] || durationLabels.standard}.${calendarLine} Use essas preferências para escolher dificuldade, exemplos, linguagem, prioridade dos subtemas, tamanho das sessões e tipo de tarefa.`;
 }
 
 export function buildSubjectQuestionsPrompt(subject, preferences = {}) {
@@ -111,8 +115,8 @@ Contexto:\n${ctx.text}`;
 
 export function buildStudyPlanPrompt(subject, preferences = {}) {
   const ctx = buildSubjectContext(subject);
-  return `${SUBJECT_PERSONA} Crie um plano de estudos adaptativo e realista para a matéria "${ctx.name}", com base no que o aluno já estudou. Priorize revisão espaçada, prática de recuperação, os subtemas mais densos e o objetivo principal do aluno. Ajuste quantidade de tarefas, duração e urgência conforme estratégia geral de estudo e ritmo semanal. ${learningPreferenceContext(preferences)} Formato exato:
-{"subject":"${ctx.name}","overview":"1-2 frases de estratégia","sessions":[{"label":"Dia 1","focus":"subtema/tema","durationMinutes":30,"tasks":["tarefa concreta"]}],"spacedReview":[{"topic":"subtema","when":"em 1 dia|em 3 dias|em 1 semana"}]}
+  return `${SUBJECT_PERSONA} Crie um plano de estudos adaptativo e realista para a matéria "${ctx.name}", com base no que o aluno já estudou. Priorize revisão espaçada, prática de recuperação, os subtemas mais densos e o objetivo principal do aluno. Ajuste quantidade de tarefas, duração e urgência conforme estratégia geral de estudo e ritmo semanal. Se houver prova no calendário conectado, trate a data como prazo real desta matéria, priorize os tópicos do evento e inclua calendarEvent no JSON. ${learningPreferenceContext(preferences)} Formato exato:
+{"subject":"${ctx.name}","overview":"1-2 frases de estratégia","calendarEvent":{"title":"nome da prova","startsAt":"data ISO","source":"Outlook","topics":["tópico"],"strategy":"como o plano muda por causa da data"},"sessions":[{"label":"Dia 1","focus":"subtema/tema","durationMinutes":30,"tasks":["tarefa concreta"]}],"spacedReview":[{"topic":"subtema","when":"em 1 dia|em 3 dias|em 1 semana"}]}
 Gere de 4 a 6 sessões. Contexto:\n${ctx.text}`;
 }
 

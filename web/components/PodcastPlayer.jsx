@@ -10,8 +10,8 @@ const FORMAT_LABEL = {
   drive: 'No carro · mãos livres',
 };
 
-export default function PodcastPlayer({ subject, saved, savedVariants = null, onSave }) {
-  const initialFormat = saved?.format || (savedVariants?.dialogue ? 'dialogue' : Object.keys(savedVariants || {})[0]) || 'dialogue';
+export default function PodcastPlayer({ subject, saved, savedVariants = null, initialFormat: preferredFormat = null, onSave }) {
+  const initialFormat = preferredFormat || saved?.format || (savedVariants?.dialogue ? 'dialogue' : Object.keys(savedVariants || {})[0]) || 'dialogue';
   const [format, setFormat] = useState(initialFormat);
   const [script, setScript] = useState(savedVariants?.[initialFormat] || saved || null);
   const [loading, setLoading] = useState(false);

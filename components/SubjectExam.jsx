@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { DEMO_SUBJECT_ARTIFACTS } from '../shared/demoSubjectArtifacts.js';
+import { buildExamReport } from '../shared/studentDashboard.js';
 
 function formatClock(seconds) {
   const m = Math.floor(Math.max(0, seconds) / 60);
@@ -134,7 +135,7 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
       timerRef.current = setInterval(() => {
         setSecondsLeft((value) => Math.max(0, value - 1));
       }, 1000);
-    }, 2000);
+    }, 1200);
   }
 
   if (phase === 'idle') {
@@ -180,11 +181,23 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
 
   if (phase === 'done' && result) {
     const weakTopics = Object.entries(result.byTopic).filter(([, v]) => v.correct < v.total);
+    const report = buildExamReport(result);
     return (
       <View className="gap-4">
         <View className={`items-center gap-1 rounded-2xl px-4 py-6 ${result.percent >= 60 ? 'bg-emerald-50' : 'bg-red-50'}`}>
           <Text className={`text-[32px] font-black ${result.percent >= 60 ? 'text-emerald-600' : 'text-red-600'}`}>{result.percent}%</Text>
           <Text className="text-[13px] text-slate-500">{result.score} de {result.total} corretas</Text>
+        </View>
+        <View className="gap-2 rounded-2xl bg-indigo-50 px-3 py-3">
+          <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Relatório inteligente</Text>
+          <Text className="text-[15px] font-bold text-slate-900">{report.grade}</Text>
+          <Text className="text-[12px] text-slate-600">{report.summary}</Text>
+          {report.nextSteps.map((step) => (
+            <View key={step} className="flex-row gap-2">
+              <Text className="text-[12px] font-bold text-indigo-500">•</Text>
+              <Text className="flex-1 text-[12px] text-slate-600">{step}</Text>
+            </View>
+          ))}
         </View>
         <View className="gap-2">
           <View className="flex-row items-center gap-1.5">

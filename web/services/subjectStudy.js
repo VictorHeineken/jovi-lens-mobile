@@ -1,7 +1,8 @@
 import { getSubjectDemo } from '../../shared/demoResponses.js';
 import { isDemoMode } from './imageAnalysis.js';
 import { apiFetch } from './apiClient.js';
-import { getLearningPreferences } from './storage.js';
+import { getLearningPreferences, getStudyCalendar } from './storage.js';
+import { eventsForSubject, normalizeStudyCalendar } from '../../shared/studyCalendar.js';
 
 // Only the request half lives here. The subject aggregation is identical on both
 // clients and lives in shared/subjects.js; this file keeps what is genuinely
@@ -11,7 +12,16 @@ import { getLearningPreferences } from './storage.js';
 // action ∈ questions | exam | plan | podcast-script | lesson-script
 export async function generateSubjectContent(subject, { action, format } = {}) {
   const payloadSubject = { name: subject.name, notes: subject.notes, ...(format ? { format } : {}) };
-  const preferences = getLearningPreferences();
+  const studyCalendar = normalizeStudyCalendar(getStudyCalendar());
+  const preferences = {
+    ...getLearningPreferences(),
+    studyCalendar: studyCalendar.connected ? {
+      provider: studyCalendar.provider,
+      account: studyCalendar.account,
+      syncedAt: studyCalendar.syncedAt,
+      events: eventsForSubject(studyCalendar, payloadSubject.name),
+    } : null,
+  };
 
   if (isDemoMode()) {
     await new Promise((resolve) => window.setTimeout(resolve, 700));

@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import BottomNav from './BottomNav.jsx';
+import PresentationGuide from './PresentationGuide.jsx';
 
 export default function AppShell() {
   const { pathname } = useLocation();
@@ -27,6 +28,7 @@ export default function AppShell() {
           <div className="home-indicator" aria-hidden="true" />
         </div>
       </div>
+      {!galleryMode && <PresentationGuide />}
     </div>
   );
 }

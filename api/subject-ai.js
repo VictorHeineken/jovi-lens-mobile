@@ -5,6 +5,14 @@ const VALID_ACTIONS = new Set(['questions', 'exam', 'plan', 'podcast-script', 'l
 const MAX_NOTES = 40;
 
 function safePreferences(preferences = {}) {
+  const calendarEvents = Array.isArray(preferences.studyCalendar?.events) ? preferences.studyCalendar.events.slice(0, 5).map((event) => ({
+    id: typeof event?.id === 'string' ? event.id.slice(0, 120) : '',
+    type: event?.type === 'assignment' ? 'assignment' : 'exam',
+    subject: typeof event?.subject === 'string' ? event.subject.slice(0, 80) : '',
+    title: typeof event?.title === 'string' ? event.title.slice(0, 160) : '',
+    startsAt: typeof event?.startsAt === 'string' ? event.startsAt.slice(0, 80) : '',
+    topics: Array.isArray(event?.topics) ? event.topics.filter((topic) => typeof topic === 'string').slice(0, 8).map((topic) => topic.slice(0, 80)) : [],
+  })).filter((event) => event.title && event.startsAt) : [];
   return {
     studyGoal: ['vestibular', 'enem', 'school_exam', 'general'].includes(preferences.studyGoal) ? preferences.studyGoal : 'vestibular',
     studyContext: ['classes', 'exam_season', 'catch_up', 'maintenance'].includes(preferences.studyContext) ? preferences.studyContext : 'classes',
@@ -15,6 +23,11 @@ function safePreferences(preferences = {}) {
     duration: ['short', 'standard', 'long'].includes(preferences.duration) ? preferences.duration : 'standard',
     level: ['beginner', 'intermediate', 'advanced'].includes(preferences.level) ? preferences.level : 'intermediate',
     sort: ['relevance', 'viewCount', 'date'].includes(preferences.sort) ? preferences.sort : 'relevance',
+    studyCalendar: calendarEvents.length ? {
+      provider: preferences.studyCalendar?.provider === 'outlook' ? 'outlook' : 'outlook',
+      syncedAt: typeof preferences.studyCalendar?.syncedAt === 'string' ? preferences.studyCalendar.syncedAt.slice(0, 80) : '',
+      events: calendarEvents,
+    } : null,
   };
 }
 

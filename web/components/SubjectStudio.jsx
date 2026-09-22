@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Icon from './Icon.jsx';
 import SubjectExam from './SubjectExam.jsx';
 import StudyPlan from './StudyPlan.jsx';
@@ -20,10 +20,14 @@ const TABS = [
   { id: 'plan', label: 'Plano', icon: 'route' },
 ];
 
-export default function SubjectStudio({ subject, onClose }) {
+export default function SubjectStudio({ subject, initialTab = 'overview', initialPodcastFormat = null, onClose }) {
   const { saveSubjectArtifact, getSubjectArtifact } = useAppData();
   const dialogRef = useDialogAccessibility(onClose, Boolean(subject));
-  const [tab, setTab] = useState('overview');
+  const [tab, setTab] = useState(initialTab);
+
+  useEffect(() => {
+    setTab(initialTab || 'overview');
+  }, [initialTab, subject?.name]);
 
   if (!subject) return null;
 
@@ -79,9 +83,11 @@ export default function SubjectStudio({ subject, onClose }) {
           {tab === 'exam' && <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} />}
           {tab === 'podcast' && (
             <PodcastPlayer
+              key={initialPodcastFormat || 'podcast-default'}
               subject={subject}
               saved={savedPodcast}
               savedVariants={savedPodcasts?.formats}
+              initialFormat={initialPodcastFormat}
               onSave={(data) => {
                 saveSubjectArtifact(subject.name, 'podcast', data);
                 if (savedPodcasts?.formats) saveSubjectArtifact(subject.name, 'podcasts', { ...savedPodcasts, formats: { ...savedPodcasts.formats, [data.format || 'dialogue']: data } });
