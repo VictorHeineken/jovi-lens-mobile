@@ -21,6 +21,9 @@ const MESSAGES = {
   RATE_LIMITED: 'Muitos pedidos em sequência. Tente novamente em instantes.',
   SIGNUP_LIMITED: 'Muitas contas novas nesta rede hoje. Tente novamente amanhã.',
   AI_RATE_LIMITED: 'O serviço de IA está temporariamente ocupado. Tente novamente em instantes.',
+  // The server's text for this code suggests demo mode, which doesn't exist in
+  // real builds; the app shows a neutral message instead.
+  AI_NOT_CONFIGURED: 'Este recurso de IA não está disponível no momento. Tente novamente mais tarde.',
   AI_RESPONSE_TOO_LARGE: 'A resposta da IA ficou grande demais. Tente um conteúdo menor.',
   STORE_UNAVAILABLE: 'Serviço indisponível no momento. Tente novamente em instantes.',
   SERVER_MISCONFIGURED: 'Serviço indisponível no momento. Tente novamente em instantes.',

@@ -168,3 +168,14 @@ guarded('provider auth errors become BYOK_REJECTED with a user key and AI_UNAVAI
   assert.equal(serverKey.statusCode, 502);
   assert.equal(serverKey.body.code, 'AI_UNAVAILABLE');
 });
+
+guarded('byok-forbidden routes still reject a malformed key but ignore a valid one', async () => {
+  const forbidden = route({ byok: 'forbidden', run: async (_input, ctx) => ({ usedKey: Boolean(ctx.byok) }) });
+  const malformed = await call(forbidden, { headers: { authorization: session(), 'x-ai-provider': 'gemini', 'x-ai-key': 'short' }, body: {} });
+  assert.equal(malformed.statusCode, 400);
+  assert.equal(malformed.body.code, 'BYOK_INVALID_FORMAT');
+
+  const valid = await call(forbidden, { headers: { authorization: session(), 'x-ai-provider': 'minimax', 'x-ai-key': MINIMAX_KEY }, body: {} });
+  assert.equal(valid.statusCode, 200);
+  assert.equal(valid.body.usedKey, false);
+});

@@ -166,9 +166,10 @@ export function defineRoute({
       const byokProvider = String(req.headers['x-ai-provider'] || '').trim().toLowerCase();
       const byokKey = req.headers['x-ai-key'] === undefined ? '' : String(req.headers['x-ai-key']);
       delete req.headers['x-ai-key'];
-      if (byok !== 'forbidden' && byokKey) {
+      if (byokKey) {
         if (!byokProvider || !BYOK_PROVIDERS.has(byokProvider) || !BYOK_KEY_PATTERN.test(byokKey)) return fail('BYOK_INVALID_FORMAT');
-        ctx.byok = { provider: byokProvider, apiKey: byokKey };
+        // Routes that never use a user key (auth, me) ignore a valid one.
+        if (byok !== 'forbidden') ctx.byok = { provider: byokProvider, apiKey: byokKey };
       }
 
       // 6. Local-only dev bypass (keeps web/ working against the local server).

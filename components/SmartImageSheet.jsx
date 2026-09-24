@@ -57,6 +57,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   const [extractedText, setExtractedText] = useState(record?.analysis?.text || '');
   const [textLoading, setTextLoading] = useState(false);
   const [textError, setTextError] = useState('');
+  const [textAiError, setTextAiError] = useState(null); // { error, retry } for AiErrorActions
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState(null);
   const [actionError, setActionError] = useState(null);
@@ -97,6 +98,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
     setExtractedText(record?.analysis?.text || '');
     setTextLoading(false);
     setTextError('');
+    setTextAiError(null);
     setError(needsSignIn ? new ApiError({ code: 'SIGN_IN_REQUIRED' }) : null);
     setActionError(null);
     setMode('understand');
@@ -141,13 +143,14 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   const effectiveRecord = useMemo(() => (record ? { ...record, analysis } : null), [record, analysis]);
   if (!record) return null;
 
-  async function ensureText() {
+  async function ensureText(retry) {
     const knownText = String(analysis?.text || extractedText || '').trim();
     if (knownText) return knownText;
     if (!requireAI()) return '';
 
     setTextLoading(true);
     setTextError('');
+    setTextAiError(null);
     const controller = startRequest();
     try {
       const result = await extractText(record.src, { signal: controller.signal });
@@ -156,7 +159,11 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
       if (!text) setTextError('Nenhum texto legível foi encontrado.');
       return text;
     } catch (err) {
-      if (!isAbortError(err)) setTextError(err.message || 'Não foi possível ler o texto agora.');
+      if (!isAbortError(err)) {
+        const error = asAiError(err, 'Não foi possível ler o texto agora.');
+        setTextError(error.message);
+        setTextAiError({ error, retry });
+      }
       return '';
     } finally {
       setTextLoading(false);
@@ -165,14 +172,14 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   }
 
   async function handleCopyText() {
-    const text = await ensureText();
+    const text = await ensureText(handleCopyText);
     if (!text) return flash('Nenhum texto encontrado');
     const copied = await copyText(text).catch(() => false);
     flash(copied ? 'Texto copiado' : 'Não foi possível copiar');
   }
 
   async function handleSearchText() {
-    const text = await ensureText();
+    const text = await ensureText(handleSearchText);
     if (!text) return flash('Nenhum texto encontrado');
     googleSearch(text);
     flash('Pesquisa aberta no Google');
@@ -282,6 +289,8 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
             isVideo={record.mediaType === 'video'}
             textLoading={textLoading}
             textError={textError}
+            textAiError={textAiError}
+            onNavigateAway={onClose}
             textReady={Boolean(analysis?.text || extractedText)}
             canAnalyze={canAnalyze}
             message={message}
@@ -418,7 +427,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   );
 }
 
-function ImageViewer({ record, isVideo, textLoading, textError, textReady, canAnalyze, message, onCopy, onSearch, onStartAI }) {
+function ImageViewer({ record, isVideo, textLoading, textError, textAiError, onNavigateAway, textReady, canAnalyze, message, onCopy, onSearch, onStartAI }) {
   const topInset = useTopInset();
   // The action row holds the primary "Usar IA" CTA, and this is a Modal — it
   // draws under the Android gesture bar, so the old flat py-4 put the button
@@ -449,6 +458,7 @@ function ImageViewer({ record, isVideo, textLoading, textError, textReady, canAn
         <Text className="text-[12px] text-slate-500" accessibilityRole={textError ? 'alert' : undefined}>
           {isVideo ? 'Vídeo salvo na galeria.' : textError || (textReady ? 'Texto disponível para copiar ou pesquisar.' : 'Escolha uma ação para esta captura.')}
         </Text>
+        {!isVideo && textAiError ? <AiErrorActions error={textAiError.error} onRetry={textAiError.retry} onNavigateAway={onNavigateAway} /> : null}
       </View>
       {message ? (
         <View className="absolute bottom-24 left-4 right-4 flex-row items-center justify-center gap-2 rounded-full bg-slate-900/90 px-4 py-2.5">
