@@ -40,6 +40,6 @@ export async function generateSubjectContent(subject, { action, format } = {}) {
   }
 
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || 'Não foi possível gerar este conteúdo agora.');
+  if (!response.ok) throw Object.assign(new Error(data.message || 'Não foi possível gerar este conteúdo agora.'), { code: data.code });
   return data;
 }

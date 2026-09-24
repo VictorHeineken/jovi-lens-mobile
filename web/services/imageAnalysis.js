@@ -85,7 +85,7 @@ async function requestAnalysis(src, { action = 'analyze', question = '', context
   }
 
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || 'Não foi possível analisar a imagem.');
+  if (!response.ok) throw Object.assign(new Error(payload.message || 'Não foi possível analisar a imagem.'), { code: payload.code });
   return payload;
 }
 

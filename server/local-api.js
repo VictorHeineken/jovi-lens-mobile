@@ -5,6 +5,7 @@ import tts from '../api/tts.js';
 import transcribe from '../api/transcribe.js';
 import videoRecommendations from '../api/video-recommendations.js';
 import authGoogle from '../api/auth/google.js';
+import me from '../api/me.js';
 
 const POST_ROUTES = {
   '/api/analyze-image': analyzeImage,
@@ -12,19 +13,17 @@ const POST_ROUTES = {
   '/api/tts': tts,
   '/api/transcribe': transcribe,
   '/api/video-recommendations': videoRecommendations,
-  // This handler existed but was reachable from nowhere: no client called it and it
-  // was not routed here, so Google Sign-In could not work locally even with a
-  // client id set. Routed now; it answers 503 until GOOGLE_CLIENT_ID is configured,
-  // the same way every other optional feature behaves.
   '/api/auth/google': authGoogle,
 };
 
-const GET_ROUTES = {};
+const GET_ROUTES = {
+  '/api/me': me,
+};
 
 const HOST = process.env.JOVI_API_HOST || '127.0.0.1';
 const PORT = Number(process.env.JOVI_API_PORT || 8787);
 const WEB_URL = process.env.JOVI_WEB_URL || 'http://127.0.0.1:5173';
-const MAX_BODY_BYTES = 11_000_000;
+const MAX_BODY_BYTES = 4_000_000;
 
 function sendJson(response, statusCode, payload) {
   if (response.writableEnded) return;
@@ -33,7 +32,9 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
-function readJson(request) {
+// Keeps the raw bytes: the guard hashes them for the Play Integrity request
+// hash and parses the JSON itself (same code path as on Vercel).
+function readRawBody(request) {
   return new Promise((resolve, reject) => {
     const contentLength = Number(request.headers['content-length'] || 0);
     if (contentLength > MAX_BODY_BYTES) {
@@ -53,13 +54,7 @@ function readJson(request) {
       }
       chunks.push(chunk);
     });
-    request.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
-      } catch {
-        reject(Object.assign(new Error('Invalid JSON.'), { statusCode: 400 }));
-      }
-    });
+    request.on('end', () => resolve(Buffer.concat(chunks)));
     request.on('error', reject);
   });
 }
@@ -73,6 +68,10 @@ function createResponseAdapter(response) {
     },
     json(payload) {
       sendJson(response, adapter.statusCode, payload);
+      return adapter;
+    },
+    setHeader(name, value) {
+      if (!response.headersSent) response.setHeader(name, value);
       return adapter;
     },
   };
@@ -106,18 +105,26 @@ const server = http.createServer(async (request, response) => {
   // request") vector that could fire paid actions without reading the response.
   const contentType = String(request.headers['content-type'] || '');
   if (request.method === 'POST' && contentType && !contentType.includes('application/json')) {
-    sendJson(response, 415, { message: 'Tipo de conteúdo não suportado.' });
+    sendJson(response, 415, { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'Tipo de conteúdo não suportado.' });
     return;
   }
 
   try {
-    const body = request.method === 'POST' ? await readJson(request) : {};
+    const rawBody = request.method === 'POST' ? await readRawBody(request) : Buffer.alloc(0);
+    let body;
+    try {
+      body = rawBody.length ? JSON.parse(rawBody.toString('utf8')) : {};
+    } catch {
+      body = undefined; // the guard answers 400 INVALID_JSON from rawBody
+    }
     // ip comes from the socket, not a spoofable header — used as the rate-limit key.
-    await handler({ method: request.method, headers: request.headers, url: request.url, ip: request.socket?.remoteAddress, body }, createResponseAdapter(response));
+    await handler({ method: request.method, headers: request.headers, url: request.url, ip: request.socket?.remoteAddress, body, rawBody }, createResponseAdapter(response));
   } catch (error) {
-    const statusCode = error?.statusCode === 413 ? 413 : error?.statusCode === 400 ? 400 : 500;
-    sendJson(response, statusCode, { message: statusCode === 413 ? 'Imagem grande demais.' : statusCode === 400 ? 'Requisição inválida.' : 'Erro interno na API local.' });
-    if (statusCode >= 500) console.error('JOVI Lens local API failed', { code: error?.code || 'LOCAL_API_ERROR' });
+    const tooLarge = error?.statusCode === 413;
+    sendJson(response, tooLarge ? 413 : 500, tooLarge
+      ? { code: 'PAYLOAD_TOO_LARGE', message: 'Arquivo grande demais para enviar.' }
+      : { message: 'Erro interno na API local.' });
+    if (!tooLarge) console.error('JOVI Lens local API failed', { code: error?.code || 'LOCAL_API_ERROR' });
   }
 });
 

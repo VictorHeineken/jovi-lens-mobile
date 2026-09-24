@@ -72,6 +72,6 @@ export async function findVideoLessons(subject, preferences) {
   }
 
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || 'Não foi possível recomendar uma aula agora.');
+  if (!response.ok) throw Object.assign(new Error(data.message || 'Não foi possível recomendar uma aula agora.'), { code: data.code });
   return data;
 }

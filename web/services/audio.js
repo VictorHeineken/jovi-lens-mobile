@@ -1,5 +1,6 @@
 import { isDemoMode } from './imageAnalysis.js';
 import { apiFetch } from './apiClient.js';
+import { chunkText, TTS_CHUNK_CHARS } from '../../shared/textChunks.js';
 
 // Browser pitch differentiates speakers when only one pt-BR voice exists in
 // speechSynthesis. The live path sends the role itself ('A'/'B'/'narrator'/'coach'/'feedback')
@@ -25,25 +26,30 @@ function pickBrowserVoice() {
   return voices.find((v) => /pt.BR/i.test(v.lang)) || voices.find((v) => /^pt/i.test(v.lang)) || null;
 }
 
-// Returns an array of playable data: URLs for one text chunk, or null when the
+// Returns an array of playable data: URLs for one text segment, or null when the
 // server reports TTS is not configured (caller then falls back to the browser).
+// /api/tts caps each request at TTS_CHUNK_CHARS, so longer text is split first.
 async function fetchLiveTts(text, voice) {
-  let response;
-  try {
-    response = await apiFetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
-  } catch {
-    liveTtsAvailable = false;
-    return null;
-  }
-  if (response.status === 503) { liveTtsAvailable = false; return null; }
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (data.code === 'AI_NOT_CONFIGURED') { liveTtsAvailable = false; return null; }
-    throw new Error(data.message || 'Falha ao gerar o áudio.');
+  const urls = [];
+  for (const chunk of chunkText(text, TTS_CHUNK_CHARS)) {
+    let response;
+    try {
+      response = await apiFetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: chunk, voice }) });
+    } catch {
+      liveTtsAvailable = false;
+      return null;
+    }
+    if (response.status === 503) { liveTtsAvailable = false; return null; }
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (data.code === 'AI_NOT_CONFIGURED') { liveTtsAvailable = false; return null; }
+      throw Object.assign(new Error(data.message || 'Falha ao gerar o áudio.'), { code: data.code });
+    }
+    const mime = data.mimeType || 'audio/mpeg';
+    urls.push(...(data.parts || []).map((b64) => `data:${mime};base64,${b64}`));
   }
   liveTtsAvailable = true;
-  const mime = data.mimeType || 'audio/mpeg';
-  return (data.parts || []).map((b64) => `data:${mime};base64,${b64}`);
+  return urls;
 }
 
 // Single shared narrator: only one narration plays at a time across the app.

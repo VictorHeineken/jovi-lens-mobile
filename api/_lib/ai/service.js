@@ -17,6 +17,7 @@ import {
   normalizeVideoRecommendations,
   styleMatchReason,
 } from '../videoRecommendations.js';
+import { chunkText } from '../../../shared/textChunks.js';
 
 // Scans for the first balanced top-level {...} object, skipping over quoted
 // strings — unlike a greedy /\{[\s\S]*\}/ match, this can't overrun into
@@ -103,7 +104,7 @@ function normalizeTextExtraction(result, meta) {
   };
 }
 
-export async function runStudyAI({ action = 'analyze', question = '', context = null, imageDataUrl }) {
+export async function runStudyAI({ action = 'analyze', question = '', context = null, imageDataUrl, credentials = null }) {
   if (isDemoMode()) {
     const demo = await completeWithDemo({ action, question, context });
     if (action === 'extract') return normalizeTextExtraction(demo.result, demo);
@@ -112,7 +113,7 @@ export async function runStudyAI({ action = 'analyze', question = '', context = 
 
   const content = [{ type: 'text', text: action === 'analyze' ? buildAnalysisPrompt() : action === 'extract' ? buildTextExtractionPrompt() : buildActionPrompt({ action, question, context }) }];
   if (imageDataUrl) content.push({ type: 'image_url', image_url: { url: imageDataUrl } });
-  const provider = getProvider(imageDataUrl ? 'vision' : 'chat');
+  const provider = getProvider(imageDataUrl ? 'vision' : 'chat', { byok: credentials });
   // 'analyze'/'extract' transcribe + fully break down whatever's in the image
   // (verbatim text + the full learning object) — a dense photo (a handwritten
   // page of notes, say) can easily need more than the 1400-token default sized
@@ -248,7 +249,7 @@ function buildSubjectPrompt(action, subject, preferences) {
   return buildLessonScriptPrompt(subject, preferences);
 }
 
-export async function runSubjectAI({ action = 'questions', subject = {}, preferences = {} } = {}) {
+export async function runSubjectAI({ action = 'questions', subject = {}, preferences = {}, credentials = null } = {}) {
   if (!SUBJECT_ACTIONS.has(action)) {
     throw Object.assign(new Error('Ação de matéria inválida.'), { code: 'AI_INVALID_RESPONSE' });
   }
@@ -260,7 +261,7 @@ export async function runSubjectAI({ action = 'questions', subject = {}, prefere
   }
 
   // Longer budget than a single-image action: subject scripts are the biggest outputs.
-  const completion = await getProvider('chat').complete({ messages: [{ role: 'user', content: buildSubjectPrompt(action, subject, normalizeLearningPreferences(preferences)) }], maxTokens: 2600, timeoutMs: 45000 });
+  const completion = await getProvider('chat', { byok: credentials }).complete({ messages: [{ role: 'user', content: buildSubjectPrompt(action, subject, normalizeLearningPreferences(preferences)) }], maxTokens: 2600, timeoutMs: 45000 });
   const result = parseJson(completion.text);
   return normalizeSubject(action, result, subjectName, completion);
 }
@@ -292,7 +293,7 @@ function normalizeLearningPreferences(preferences = {}) {
   };
 }
 
-export async function runVideoRecommendations({ subject = {}, preferences = {} } = {}) {
+export async function runVideoRecommendations({ subject = {}, preferences = {}, credentials = null } = {}) {
   const normalizedPreferences = normalizeLearningPreferences(preferences);
   const fallbackQuery = fallbackVideoSearchQuery(subject, normalizedPreferences);
 
@@ -300,7 +301,7 @@ export async function runVideoRecommendations({ subject = {}, preferences = {} }
     return demoVideoRecommendations(subject, normalizedPreferences);
   }
 
-  const completion = await getProvider('chat').complete({
+  const completion = await getProvider('chat', { byok: credentials }).complete({
     messages: [{ role: 'user', content: buildVideoRecommendationsPrompt(subject, normalizedPreferences) }],
     maxTokens: 1300,
     timeoutMs: 18000,
@@ -321,31 +322,8 @@ export async function runVideoRecommendations({ subject = {}, preferences = {} }
 
 const DEFAULT_TTS_CHUNK = 4000; // Azure/OpenAI /audio/speech caps input at 4096 chars.
 
-function chunkText(text, max = DEFAULT_TTS_CHUNK) {
-  const clean = String(text || '').trim();
-  if (!clean) return [];
-  if (clean.length <= max) return [clean];
-  const sentences = clean.split(/(?<=[.!?…])\s+/);
-  const chunks = [];
-  let buffer = '';
-  const flush = () => { if (buffer) { chunks.push(buffer); buffer = ''; } };
-  for (const sentence of sentences) {
-    if (sentence.length > max) {
-      // A single sentence exceeds the cap — hard-split it, keeping the tail.
-      flush();
-      for (let i = 0; i < sentence.length; i += max) chunks.push(sentence.slice(i, i + max));
-      continue;
-    }
-    const candidate = buffer ? `${buffer} ${sentence}` : sentence;
-    if (candidate.length > max) { flush(); buffer = sentence; }
-    else buffer = candidate;
-  }
-  flush();
-  return chunks;
-}
-
-export async function synthesizeSpeech({ text, voice = 'narrator', format = 'mp3' }) {
-  const provider = getProvider('tts');
+export async function synthesizeSpeech({ text, voice = 'narrator', format = 'mp3', credentials = null }) {
+  const provider = getProvider('tts', { byok: credentials });
   const chunks = chunkText(text, provider.ttsChunkLimit || DEFAULT_TTS_CHUNK);
   if (!chunks.length) throw Object.assign(new Error('Texto vazio para áudio.'), { code: 'AI_INVALID_RESPONSE' });
   const results = [];
@@ -357,6 +335,6 @@ export async function synthesizeSpeech({ text, voice = 'narrator', format = 'mp3
   return { parts: results, mimeType: format === 'mp3' ? 'audio/mpeg' : `audio/${format}`, voice };
 }
 
-export async function transcribeAudio({ buffer, mimeType, filename }) {
-  return getProvider('stt').transcribe({ buffer, mimeType, filename });
+export async function transcribeAudio({ buffer, mimeType, filename, credentials = null }) {
+  return getProvider('stt', { byok: credentials }).transcribe({ buffer, mimeType, filename });
 }

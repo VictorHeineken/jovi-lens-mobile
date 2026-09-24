@@ -67,7 +67,7 @@ async function startAzureRecording({ onFinal, onError, onEnd, onState }) {
       const base64 = await blobToBase64(new Blob(chunks, { type: mimeType }));
       const response = await apiFetch('/api/transcribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: base64, mimeType }) });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || 'Não foi possível transcrever.');
+      if (!response.ok) throw Object.assign(new Error(data.message || 'Não foi possível transcrever.'), { code: data.code });
       onFinal?.(data.text || '');
     } catch (error) {
       onError?.(error.message || 'Falha ao transcrever.');

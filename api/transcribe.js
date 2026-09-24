@@ -1,31 +1,33 @@
 import { transcribeAudio } from './_lib/ai/service.js';
-import { errorResponse, hasKnownAudioSignature, hasValidApiKey, isDailyLimited, isRateLimited, sessionUser } from './_lib/http.js';
+import { defineRoute } from './_lib/guard.js';
+import { hasKnownAudioSignature } from './_lib/http.js';
 
-const MAX_AUDIO_LENGTH = 10_000_000; // base64 chars (~7.5 MB of audio)
+export const config = { api: { bodyParser: false } };
+
+const MAX_AUDIO_LENGTH = 3_500_000; // base64 chars (~2.6 MB of audio)
 const VALID_MIME = new Set(['audio/webm', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/m4a']);
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
-  if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
-  const { provided: hasSession, user: sessionOwner } = sessionUser(req);
-  if (hasSession && !sessionOwner) return res.status(401).json({ code: 'SESSION_INVALID', message: 'Sessão expirada. Faça login novamente.' });
-  if (isRateLimited(req, { scope: 'stt', max: 20 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas transcrições em sequência. Tente novamente em instantes.' });
-  if (isDailyLimited(req, { scope: 'stt', max: 80 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de transcrição foi atingido. Tente novamente amanhã.' });
-
-  const body = req.body || {};
-  const audio = typeof body.audio === 'string' ? body.audio : '';
-  const mimeType = typeof body.mimeType === 'string' && VALID_MIME.has(body.mimeType) ? body.mimeType : 'audio/webm';
+function safeInput(body) {
+  const audio = typeof body?.audio === 'string' ? body.audio : '';
+  const mimeType = typeof body?.mimeType === 'string' && VALID_MIME.has(body.mimeType) ? body.mimeType : 'audio/webm';
   const invalid = !audio || audio.length > MAX_AUDIO_LENGTH || !/^[A-Za-z0-9+/=]+$/.test(audio) || !hasKnownAudioSignature(audio, mimeType);
-  if (invalid) return res.status(400).json({ message: 'Áudio inválido ou grande demais.' });
-
-  try {
-    const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('m4a') ? 'm4a' : mimeType.includes('mp4') ? 'mp4' : (mimeType.includes('mpeg') || mimeType.includes('mp3')) ? 'mp3' : mimeType.includes('ogg') ? 'ogg' : 'webm';
-    const filename = `audio.${ext}`;
-    const result = await transcribeAudio({ buffer: Buffer.from(audio, 'base64'), mimeType, filename });
-    return res.status(200).json({ text: result.text });
-  } catch (error) {
-    const mapped = errorResponse(error, { AI_NOT_CONFIGURED: 'A transcrição de voz ao vivo ainda não está configurada.', AI_EMPTY_RESPONSE: 'Não reconhecemos nenhuma fala. Tente falar mais perto do microfone.' });
-    console.error('JOVI Lens transcribe failed', { code: error?.code || 'UNKNOWN', status: error?.status });
-    return res.status(mapped.status).json({ code: mapped.code, message: mapped.message });
-  }
+  if (invalid) return { error: { status: 400, code: 'INVALID_INPUT', message: 'Áudio inválido ou grande demais.' } };
+  return { input: { audio, mimeType } };
 }
+
+export default defineRoute({
+  method: 'POST',
+  scope: 'stt',
+  burstPerMinute: 20,
+  auth: 'session',
+  integrity: true,
+  cost: 0,
+  byok: 'required',
+  byokCapability: 'stt',
+  validate: safeInput,
+  run: async ({ audio, mimeType }, ctx) => {
+    const ext = mimeType.includes('wav') ? 'wav' : mimeType.includes('m4a') ? 'm4a' : mimeType.includes('mp4') ? 'mp4' : (mimeType.includes('mpeg') || mimeType.includes('mp3')) ? 'mp3' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+    const result = await transcribeAudio({ buffer: Buffer.from(audio, 'base64'), mimeType, filename: `audio.${ext}`, credentials: ctx.byok });
+    return { text: result.text };
+  },
+});

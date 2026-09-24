@@ -1,17 +1,14 @@
-// Shared HTTP helpers for the local JOVI Lens API handlers.
-// Extracted from api/analyze-image.js so every endpoint reuses the same
-// client identification, rate limiting and payload validation.
+// Shared HTTP helpers for the JOVI Lens API handlers: API-key and session
+// checks, payload signature validation and the public error-code table.
+// Rate limiting lives in api/_lib/guard.js on top of api/_lib/store.js.
 
 import { timingSafeEqual } from 'node:crypto';
 import { verifySession } from './session.js';
 
-const rateBuckets = new Map();
-
-// Static shared-secret gate — see auth-plan.md Phase 1. This is a speed bump
-// against casual/accidental use of the paid AI quota by other devices on the
-// same LAN, not real authentication: the key ships inside the app bundle and
-// web build, so anyone who extracts it can still call the API directly.
-// Phase 2 (device attestation + per-account quota) replaces/augments this.
+// Static shared-secret gate. A speed bump, not real authentication: the key
+// ships inside the app bundle, so anyone who extracts it can still call the
+// API directly. Google sign-in, Play Integrity and per-account credits are
+// the real controls (see prod-implementation-spec.md §4).
 export function hasValidApiKey(req) {
   const expected = process.env.JOVI_API_KEY;
   if (!expected) return true; // unset = feature opt-in, same pattern as GOOGLE_CLIENT_ID
@@ -22,54 +19,13 @@ export function hasValidApiKey(req) {
 }
 
 // Reads the app-issued session from `Authorization: Bearer <token>` (see
-// api/_lib/session.js and auth-plan.md Phase 2). `provided` distinguishes "no
-// header" (fine — falls back to IP-based limiting, logged-out use stays
-// allowed) from "header present but invalid/expired" (the caller should
-// reject with 401 rather than silently falling back, so a stale token can't
-// quietly ride on IP-based limits after logout/expiry).
+// api/_lib/session.js). `provided` distinguishes "no header" (401
+// SIGN_IN_REQUIRED) from "header present but invalid/expired" (401
+// SESSION_INVALID), which the client handles differently.
 export function sessionUser(req) {
   const header = String(req.headers['authorization'] || '');
   if (!header.startsWith('Bearer ')) return { provided: false, user: null };
   return { provided: true, user: verifySession(header.slice(7)) };
-}
-
-export function clientKey(req) {
-  const { user } = sessionUser(req);
-  if (user) return `user:${user.sub}`;
-  // Prefer the transport-level peer address (set by the local server from the
-  // socket) — never key primarily on a client-supplied X-Forwarded-For, whose
-  // left-most entry the client controls and could rotate to defeat the limiter.
-  if (req.ip) return String(req.ip).slice(0, 80);
-  const forwarded = req.headers['x-forwarded-for'];
-  // Behind a trusted proxy the hop it appends is the RIGHT-most entry.
-  if (forwarded) return String(forwarded).split(',').pop().trim().slice(0, 80);
-  return String(req.headers['x-real-ip'] || 'unknown').slice(0, 80);
-}
-
-// Per-scope fixed window. Each endpoint passes its own scope + budget so a
-// burst of cheap requests on one route never blocks another.
-export function isRateLimited(req, { windowMs = 60_000, max = 12, scope = 'default' } = {}) {
-  const now = Date.now();
-  // Opportunistic eviction so the bucket map can't grow without bound.
-  if (rateBuckets.size > 500) {
-    for (const [key, bucket] of rateBuckets) if (now - bucket.startedAt > windowMs) rateBuckets.delete(key);
-  }
-  const key = `${scope}:${clientKey(req)}`;
-  const bucket = rateBuckets.get(key);
-  if (!bucket || now - bucket.startedAt > windowMs) {
-    rateBuckets.set(key, { startedAt: now, count: 1 });
-    return false;
-  }
-  bucket.count += 1;
-  return bucket.count > max;
-}
-
-// A second, longer window protects the provider budget even when requests are
-// spread out enough to evade the short burst limiter. This is intentionally an
-// in-process guard for the local prototype; production should move it to a
-// shared store and key it by authenticated user.
-export function isDailyLimited(req, { max = 100, scope = 'default' } = {}) {
-  return isRateLimited(req, { windowMs: 86_400_000, max, scope: `daily:${scope}` });
 }
 
 export function hasKnownImageSignature(base64, mimeType) {
@@ -101,20 +57,56 @@ export function hasKnownAudioSignature(base64, mimeType) {
   return false;
 }
 
-// Maps a provider/service error code to the public status + message, keeping
-// internal details out of the response body. Handlers extend `messages`.
-export function errorResponse(error, messages = {}) {
-  const code = error?.code || 'AI_UNAVAILABLE';
-  const status = code === 'AI_NOT_CONFIGURED' ? 503
-    : code === 'AI_RATE_LIMITED' ? 429
-    : code === 'AI_TIMEOUT' ? 504
-    : 502;
-  const base = {
-    AI_NOT_CONFIGURED: 'Este recurso ao vivo ainda não está configurado. Ative o modo demonstração ou configure o serviço de IA.',
-    AI_TIMEOUT: 'A geração demorou mais que o esperado. Tente novamente.',
-    AI_EMPTY_RESPONSE: 'A IA não retornou um resultado utilizável. Tente novamente.',
-    AI_INVALID_RESPONSE: 'Recebemos uma resposta que não pôde ser organizada. Tente novamente.',
-    AI_RATE_LIMITED: 'O serviço de IA está temporariamente ocupado. Tente novamente em instantes.',
-  };
-  return { status, code, message: { ...base, ...messages }[code] || 'Não foi possível concluir agora. Tente novamente.' };
+const SERVICE_UNAVAILABLE = 'Serviço indisponível no momento. Tente novamente em instantes.';
+const DEFAULT_MESSAGE = 'Não foi possível concluir agora. Tente novamente.';
+
+// Server → client error contract (prod-implementation-spec.md §5.4). Every
+// error body is { code, message } with a pt-BR message.
+export const ERRORS = {
+  INVALID_JSON: { status: 400, message: 'Requisição inválida.' },
+  INVALID_INPUT: { status: 400, message: 'Requisição inválida.' },
+  TEXT_TOO_LONG: { status: 400, message: 'Texto longo demais para gerar áudio.' },
+  IDEMPOTENCY_KEY_REQUIRED: { status: 400, message: 'Requisição sem identificador. Atualize o app.' },
+  BYOK_INVALID_FORMAT: { status: 400, message: 'Formato de chave de IA inválido.' },
+  BYOK_CAPABILITY_UNSUPPORTED: { status: 400, message: 'Seu provedor de IA não oferece este recurso.' },
+  API_KEY_INVALID: { status: 401, message: 'Acesso não autorizado.' },
+  SIGN_IN_REQUIRED: { status: 401, message: 'Entre com sua conta Google para usar a IA.' },
+  SESSION_INVALID: { status: 401, message: 'Sua sessão expirou. Entre novamente.' },
+  GOOGLE_TOKEN_INVALID: { status: 401, message: 'Token Google inválido para este aplicativo.' },
+  CREDITS_EXHAUSTED: { status: 402, message: 'Você usou suas 3 análises gratuitas. Adicione sua própria chave de IA para continuar.' },
+  INTEGRITY_FAILED: { status: 403, message: 'Não foi possível verificar este aparelho. Use o app oficial em um aparelho sem modificações.' },
+  BYOK_REQUIRED: { status: 403, message: 'Vozes e transcrição da IA exigem sua própria chave. Usando a voz do aparelho.' },
+  METHOD_NOT_ALLOWED: { status: 405, message: 'Método não permitido.' },
+  REQUEST_IN_PROGRESS: { status: 409, message: 'Este pedido ainda está sendo processado.' },
+  PAYLOAD_TOO_LARGE: { status: 413, message: 'Arquivo grande demais para enviar.' },
+  UNSUPPORTED_MEDIA_TYPE: { status: 415, message: 'Tipo de conteúdo não suportado.' },
+  BYOK_REJECTED: { status: 422, message: 'Sua chave de IA foi recusada pelo provedor. Confira ou troque a chave.' },
+  RATE_LIMITED: { status: 429, message: 'Muitos pedidos em sequência. Tente novamente em instantes.' },
+  SIGNUP_LIMITED: { status: 429, message: 'Muitas contas novas nesta rede hoje. Tente novamente amanhã.' },
+  AI_RATE_LIMITED: { status: 429, message: 'O serviço de IA está temporariamente ocupado. Tente novamente em instantes.' },
+  AI_UNAVAILABLE: { status: 502, message: DEFAULT_MESSAGE },
+  AI_PROVIDER_ERROR: { status: 502, message: DEFAULT_MESSAGE },
+  AI_INVALID_RESPONSE: { status: 502, message: 'Recebemos uma resposta que não pôde ser organizada. Tente novamente.' },
+  AI_EMPTY_RESPONSE: { status: 502, message: 'A IA não retornou um resultado utilizável. Tente novamente.' },
+  AI_RESPONSE_TOO_LARGE: { status: 502, message: 'A resposta da IA ficou grande demais. Tente um conteúdo menor.' },
+  GOOGLE_UNAVAILABLE: { status: 502, message: 'Não foi possível validar com o Google agora. Tente novamente.' },
+  AI_NOT_CONFIGURED: { status: 503, message: 'Este recurso ao vivo ainda não está configurado. Ative o modo demonstração ou configure o serviço de IA.' },
+  STORE_UNAVAILABLE: { status: 503, message: SERVICE_UNAVAILABLE },
+  SERVER_MISCONFIGURED: { status: 503, message: SERVICE_UNAVAILABLE },
+  INTEGRITY_UNAVAILABLE: { status: 503, message: SERVICE_UNAVAILABLE },
+  AI_TIMEOUT: { status: 504, message: 'A geração demorou mais que o esperado. Tente novamente.' },
+};
+
+// { status, code, message } for a known code; anything unknown becomes a
+// generic 502 AI_UNAVAILABLE so internal details never reach the client.
+export function errorBody(code) {
+  const known = ERRORS[code];
+  if (!known) return { status: 502, code: 'AI_UNAVAILABLE', message: DEFAULT_MESSAGE };
+  return { status: known.status, code, message: known.message };
+}
+
+// Maps a thrown provider/service error to the public status + message.
+// AI_PROVIDER_AUTH is converted by the guard first (it depends on BYOK).
+export function errorResponse(error) {
+  return errorBody(error?.code || 'AI_UNAVAILABLE');
 }

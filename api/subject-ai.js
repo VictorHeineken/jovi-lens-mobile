@@ -1,5 +1,7 @@
 import { runSubjectAI } from './_lib/ai/service.js';
-import { errorResponse, hasValidApiKey, isDailyLimited, isRateLimited, sessionUser } from './_lib/http.js';
+import { defineRoute } from './_lib/guard.js';
+
+export const config = { api: { bodyParser: false } };
 
 const VALID_ACTIONS = new Set(['questions', 'exam', 'plan', 'podcast-script', 'lesson-script']);
 const MAX_NOTES = 40;
@@ -34,7 +36,7 @@ function safePreferences(preferences = {}) {
 function safeInput(body) {
   const action = VALID_ACTIONS.has(body?.action) ? body.action : 'questions';
   const subject = body?.subject && typeof body.subject === 'object' ? body.subject : null;
-  if (!subject) return { error: { status: 400, message: 'Contexto da matéria ausente.' } };
+  if (!subject) return { error: { status: 400, code: 'INVALID_INPUT', message: 'Contexto da matéria ausente.' } };
 
   const name = typeof subject.name === 'string' ? subject.name.trim().slice(0, 80) : (typeof subject.subject === 'string' ? subject.subject.trim().slice(0, 80) : '');
   const rawNotes = Array.isArray(subject.notes) ? subject.notes.slice(0, MAX_NOTES) : [];
@@ -47,29 +49,20 @@ function safeInput(body) {
     topicPath: Array.isArray(note?.topicPath) ? note.topicPath.filter((t) => typeof t === 'string').slice(0, 4) : [],
   }));
 
-  if (!name && !notes.length) return { error: { status: 400, message: 'Salve ao menos uma nota nesta matéria para gerar este conteúdo.' } };
+  if (!name && !notes.length) return { error: { status: 400, code: 'INVALID_INPUT', message: 'Salve ao menos uma nota nesta matéria para gerar este conteúdo.' } };
 
   const format = ['dialogue', 'single', 'drive'].includes(subject.format) ? subject.format : undefined;
-  return { action, subject: { name: name || 'Matéria', notes, format }, preferences: safePreferences(body?.preferences) };
+  return { input: { action, subject: { name: name || 'Matéria', notes, format }, preferences: safePreferences(body?.preferences) } };
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
-  if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
-  const { provided: hasSession, user: sessionOwner } = sessionUser(req);
-  if (hasSession && !sessionOwner) return res.status(401).json({ code: 'SESSION_INVALID', message: 'Sessão expirada. Faça login novamente.' });
-  if (isRateLimited(req, { scope: 'subject', max: 10 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitos pedidos em sequência. Tente novamente em instantes.' });
-  if (isDailyLimited(req, { scope: 'subject', max: 40 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário do Estúdio foi atingido. Tente novamente amanhã.' });
-
-  const input = safeInput(req.body || {});
-  if (input.error) return res.status(input.error.status).json({ message: input.error.message });
-
-  try {
-    const result = await runSubjectAI({ action: input.action, subject: input.subject, preferences: input.preferences });
-    return res.status(200).json(result);
-  } catch (error) {
-    const mapped = errorResponse(error);
-    console.error('JOVI Lens subject AI failed', { action: input.action, code: error?.code || 'UNKNOWN', status: error?.status });
-    return res.status(mapped.status).json({ code: mapped.code, message: mapped.message });
-  }
-}
+export default defineRoute({
+  method: 'POST',
+  scope: 'subject',
+  burstPerMinute: 10,
+  auth: 'session',
+  integrity: true,
+  cost: 1,
+  byok: 'optional',
+  validate: safeInput,
+  run: (input, ctx) => runSubjectAI({ ...input, credentials: ctx.byok }),
+});

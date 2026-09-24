@@ -1,61 +1,97 @@
-import { hasValidApiKey, isDailyLimited, isRateLimited } from '../_lib/http.js';
+import { defineRoute, freeCredits } from '../_lib/guard.js';
 import { issueSession } from '../_lib/session.js';
+import { getStore } from '../_lib/store.js';
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
+export const config = { api: { bodyParser: false } };
 
-  // Every other endpoint is rate limited and this one was not, which mattered more
-  // than it looks: it is unauthenticated by definition (it is what establishes who
-  // the caller is) and each call makes an outbound request to Google, so an
-  // unthrottled route here is a free way to hammer that dependency from our IP.
-  if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
-  if (isRateLimited(req, { scope: 'auth', max: 10 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas tentativas de login em sequência. Tente novamente em instantes.' });
-  if (isDailyLimited(req, { scope: 'auth', max: 60 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de tentativas de login foi atingido.' });
+function routeError(code) {
+  return Object.assign(new Error(code), { code });
+}
 
-  // Comma-separated on purpose: the web app (Google Identity Services) and the
-  // RN app (expo-auth-session's browser OAuth flow) are registered as separate
-  // Google Cloud OAuth clients, so a token's `aud` legitimately differs by
-  // platform — this checks membership instead of equality against one value.
+function signupLimit() {
+  const n = Number(process.env.JOVI_SIGNUP_LIMIT_PER_IP_DAY || 25);
+  return Number.isFinite(n) && n > 0 ? n : 25;
+}
+
+function safeInput(body) {
+  const credential = body?.credential;
+  if (typeof credential !== 'string' || credential.length < 20 || credential.length > 6000) {
+    return { error: { status: 400, code: 'INVALID_INPUT', message: 'Credencial Google inválida.' } };
+  }
+  return { input: { credential } };
+}
+
+async function verifyGoogleCredential(credential) {
+  // Comma-separated on purpose: the Android app and the local web app may be
+  // registered as separate OAuth clients, so a token's `aud` can differ.
   const allowedClientIds = String(process.env.GOOGLE_CLIENT_ID || '').split(',').map((id) => id.trim()).filter(Boolean);
-  if (!allowedClientIds.length) return res.status(503).json({ message: 'Google Sign-In ainda não está configurado no servidor.' });
-  const credential = req.body?.credential;
-  if (typeof credential !== 'string' || credential.length < 20 || credential.length > 6000) return res.status(400).json({ message: 'Credencial Google inválida.' });
+  if (!allowedClientIds.length) throw routeError('SERVER_MISCONFIGURED');
 
+  let response;
   try {
-    // 8s cap: without it a hung response from Google holds this handler open
-    // indefinitely instead of failing fast into a clean error.
-    const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`, { signal: AbortSignal.timeout(8000) });
-    // Google's tokeninfo returns 400 with an error body for a genuinely malformed
-    // or invalid token (confirmed: {"error":"invalid_token", ...}). Any OTHER
-    // non-2xx — 429 rate-limited, 5xx — is an upstream problem, not proof the
-    // credential is bad. Collapsing both into "Token Google inválido" told a real
-    // user their account was broken during a transient Google-side hiccup, and
-    // encouraged retries that only ate into this endpoint's own rate limit.
-    if (response.status !== 400 && !response.ok) return res.status(502).json({ message: 'Não foi possível validar com o Google agora. Tente novamente.' });
-    const profile = await response.json();
-    if (!response.ok || !allowedClientIds.includes(profile.aud) || !['accounts.google.com', 'https://accounts.google.com'].includes(profile.iss) || profile.email_verified !== 'true' || Number(profile.exp || 0) * 1000 <= Date.now()) return res.status(401).json({ message: 'Token Google inválido para este aplicativo.' });
+    // 8s cap: a hung response from Google fails fast into a clean error.
+    response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`, { signal: AbortSignal.timeout(8000) });
+  } catch {
+    throw routeError('GOOGLE_UNAVAILABLE');
+  }
+  // tokeninfo answers 400 for a genuinely invalid token. Any other non-2xx
+  // (429, 5xx) is an upstream problem, not proof the credential is bad.
+  if (response.status !== 400 && !response.ok) throw routeError('GOOGLE_UNAVAILABLE');
+  const profile = await response.json().catch(() => ({}));
+  const valid = response.ok
+    && allowedClientIds.includes(profile.aud)
+    && ['accounts.google.com', 'https://accounts.google.com'].includes(profile.iss)
+    && profile.email_verified === 'true'
+    && Number(profile.exp || 0) * 1000 > Date.now()
+    && profile.sub;
+  if (!valid) throw routeError('GOOGLE_TOKEN_INVALID');
+  return profile;
+}
 
-    let session;
-    try {
-      session = issueSession({ sub: profile.sub, email: profile.email });
-    } catch (error) {
-      // JOVI_SESSION_SECRET unset: sign-in itself still works (the client gets
-      // a profile to show), but per-account quotas stay on IP-based limiting
-      // until the secret is configured — same "optional until configured"
-      // pattern as GOOGLE_CLIENT_ID/JOVI_API_KEY elsewhere in this file.
-      if (error?.code !== 'SESSION_NOT_CONFIGURED') throw error;
+function createSession(profile) {
+  try {
+    return issueSession({ sub: profile.sub, email: profile.email });
+  } catch (error) {
+    // Only local dev may run without a session secret; on Vercel the guard
+    // already fails closed before reaching this point.
+    if (error?.code !== 'SESSION_NOT_CONFIGURED' || process.env.VERCEL) throw routeError('SERVER_MISCONFIGURED');
+    return undefined;
+  }
+}
+
+export default defineRoute({
+  method: 'POST',
+  scope: 'auth',
+  burstPerMinute: 10,
+  auth: 'none',
+  integrity: true,
+  cost: 0,
+  byok: 'forbidden',
+  validate: safeInput,
+  run: async ({ credential }, ctx) => {
+    const profile = await verifyGoogleCredential(credential);
+    const store = getStore();
+    const initial = freeCredits();
+
+    const isNew = await store.initCredits(profile.sub, initial);
+    if (isNew) {
+      const utcDate = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+      const signups = await store.hit(`signup:${ctx.ip}:${utcDate}`, 86400);
+      if (signups > signupLimit()) {
+        await store.del(`credits:${profile.sub}`);
+        throw routeError('SIGNUP_LIMITED');
+      }
     }
 
-    return res.status(200).json({
+    return {
       user: {
         id: profile.sub,
         name: profile.name || profile.given_name || 'Usuário Google',
         email: profile.email,
         picture: profile.picture || '',
       },
-      session,
-    });
-  } catch {
-    return res.status(500).json({ message: 'Não foi possível validar a conta Google.' });
-  }
-}
+      session: createSession(profile),
+      creditsRemaining: await store.getCredits(profile.sub, initial),
+    };
+  },
+});

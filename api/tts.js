@@ -1,30 +1,36 @@
 import { synthesizeSpeech } from './_lib/ai/service.js';
 import { DEFAULT_VOICE_ROLE, VOICE_ROLES } from './_lib/ai/voices.js';
-import { errorResponse, hasValidApiKey, isDailyLimited, isRateLimited, sessionUser } from './_lib/http.js';
+import { defineRoute } from './_lib/guard.js';
 
-const MAX_TEXT = 8000; // service chunks this into provider-sized TTS calls
+export const config = { api: { bodyParser: false } };
+
+const MAX_TEXT = 2000; // clients split longer text with shared/textChunks.js
+const MAX_RESPONSE_BASE64 = 4_000_000;
 const FORMATS = new Set(['mp3', 'opus', 'aac', 'flac', 'wav']);
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
-  if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
-  const { provided: hasSession, user: sessionOwner } = sessionUser(req);
-  if (hasSession && !sessionOwner) return res.status(401).json({ code: 'SESSION_INVALID', message: 'Sessão expirada. Faça login novamente.' });
-  if (isRateLimited(req, { scope: 'tts', max: 60 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitos áudios em sequência. Tente novamente em instantes.' });
-  if (isDailyLimited(req, { scope: 'tts', max: 200 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de áudio foi atingido. Tente novamente amanhã.' });
-
-  const body = req.body || {};
-  const text = typeof body.text === 'string' ? body.text.trim().slice(0, MAX_TEXT) : '';
-  const voice = VOICE_ROLES.includes(body.voice) ? body.voice : DEFAULT_VOICE_ROLE;
-  const format = FORMATS.has(body.format) ? body.format : 'mp3';
-  if (!text) return res.status(400).json({ message: 'Texto ausente para gerar áudio.' });
-
-  try {
-    const result = await synthesizeSpeech({ text, voice, format });
-    return res.status(200).json(result);
-  } catch (error) {
-    const mapped = errorResponse(error, { AI_NOT_CONFIGURED: 'A geração de áudio ao vivo ainda não está configurada.' });
-    console.error('JOVI Lens TTS failed', { code: error?.code || 'UNKNOWN', status: error?.status });
-    return res.status(mapped.status).json({ code: mapped.code, message: mapped.message });
-  }
+function safeInput(body) {
+  const text = typeof body?.text === 'string' ? body.text.trim() : '';
+  const voice = VOICE_ROLES.includes(body?.voice) ? body.voice : DEFAULT_VOICE_ROLE;
+  const format = FORMATS.has(body?.format) ? body.format : 'mp3';
+  if (!text) return { error: { status: 400, code: 'INVALID_INPUT', message: 'Texto ausente para gerar áudio.' } };
+  if (text.length > MAX_TEXT) return { error: { status: 400, code: 'TEXT_TOO_LONG', message: 'Texto longo demais para gerar áudio.' } };
+  return { input: { text, voice, format } };
 }
+
+export default defineRoute({
+  method: 'POST',
+  scope: 'tts',
+  burstPerMinute: 60,
+  auth: 'session',
+  integrity: true,
+  cost: 0,
+  byok: 'required',
+  byokCapability: 'tts',
+  validate: safeInput,
+  run: async (input, ctx) => {
+    const result = await synthesizeSpeech({ ...input, credentials: ctx.byok });
+    const size = result.parts.reduce((sum, part) => sum + part.length, 0);
+    if (size > MAX_RESPONSE_BASE64) throw Object.assign(new Error('TTS response too large.'), { code: 'AI_RESPONSE_TOO_LARGE' });
+    return result;
+  },
+});

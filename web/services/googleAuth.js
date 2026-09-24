@@ -44,7 +44,7 @@ export async function renderGoogleSignInButton(container, onResult) {
           body: JSON.stringify({ credential }),
         });
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.message || 'Não foi possível entrar com o Google.');
+        if (!response.ok) throw Object.assign(new Error(payload.message || 'Não foi possível entrar com o Google.'), { code: payload.code });
         setSessionToken(payload.session || null);
         onResult({ user: payload.user });
       } catch (error) {
