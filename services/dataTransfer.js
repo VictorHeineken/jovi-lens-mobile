@@ -2,9 +2,12 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 const BACKUP_VERSION = 1;
+
+// Backups hold study data only: never the session, BYOK keys, or the calendar
+// and notification settings.
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 
-export function createBackup({ records = [], notes = [], aiHistory = [], plan = { type: 'free' }, user = null, subjectArtifacts = {}, learningPreferences = {}, studyCalendar = null } = {}) {
+export function createBackup({ records = [], notes = [], aiHistory = [], user = null, subjectArtifacts = {}, learningPreferences = {}, studyCalendar = null } = {}) {
   return {
     app: 'jovi-lens',
     version: BACKUP_VERSION,
@@ -12,7 +15,6 @@ export function createBackup({ records = [], notes = [], aiHistory = [], plan = 
     records: records.filter((record) => record?.source !== 'sample'),
     notes,
     aiHistory,
-    plan,
     user,
     subjectArtifacts,
     learningPreferences,
@@ -53,7 +55,6 @@ export async function readBackupFile(file) {
     records: listOrEmpty(data.records).filter((record) => record && typeof record.id === 'string' && typeof record.src === 'string'),
     notes: listOrEmpty(data.notes),
     aiHistory: listOrEmpty(data.aiHistory),
-    plan: data.plan && typeof data.plan === 'object' ? data.plan : { type: 'free' },
     user: data.user && typeof data.user === 'object' ? data.user : null,
     subjectArtifacts: data.subjectArtifacts && typeof data.subjectArtifacts === 'object' ? data.subjectArtifacts : {},
     learningPreferences: data.learningPreferences && typeof data.learningPreferences === 'object' ? data.learningPreferences : {},

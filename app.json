@@ -19,8 +19,14 @@
       "package": "com.jovilens.app",
       "versionCode": 4,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.READ_CALENDAR",
+        "android.permission.POST_NOTIFICATIONS"
       ],
+      "blockedPermissions": [
+        "android.permission.WRITE_CALENDAR"
+      ],
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -73,7 +79,9 @@
             "usesCleartextTraffic": true
           }
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin",
+      "expo-notifications"
     ],
     "experiments": {}
   }

@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import Icon from './Icon.jsx';
+import AiErrorActions from './AiErrorActions.jsx';
+import { requireAI } from '../services/aiAccess.js';
+import { asAiError } from '../services/apiErrors.js';
 import { useBottomInset, useTopInset } from '../hooks/safeArea.js';
 import SubjectExam from './SubjectExam.jsx';
 import StudyPlan from './StudyPlan.jsx';
@@ -11,6 +14,7 @@ import { generateSubjectContent } from '../services/subjectStudy.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { buildSubjectInsights } from '../shared/subjectInsights.js';
 import { getPresentationExamResult } from '../shared/demoSubjectArtifacts.js';
+import { isDemoMode } from '../services/env.js';
 
 const TABS = [
   { id: 'overview', label: 'Visão', icon: 'layers' },
@@ -30,7 +34,7 @@ export default function SubjectStudio({ subject, onClose }) {
   if (!subject) return null;
 
   const rawExamResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
-  const examResult = getPresentationExamResult(subject, rawExamResult);
+  const examResult = isDemoMode() ? getPresentationExamResult(subject, rawExamResult) : rawExamResult;
   const savedExam = getSubjectArtifact(subject.name, 'exam')?.data || null;
   const savedPlan = getSubjectArtifact(subject.name, 'plan')?.data || null;
   const savedPlanProgress = getSubjectArtifact(subject.name, 'planProgress')?.data || {};
@@ -111,13 +115,14 @@ export default function SubjectStudio({ subject, onClose }) {
 
         <ScrollView className="flex-1 border-t border-slate-100" contentContainerClassName="px-4 pt-4" contentContainerStyle={{ paddingBottom: bottomInset }}>
           {tab === 'overview' ? <SubjectOverview subject={subject} insights={insights} /> : null}
-          {tab === 'questions' ? <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} /> : null}
-          {tab === 'exam' ? <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} /> : null}
+          {tab === 'questions' ? <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} onLeave={onClose} /> : null}
+          {tab === 'exam' ? <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} onLeave={onClose} /> : null}
           {tab === 'podcast' ? (
             <PodcastPlayer
               subject={subject}
               saved={savedPodcast}
               savedVariants={savedPodcasts?.formats}
+              onLeave={onClose}
               onSave={(data) => {
                 saveSubjectArtifact(subject.name, 'podcast', data);
                 if (savedPodcasts?.formats) saveSubjectArtifact(subject.name, 'podcasts', { ...savedPodcasts, formats: { ...savedPodcasts.formats, [data.format || 'dialogue']: data } });
@@ -126,8 +131,8 @@ export default function SubjectStudio({ subject, onClose }) {
           ) : null}
           {tab === 'lesson' ? (
             <View className="gap-6">
-              <VideoRecommendations subject={subject} saved={savedVideoRecommendations} examResult={examResult} onSave={(data) => saveSubjectArtifact(subject.name, 'videoRecommendations', data)} />
-              <LessonPlayer subject={subject} saved={savedLesson} onSave={(data) => saveSubjectArtifact(subject.name, 'lesson', data)} />
+              <VideoRecommendations subject={subject} saved={savedVideoRecommendations} examResult={examResult} onSave={(data) => saveSubjectArtifact(subject.name, 'videoRecommendations', data)} onLeave={onClose} />
+              <LessonPlayer subject={subject} saved={savedLesson} onSave={(data) => saveSubjectArtifact(subject.name, 'lesson', data)} onLeave={onClose} />
             </View>
           ) : null}
           {tab === 'plan' ? (
@@ -138,6 +143,7 @@ export default function SubjectStudio({ subject, onClose }) {
               savedLessons={savedVideoRecommendations?.videos?.filter((video) => video.saved) || []}
               onSave={(data) => saveSubjectArtifact(subject.name, 'plan', data)}
               onProgressSave={(data) => saveSubjectArtifact(subject.name, 'planProgress', data)}
+              onLeave={onClose}
             />
           ) : null}
         </ScrollView>
@@ -248,15 +254,16 @@ function InsightBlock({ icon, title, children }) {
   );
 }
 
-function SubjectQuestions({ subject, saved, onSave }) {
+function SubjectQuestions({ subject, saved, onSave, onLeave }) {
   const [items, setItems] = useState(saved?.questions || null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [open, setOpen] = useState({});
 
   async function generate() {
+    if (!requireAI()) return;
     setLoading(true);
-    setError('');
+    setError(null);
     try {
       const result = await generateSubjectContent(subject, { action: 'questions' });
       if (!result.questions?.length) throw new Error('Não foi possível gerar as perguntas agora.');
@@ -264,7 +271,7 @@ function SubjectQuestions({ subject, saved, onSave }) {
       setOpen({});
       onSave?.(result);
     } catch (err) {
-      setError(err.message || 'Falha ao gerar as perguntas.');
+      setError(asAiError(err, 'Falha ao gerar as perguntas.'));
     } finally {
       setLoading(false);
     }
@@ -289,7 +296,12 @@ function SubjectQuestions({ subject, saved, onSave }) {
           <Text className="text-[16px] font-bold text-slate-900">Perguntas sobre {subject.name} inteira</Text>
           <Text className="text-[13px] text-slate-600">Geramos perguntas de estudo que cruzam todos os subtemas — não apenas uma imagem — com respostas-modelo para você conferir.</Text>
         </View>
-        {error ? <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View> : null}
+        {error ? (
+          <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert">
+            <Text className="text-[13px] text-red-600">{error.message}</Text>
+            <AiErrorActions error={error} onRetry={generate} onNavigateAway={onLeave} />
+          </View>
+        ) : null}
         <Pressable accessibilityRole="button" onPress={generate} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="sparkle" size={16} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Gerar perguntas</Text>

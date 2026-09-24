@@ -6,7 +6,6 @@ import {
   getHistory,
   getLearningPreferences,
   getNotes,
-  getPlan,
   getStudyCalendar,
   getSubjectArtifacts,
   getUser,
@@ -14,7 +13,6 @@ import {
   setHistory as persistHistory,
   setLearningPreferences as persistLearningPreferences,
   setNotes as persistNotes,
-  setPlan as persistPlan,
   setStudyCalendar as persistStudyCalendar,
   setSubjectArtifacts as persistSubjectArtifacts,
   setUser as persistUser,
@@ -25,8 +23,13 @@ import { mergeDemoSubjectArtifacts } from '../shared/demoSubjectArtifacts.js';
 import { EMPTY_STUDY_CALENDAR, normalizeStudyCalendar } from '../shared/studyCalendar.js';
 import { demoAssetModule } from '../services/demoAssets.js';
 import { analysisFromNote } from '../shared/demoResponses.js';
+import { isDemoMode } from '../services/env.js';
+import { subscribeUser } from '../services/googleAuth.js';
 
 const AppDataContext = createContext(null);
+
+// Samples, seeded notes and demo artifacts exist only in the presentation build.
+const DEMO = isDemoMode();
 
 // Ported verbatim from the web app's Vite public-folder path. These strings are
 // not filesystem paths in RN — services/demoAssets.js maps each one to a
@@ -561,7 +564,7 @@ const sampleNotes = [
 // opening it in the viewer studies that photo instead of requesting a fresh
 // one — which in Demo Mode always came back as the generic circle-area
 // exercise. Samples are never persisted, so this is rebuilt on every launch.
-const samples = sampleMedia.map((record) => {
+const samples = DEMO ? sampleMedia.map((record) => {
   const note = sampleNotes.find((item) => item.recordId === record.id);
   if (!note) return record;
   const distractors = sampleNotes.filter((item) => item.category !== note.category).map((item) => item.keyPoints?.[0]);
@@ -569,9 +572,10 @@ const samples = sampleMedia.map((record) => {
   const rotated = [...distractors.slice(offset), ...distractors.slice(0, offset)];
   // Every 3rd one keeps the options from repeating the same few categories.
   return { ...record, analysis: analysisFromNote(note, { distractors: rotated.filter((_, index) => index % 3 === 0) }) };
-});
+}) : [];
 
 function getInitialNotes() {
+  if (!DEMO) return getNotes();
   const stored = getNotes();
   const refreshedStored = stored.map((note) => {
     const sample = sampleNotes.find((item) => item.id === note.id);
@@ -593,6 +597,7 @@ function getInitialNotes() {
 }
 
 function getInitialSubjectArtifacts() {
+  if (!DEMO) return getSubjectArtifacts();
   const { artifacts, changed } = mergeDemoSubjectArtifacts(getSubjectArtifacts());
   if (changed) persistSubjectArtifacts(artifacts);
   return artifacts;
@@ -615,11 +620,14 @@ export function AppDataProvider({ children }) {
     persistHistory(cleaned);
     return cleaned;
   });
-  const [plan, setPlanState] = useState(() => getPlan());
   const [user, setUserState] = useState(() => getUser());
   const [subjectArtifacts, setSubjectArtifactsState] = useState(getInitialSubjectArtifacts);
   const [learningPreferences, setLearningPreferencesState] = useState(() => getLearningPreferences());
   const [studyCalendar, setStudyCalendarState] = useState(() => normalizeStudyCalendar(getStudyCalendar() || EMPTY_STUDY_CALENDAR));
+
+  // Sign-in, sign-out and session recovery happen outside React (services/
+  // googleAuth.js); mirror the signed-in user here.
+  useEffect(() => subscribeUser((next) => setUserState(next)), []);
 
   useEffect(() => {
     const loadVersion = recordsLoadVersionRef.current;
@@ -748,11 +756,6 @@ export function AppDataProvider({ children }) {
     persistNotes(next);
   }, [notes]);
 
-  const setPlan = useCallback((next) => {
-    setPlanState(next);
-    persistPlan(next);
-  }, []);
-
   const setUser = useCallback((next) => {
     setUserState(next);
     persistUser(next);
@@ -782,8 +785,6 @@ export function AppDataProvider({ children }) {
     persistNotes(backup.notes || []);
     setAiHistory(backup.aiHistory || []);
     persistHistory(backup.aiHistory || []);
-    setPlanState(backup.plan || { type: 'free' });
-    persistPlan(backup.plan || { type: 'free' });
     setUserState(backup.user || null);
     persistUser(backup.user || null);
     setSubjectArtifactsState(backup.subjectArtifacts || {});
@@ -798,15 +799,14 @@ export function AppDataProvider({ children }) {
     await clearMediaRecords();
     recordsRef.current = samples;
     setRecords(samples);
-    setNotesState(sampleNotes);
-    persistNotes(sampleNotes);
+    const initialNotes = DEMO ? sampleNotes : [];
+    setNotesState(initialNotes);
+    persistNotes(initialNotes);
     setAiHistory([]);
     persistHistory([]);
-    setPlanState({ type: 'free' });
-    persistPlan({ type: 'free' });
     setUserState(null);
     persistUser(null);
-    const { artifacts } = mergeDemoSubjectArtifacts({});
+    const artifacts = DEMO ? mergeDemoSubjectArtifacts({}).artifacts : {};
     setSubjectArtifactsState(artifacts);
     persistSubjectArtifacts(artifacts);
     setLearningPreferencesState(DEFAULT_LEARNING_PREFERENCES);
@@ -831,9 +831,9 @@ export function AppDataProvider({ children }) {
   const getSubjectArtifact = useCallback((subjectName, key) => subjectArtifacts[subjectName]?.[key] || null, [subjectArtifacts]);
 
   const value = useMemo(() => ({
-    records, notes, aiHistory, plan, user, subjects, subjectArtifacts, learningPreferences, studyCalendar,
-    addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, setLearningPreferences, setStudyCalendar, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact,
-  }), [records, notes, aiHistory, plan, user, subjects, subjectArtifacts, learningPreferences, studyCalendar, addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setPlan, setUser, setLearningPreferences, setStudyCalendar, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact]);
+    records, notes, aiHistory, user, subjects, subjectArtifacts, learningPreferences, studyCalendar,
+    addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setUser, setLearningPreferences, setStudyCalendar, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact,
+  }), [records, notes, aiHistory, user, subjects, subjectArtifacts, learningPreferences, studyCalendar, addRecord, updateRecord, removeRecord, saveNote, removeNote, updateNote, toggleNoteFavorite, addHistoryEntry, setUser, setLearningPreferences, setStudyCalendar, restoreLocalData, clearLocalData, saveSubjectArtifact, getSubjectArtifact]);
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }

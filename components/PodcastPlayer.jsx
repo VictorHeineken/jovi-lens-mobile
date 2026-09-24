@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Icon from './Icon.jsx';
+import AiErrorActions from './AiErrorActions.jsx';
+import { requireAI } from '../services/aiAccess.js';
+import { ApiError, asAiError } from '../services/apiErrors.js';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { narration } from '../services/audio.js';
 
@@ -11,20 +14,21 @@ const FORMAT_LABEL = {
   drive: 'No carro · mãos livres',
 };
 
-export default function PodcastPlayer({ subject, saved, savedVariants = null, onSave }) {
+export default function PodcastPlayer({ subject, saved, savedVariants = null, onSave, onLeave }) {
   const initialFormat = saved?.format || (savedVariants?.dialogue ? 'dialogue' : Object.keys(savedVariants || {})[0]) || 'dialogue';
   const [format, setFormat] = useState(initialFormat);
   const [script, setScript] = useState(savedVariants?.[initialFormat] || saved || null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [playback, setPlayback] = useState({ index: -1, state: 'idle', mode: null });
   const [coachAnswers, setCoachAnswers] = useState({});
 
   useEffect(() => () => narration.stop(), []);
 
   async function generate(nextFormat = format) {
+    if (!requireAI()) return;
     setLoading(true);
-    setError('');
+    setError(null);
     narration.stop();
     setPlayback({ index: -1, state: 'idle', mode: null });
     try {
@@ -34,7 +38,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
       setCoachAnswers({});
       onSave?.(result);
     } catch (err) {
-      setError(err.message || 'Falha ao gerar o podcast.');
+      setError(asAiError(err, 'Falha ao gerar o podcast.'));
     } finally {
       setLoading(false);
     }
@@ -49,7 +53,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
       setPlayback({ index: -1, state: 'idle', mode: null });
       setScript(savedScript);
       setCoachAnswers({});
-      setError('');
+      setError(null);
       return;
     }
     if (script) generate(next);
@@ -57,8 +61,12 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
 
   function playFrom(index = 0) {
     if (!script?.segments?.length) return;
+    setError(null);
     narration.start(script.segments, {
-      onUpdate: (u) => setPlayback({ index: u.index, state: u.state, mode: u.mode }),
+      onUpdate: (u) => {
+        setPlayback({ index: u.index, state: u.state, mode: u.mode });
+        if (u.error) setError(new ApiError({ code: u.errorCode, message: u.error }));
+      },
       onEnd: () => setPlayback({ index: -1, state: 'idle', mode: null }),
     }, index);
   }
@@ -89,7 +97,12 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
           <Text className="text-[13px] text-slate-600">Transformamos suas notas em episódio. O modo No carro organiza a revisão para ouvir sem olhar para a tela.</Text>
         </View>
         <FormatChooser format={format} onChoose={chooseFormat} />
-        {error ? <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View> : null}
+        {error ? (
+          <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert">
+            <Text className="text-[13px] text-red-600">{error.message}</Text>
+            <AiErrorActions error={error} onRetry={() => generate()} onNavigateAway={onLeave} />
+          </View>
+        ) : null}
         <Pressable accessibilityRole="button" onPress={() => generate()} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="waveform" size={16} color="#ffffff" />
           <Text className="text-[14px] font-semibold text-white">Gerar podcast</Text>
@@ -110,6 +123,13 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
           {script.durationMinutes ? <Text className="text-[11px] text-slate-500">Aprox. {script.durationMinutes} min</Text> : null}
         </View>
       </View>
+
+      {error ? (
+        <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert">
+          <Text className="text-[13px] text-red-600">{error.message}</Text>
+          <AiErrorActions error={error} onRetry={() => playFrom(currentIndex)} onNavigateAway={onLeave} />
+        </View>
+      ) : null}
 
       {script.format === 'drive' ? (
         <View className="gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 p-3">

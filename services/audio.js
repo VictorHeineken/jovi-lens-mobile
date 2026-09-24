@@ -1,7 +1,9 @@
 import { createAudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import { isDemoMode } from './env.js';
-import { apiFetch } from './apiClient.js';
+import { apiRequest } from './apiClient.js';
+import { byokHasTts } from './aiAccess.js';
+import { chunkText, TTS_CHUNK_CHARS } from '../shared/textChunks.js';
 
 // "Browser" pitch differentiates speakers when only one pt-BR voice exists for
 // the on-device fallback (expo-speech, RN's equivalent of speechSynthesis).
@@ -12,8 +14,10 @@ const BROWSER_RATE = { A: 0.92, B: 0.88, narrator: 0.9, coach: 0.91, feedback: 0
 
 let liveTtsAvailable = null; // null unknown | true | false (not configured / failed)
 
+// Live AI voices need the user's own key with a TTS-capable provider; free
+// users always get the on-device voice (expo-speech).
 export function ttsMode() {
-  if (isDemoMode()) return 'browser';
+  if (isDemoMode() || !byokHasTts()) return 'browser';
   return liveTtsAvailable === false ? 'browser' : 'live';
 }
 
@@ -34,25 +38,28 @@ function ensureVoiceLookup() {
     .catch(() => { cachedVoiceId = null; });
 }
 
-// Returns an array of playable data: URLs for one text chunk, or null when the
-// server reports TTS is not configured (caller then falls back to on-device speech).
+const FALLBACK_CODES = new Set(['BYOK_REQUIRED', 'BYOK_CAPABILITY_UNSUPPORTED', 'AI_NOT_CONFIGURED', 'NETWORK']);
+
+// Returns an array of playable data: URLs for one segment's text, or null when
+// live voices aren't available (caller then falls back to on-device speech).
+// /api/tts caps each request at TTS_CHUNK_CHARS, so the text is split first
+// and the chunks are synthesized in order. BYOK_REJECTED is thrown so the
+// player can offer to fix the key.
 async function fetchLiveTts(text, voice) {
-  let response;
-  try {
-    response = await apiFetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
-  } catch {
-    liveTtsAvailable = false;
-    return null;
-  }
-  if (response.status === 503) { liveTtsAvailable = false; return null; }
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (data.code === 'AI_NOT_CONFIGURED') { liveTtsAvailable = false; return null; }
-    throw new Error(data.message || 'Falha ao gerar o áudio.');
+  const urls = [];
+  for (const chunk of chunkText(text, TTS_CHUNK_CHARS)) {
+    let data;
+    try {
+      data = await apiRequest('/api/tts', { body: { text: chunk, voice } });
+    } catch (error) {
+      if (FALLBACK_CODES.has(error?.code) || Number(error?.status) === 503) { liveTtsAvailable = false; return null; }
+      throw error;
+    }
+    const mime = data.mimeType || 'audio/mpeg';
+    urls.push(...(data.parts || []).map((b64) => `data:${mime};base64,${b64}`));
   }
   liveTtsAvailable = true;
-  const mime = data.mimeType || 'audio/mpeg';
-  return (data.parts || []).map((b64) => `data:${mime};base64,${b64}`);
+  return urls;
 }
 
 // Single shared narrator: only one narration plays at a time across the app.
@@ -112,7 +119,7 @@ class Narration {
       } catch (error) {
         if (this.stale(token)) return;
         this.state = 'idle';
-        this.emit({ error: error.message });
+        this.emit({ error: error.message, errorCode: error.code });
         return;
       }
       if (this.stale(token)) return;

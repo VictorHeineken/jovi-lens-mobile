@@ -78,7 +78,7 @@ export default [
 
   // React Native app (repo root).
   {
-    files: ['app/**/*.{js,jsx}', 'components/**/*.{js,jsx}', 'hooks/**/*.{js,jsx}', 'context/**/*.{js,jsx}', 'services/**/*.{js,jsx}'],
+    files: ['app/**/*.{js,jsx}', 'components/**/*.{js,jsx}', 'hooks/**/*.{js,jsx}', 'context/**/*.{js,jsx}', 'services/**/*.{js,jsx}', 'modules/**/*.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
@@ -141,7 +141,7 @@ export default [
     // This file itself is included: without it, `eslint --print-config
     // eslint.config.js` returns zero rules — parsed (a syntax error would still
     // be caught), but nothing in it is actually checked.
-    files: ['api/**/*.js', 'server/**/*.js', 'scripts/**/*.js', 'tests/**/*.js', 'web/tests/**/*.js', 'web/scripts/**/*.js', 'eslint.config.js'],
+    files: ['api/**/*.js', 'server/**/*.js', 'scripts/**/*.js', 'tests/**/*.js', 'web/tests/**/*.js', 'web/scripts/**/*.js', 'eslint.config.js', 'app.config.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',

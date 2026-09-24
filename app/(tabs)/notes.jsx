@@ -42,6 +42,12 @@ export default function NotesScreen() {
             <Text className="text-[11px] text-slate-400">salvas</Text>
           </View>
         </View>
+        {!notes.length ? (
+          <View className="items-center gap-2 rounded-2xl border border-dashed border-slate-300 px-6 py-10">
+            <Icon name="note" size={20} color="#94a3b8" />
+            <Text className="text-center text-[13px] text-slate-500">Suas notas aparecem aqui depois que você analisar uma foto.</Text>
+          </View>
+        ) : null}
         <LibrarySearch notes={notes} aiHistory={aiHistory} records={records} onOpen={openRecord} />
         <SubjectNotes
           notes={notes}

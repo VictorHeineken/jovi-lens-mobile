@@ -79,16 +79,20 @@ export function buildStudentDashboard({
   subjectArtifacts = {},
   studyCalendar = {},
   now = new Date(),
+  // true only in the presentation build: fills gaps with demo subjects and
+  // demo exam results. Real builds show an empty state instead.
+  presentation = false,
 } = {}) {
   const calendar = normalizeStudyCalendar(studyCalendar);
+  if (!presentation && !subjects.length) return { empty: true };
   const knownSubjects = subjects.length
     ? subjects
     : FALLBACK_SUBJECTS.map((name) => ({ name, count: 0, subthemes: [], notes: [] }));
 
   const subjectCards = knownSubjects.map((subject) => {
     const rawResult = subjectArtifacts?.[subject.name]?.examResult?.data || null;
-    let result = getPresentationExamResult(subject, rawResult);
-    if (subject.name === 'História') {
+    let result = presentation ? getPresentationExamResult(subject, rawResult) : rawResult;
+    if (presentation && subject.name === 'História') {
       const baseline = DEMO_SUBJECT_ARTIFACTS.História?.examResult?.data || null;
       if (baseline && percentOf(result) < percentOf(baseline)) result = baseline;
     }
@@ -146,7 +150,7 @@ export function buildStudentDashboard({
   const readiness = buildReadinessStatus({ urgentSubject, nextExam, now });
   const audioBriefing = buildAudioBriefing({ today, readiness, urgentSubject, nextExam, now });
   const subjectAlert = buildSubjectAlert(ranking);
-  const notifications = buildSmartNotifications({ today, readiness, urgentSubject, nextExam, ranking, now });
+  const notifications = buildSmartNotifications({ today, readiness, urgentSubject, nextExam, ranking, now, presentation });
   const finalReport = buildFinalStudentReport({ urgentSubject, nextExam, readiness, flashcards, weeklyPlan, ranking, now });
 
   return {
@@ -182,9 +186,11 @@ export function buildSmartNotifications({
   nextExam = null,
   ranking = [],
   now = new Date(),
+  presentation = false,
 } = {}) {
-  const subject = today.subject || urgentSubject?.name || nextExam?.subject || 'História';
+  const subject = today.subject || urgentSubject?.name || nextExam?.subject || (presentation ? 'História' : '');
   const topic = today.topic || urgentSubject?.weakTopics?.[0]?.topic || nextExam?.topics?.[0] || subject;
+  if (!presentation && !subject && !topic && !nextExam) return [];
   const days = nextExam ? daysUntilEvent(nextExam, now) : null;
   const riskSubject = ranking.find((item) => item.risk === 'Risco de prova' || item.risk === 'Revisar');
   const notifications = [];
@@ -211,7 +217,7 @@ export function buildSmartNotifications({
     when: 'Agora',
   });
 
-  notifications.push({
+  if (presentation) notifications.push({
     id: 'audio-drive',
     tone: 'drive',
     label: 'No caminho',

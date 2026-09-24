@@ -28,6 +28,7 @@ const historySubject = {
 
 test('buildStudentDashboard prioritizes the next Outlook exam', () => {
   const dashboard = buildStudentDashboard({
+    presentation: true,
     subjects: [historySubject, { name: 'Geografia', count: 1, subthemes: ['Cartografia'], notes: [] }],
     subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
     studyCalendar: createDemoOutlookCalendar(now),
@@ -65,6 +66,7 @@ test('buildStudentDashboard prioritizes the next Outlook exam', () => {
 
 test('buildStudentDashboard prefers subjects with saved study signals before empty subjects', () => {
   const dashboard = buildStudentDashboard({
+    presentation: true,
     subjects: [{ name: 'Artes', count: 1, subthemes: ['Cor'], notes: [] }, historySubject],
     subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
     studyCalendar: {},
@@ -130,6 +132,7 @@ test('dashboard flashcards and comparison use presentation result for História'
     },
   };
   const dashboard = buildStudentDashboard({
+    presentation: true,
     subjects: [historySubject],
     subjectArtifacts: { História: { examResult: { data: weakLocalResult } } },
     now,
@@ -146,6 +149,7 @@ test('dashboard flashcards and comparison use presentation result for História'
 
 test('dashboard final report summarizes strengths, gaps and next plan', () => {
   const dashboard = buildStudentDashboard({
+    presentation: true,
     subjects: [historySubject],
     subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
     studyCalendar: createDemoOutlookCalendar(now),
@@ -162,6 +166,7 @@ test('dashboard final report summarizes strengths, gaps and next plan', () => {
 
 test('dashboard smart notifications include exam, daily review and drive audio', () => {
   const dashboard = buildStudentDashboard({
+    presentation: true,
     subjects: [historySubject],
     subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
     studyCalendar: createDemoOutlookCalendar(now),
@@ -176,4 +181,40 @@ test('dashboard smart notifications include exam, daily review and drive audio',
   assert.equal(dashboard.notifications[0].tone, 'attention');
   assert.ok(dashboard.notifications[1].body.includes('menor bloco'));
   assert.ok(dashboard.notifications[2].title.includes('Podcast'));
+});
+
+test('real builds: no subjects → { empty: true }', () => {
+  assert.deepEqual(buildStudentDashboard({ subjects: [], subjectArtifacts: DEMO_SUBJECT_ARTIFACTS, studyCalendar: {}, now }), { empty: true });
+});
+
+test('real builds: no História baseline override and no demo exam results', () => {
+  const weakLocalResult = {
+    ...DEMO_SUBJECT_ARTIFACTS.História.examResult.data,
+    score: 1,
+    total: 7,
+    percent: 14,
+    byTopic: { 'Indústria e fábricas': { correct: 1, total: 7 } },
+  };
+  const dashboard = buildStudentDashboard({
+    subjects: [historySubject],
+    subjectArtifacts: { História: { examResult: { data: weakLocalResult } } },
+    now,
+  });
+  assert.equal(dashboard.empty, undefined);
+  assert.equal(dashboard.urgentSubject.progress, 14);
+
+  const noResult = buildStudentDashboard({ subjects: [historySubject], subjectArtifacts: {}, now });
+  assert.equal(noResult.urgentSubject.progress, 0);
+  assert.equal(noResult.urgentSubject.status, 'Sem simulado');
+});
+
+test('real builds: notifications drop the static drive-audio card', () => {
+  const dashboard = buildStudentDashboard({
+    subjects: [historySubject],
+    subjectArtifacts: {},
+    studyCalendar: createDemoOutlookCalendar(now),
+    now,
+  });
+  assert.ok(!dashboard.notifications.some((item) => item.id === 'audio-drive'));
+  assert.equal(dashboard.notifications[0].id, 'exam-reminder');
 });

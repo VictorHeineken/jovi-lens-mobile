@@ -7,7 +7,10 @@ import * as Linking from 'expo-linking';
 import { getDemoAction, getDemoAnalysis } from '../shared/demoResponses.js';
 import { demoAssetModule } from './demoAssets.js';
 import { isDemoMode } from './env.js';
-import { apiFetch } from './apiClient.js';
+import { apiRequest } from './apiClient.js';
+import { ApiError } from './apiErrors.js';
+
+const MAX_IMAGE_BASE64 = 3_000_000;
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,7 +48,7 @@ async function toLoadableUri(uri) {
 // does the resize+compress+base64 natively in one call, and (unlike the web version)
 // takes the source URI directly, so there's no separate fetch-as-blob step for
 // remote images either.
-export async function prepareImageForAI(uri, maxSide = 1600) {
+export async function prepareImageForAI(uri, maxSide = 1600, { compress = 0.82 } = {}) {
   const { uri: loadableUri, cleanup } = await toLoadableUri(uri);
   try {
     const { width, height } = await getImageSize(loadableUri);
@@ -56,7 +59,7 @@ export async function prepareImageForAI(uri, maxSide = 1600) {
     const result = await ImageManipulator.manipulateAsync(
       loadableUri,
       [{ resize: { width: targetWidth, height: targetHeight } }],
-      { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      { compress, format: ImageManipulator.SaveFormat.JPEG, base64: true }
     );
     return `data:image/jpeg;base64,${result.base64}`;
   } finally {
@@ -71,25 +74,18 @@ async function requestAnalysis(src, { action = 'analyze', question = '', context
     return action === 'analyze' ? { ...getDemoAnalysis(), provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' } : getDemoAction({ action, question, context });
   }
 
-  const prepared = await prepareImageForAI(src, 1600);
+  // The server accepts up to 3,000,000 base64 chars: retry smaller and more
+  // compressed before giving up.
+  let prepared = await prepareImageForAI(src, 1600);
+  if (prepared.length - prepared.indexOf(',') - 1 > MAX_IMAGE_BASE64) prepared = await prepareImageForAI(src, 1200, { compress: 0.7 });
   const [header, base64] = prepared.split(',');
+  if (base64.length > MAX_IMAGE_BASE64) throw new ApiError({ code: 'PAYLOAD_TOO_LARGE' });
   const mimeType = header.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
 
-  let response;
-  try {
-    response = await apiFetch('/api/analyze-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64, mimeType, action, question, context }),
-    });
-  } catch (error) {
-    if (error?.name === 'AbortError') throw error;
-    throw new Error('Sem conexão no momento. Confira a internet ou ative o modo demonstração.');
-  }
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || 'Não foi possível analisar a imagem.');
-  return payload;
+  return apiRequest('/api/analyze-image', {
+    body: { image: base64, mimeType, action, question, context },
+    idempotent: true,
+  });
 }
 
 export async function analyzeImage(src, options) {

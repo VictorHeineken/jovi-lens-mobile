@@ -32,6 +32,12 @@ export default function HistoryScreen() {
             <Text className="text-[11px] text-slate-400">registros</Text>
           </View>
         </View>
+        {!notes.length && !aiHistory.length ? (
+          <View className="items-center gap-2 rounded-2xl border border-dashed border-slate-300 px-6 py-10">
+            <Icon name="history" size={20} color="#94a3b8" />
+            <Text className="text-center text-[13px] text-slate-500">Nada por aqui ainda.</Text>
+          </View>
+        ) : null}
         <LibrarySearch notes={notes} aiHistory={aiHistory} records={records} onOpen={openRecord} />
         <NotesTimeline notes={notes} aiHistory={aiHistory} records={records} onOpen={openRecord} />
       </ScrollView>

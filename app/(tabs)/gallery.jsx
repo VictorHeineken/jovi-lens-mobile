@@ -141,7 +141,7 @@ export default function GalleryScreen() {
 
         <View className="px-4">
           {activeTab === 'photos' ? (
-            <PhotosView groups={recordGroups} isUploading={isUploading} onImport={pickImages} onOpen={openRecord} />
+            <PhotosView groups={recordGroups} isUploading={isUploading} onImport={pickImages} onOpen={openRecord} onOpenCamera={() => router.push('/(tabs)/camera')} />
           ) : null}
           {activeTab === 'albums' ? (
             selectedAlbum ? (
@@ -198,7 +198,7 @@ function SegmentButton({ label, active, onPress }) {
   );
 }
 
-function PhotosView({ groups, isUploading, onImport, onOpen }) {
+function PhotosView({ groups, isUploading, onImport, onOpen, onOpenCamera }) {
   return (
     <View className="gap-4">
       <View className="flex-row items-center justify-between">
@@ -223,9 +223,13 @@ function PhotosView({ groups, isUploading, onImport, onOpen }) {
         </View>
       ))}
       {!groups.length ? (
-        <View className="items-center gap-2 rounded-2xl border border-dashed border-slate-300 px-6 py-10">
+        <View className="items-center gap-3 rounded-2xl border border-dashed border-slate-300 px-6 py-10">
           <Icon name="camera" size={20} color="#94a3b8" />
-          <Text className="text-[13px] text-slate-500">Suas próximas fotos aparecem aqui.</Text>
+          <Text className="text-center text-[13px] text-slate-500">Nenhuma foto ainda. Use a câmera para capturar seu primeiro conteúdo.</Text>
+          <Pressable accessibilityRole="button" onPress={onOpenCamera} className="flex-row items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-2">
+            <Icon name="camera" size={15} color="#ffffff" />
+            <Text className="text-[13px] font-semibold text-white">Abrir câmera</Text>
+          </Pressable>
         </View>
       ) : null}
     </View>

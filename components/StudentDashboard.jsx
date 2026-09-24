@@ -3,6 +3,7 @@ import { Pressable, Text, TextInput, View } from 'react-native';
 import Icon from './Icon.jsx';
 import { buildStudentDashboard, gradeDiscursiveAnswer, searchStudyMemory } from '../shared/studentDashboard.js';
 import { daysUntilEvent, formatEventDate } from '../shared/studyCalendar.js';
+import { isDemoMode } from '../services/env.js';
 
 const DEFAULT_ANSWER = 'A fábrica juntou máquinas e trabalhadores no mesmo espaço, dividindo tarefas. Isso aumentou a produção, mas também criou uma rotina mais controlada para os operários.';
 
@@ -20,7 +21,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
   const [sessionSeconds, setSessionSeconds] = useState(10 * 60);
   const [openBlocks, setOpenBlocks] = useState({ flashcards: true });
   const dashboard = useMemo(
-    () => buildStudentDashboard({ subjects, subjectArtifacts, studyCalendar }),
+    () => buildStudentDashboard({ subjects, subjectArtifacts, studyCalendar, presentation: isDemoMode() }),
     [subjects, subjectArtifacts, studyCalendar],
   );
   const searchResults = useMemo(
@@ -59,6 +60,16 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
 
   function toggleBlock(block) {
     setOpenBlocks((value) => ({ ...value, [block]: !value[block] }));
+  }
+
+  if (dashboard.empty) {
+    return (
+      <View className="items-center gap-2 rounded-2xl border border-indigo-100 bg-white px-4 py-6">
+        <Icon name="note" size={24} color="#4f46e5" />
+        <Text className="text-[16px] font-bold text-slate-900">Seu painel aparece aqui</Text>
+        <Text className="text-center text-[13px] text-slate-500">Salve notas a partir das suas fotos para ver progresso, provas e revisões.</Text>
+      </View>
+    );
   }
 
   return (

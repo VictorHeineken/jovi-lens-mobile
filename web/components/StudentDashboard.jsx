@@ -18,7 +18,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionSeconds, setSessionSeconds] = useState(10 * 60);
   const dashboard = useMemo(
-    () => buildStudentDashboard({ subjects, subjectArtifacts, studyCalendar }),
+    () => buildStudentDashboard({ subjects, subjectArtifacts, studyCalendar, presentation: import.meta.env.VITE_JOVI_LENS_DEMO_MODE === 'true' }),
     [subjects, subjectArtifacts, studyCalendar],
   );
   const searchResults = useMemo(

@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Icon from './Icon.jsx';
+import AiErrorActions from './AiErrorActions.jsx';
+import { requireAI } from '../services/aiAccess.js';
+import { asAiError } from '../services/apiErrors.js';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { DEMO_SUBJECT_ARTIFACTS } from '../shared/demoSubjectArtifacts.js';
 import { buildExamReport } from '../shared/studentDashboard.js';
+import { isDemoMode } from '../services/env.js';
 
 function formatClock(seconds) {
   const m = Math.floor(Math.max(0, seconds) / 60);
@@ -22,10 +26,10 @@ function computeByTopic(questions, answers) {
   return byTopic;
 }
 
-export default function SubjectExam({ subject, savedExam, savedResult, onResult }) {
+export default function SubjectExam({ subject, savedExam, savedResult, onResult, onLeave }) {
   const [phase, setPhase] = useState('idle'); // idle | loading | running | done
   const [exam, setExam] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
@@ -74,8 +78,9 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
   }
 
   async function start() {
+    if (!requireAI()) return;
     setPhase('loading');
-    setError('');
+    setError(null);
     setAnswers({});
     answersRef.current = {};
     finishedRef.current = false;
@@ -93,7 +98,7 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
         setSecondsLeft((value) => Math.max(0, value - 1));
       }, 1000);
     } catch (err) {
-      setError(err.message || 'Falha ao gerar o simulado.');
+      setError(asAiError(err, 'Falha ao gerar o simulado.'));
       setPhase('idle');
     }
   }
@@ -110,7 +115,7 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
   function getReadyExam() {
     return savedExam
       || (savedResult?.questions?.length ? { subject: subject.name, durationMinutes: 10, questions: savedResult.questions } : null)
-      || DEMO_SUBJECT_ARTIFACTS[subject.name]?.exam?.data
+      || (isDemoMode() ? DEMO_SUBJECT_ARTIFACTS[subject.name]?.exam?.data : null)
       || null;
   }
 
@@ -119,7 +124,7 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
     if (!readyExam?.questions?.length) return start();
     clearInterval(timerRef.current);
     clearTimeout(generationTimeoutRef.current);
-    setError('');
+    setError(null);
     setAnswers({});
     answersRef.current = {};
     finishedRef.current = false;
@@ -155,7 +160,12 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
             <Text className="text-[13px] text-slate-600">Último resultado: <Text className="font-bold text-slate-900">{savedResult.percent}%</Text> ({savedResult.score}/{savedResult.total})</Text>
           </View>
         ) : null}
-        {error ? <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View> : null}
+        {error ? (
+          <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert">
+            <Text className="text-[13px] text-red-600">{error.message}</Text>
+            <AiErrorActions error={error} onRetry={start} onNavigateAway={onLeave} />
+          </View>
+        ) : null}
         {savedResult ? (
           <Pressable accessibilityRole="button" onPress={openReadyResult} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-3">
             <Icon name="history" size={16} color="#475569" />

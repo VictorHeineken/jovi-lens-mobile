@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import Icon from './Icon.jsx';
+import AiErrorActions from './AiErrorActions.jsx';
+import { requireAI } from '../services/aiAccess.js';
+import { asAiError } from '../services/apiErrors.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { findVideoLessons } from '../services/videoRecommendations.js';
 
@@ -20,23 +23,24 @@ function mergeVideoMetadata(nextVideos = [], previousVideos = []) {
   return [...merged, ...savedVideos].slice(0, 8);
 }
 
-export default function VideoRecommendations({ subject, saved = null, examResult = null, onSave }) {
+export default function VideoRecommendations({ subject, saved = null, examResult = null, onSave, onLeave }) {
   const { learningPreferences } = useAppData();
   const [result, setResult] = useState(saved || null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const weakTopics = weakTopicsFromExam(examResult);
 
   async function search() {
+    if (!requireAI()) return;
     setLoading(true);
-    setError('');
+    setError(null);
     try {
       const next = await findVideoLessons({ ...subject, weakTopics: weakTopicsFromExam(examResult) }, learningPreferences);
       next.videos = mergeVideoMetadata(next.videos, result?.videos || saved?.videos || []);
       setResult(next);
       onSave?.(next);
     } catch (err) {
-      setError(err.message || 'Não foi possível recomendar uma aula agora.');
+      setError(asAiError(err, 'Não foi possível recomendar uma aula agora.'));
     } finally {
       setLoading(false);
     }
@@ -79,8 +83,11 @@ export default function VideoRecommendations({ subject, saved = null, examResult
         </View>
       ) : null}
       {error ? (
-        <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert"><Text className="text-[13px] text-red-600">{error}</Text></View>
-      ) : null}
+          <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert">
+            <Text className="text-[13px] text-red-600">{error.message}</Text>
+            <AiErrorActions error={error} onRetry={search} onNavigateAway={onLeave} />
+          </View>
+        ) : null}
 
       {!result && !loading ? (
         <Pressable accessibilityRole="button" onPress={search} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">

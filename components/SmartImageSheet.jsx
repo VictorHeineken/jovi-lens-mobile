@@ -9,6 +9,11 @@ import { analyzeImage, copyText, extractText, googleSearch, requestStudyAction }
 import { imageSource } from '../services/demoAssets.js';
 import { startVoiceInput, voiceInputAvailable } from '../services/speechInput.js';
 import { useAppData } from '../context/AppDataContext.jsx';
+import AiErrorActions from './AiErrorActions.jsx';
+import { ensureSignedIn, requireAI } from '../services/aiAccess.js';
+import { ApiError, asAiError } from '../services/apiErrors.js';
+import { isDemoMode } from '../services/env.js';
+import { getUser } from '../services/storage.js';
 
 const MODES = [
   { id: 'understand', label: 'Explicar', icon: 'sparkle' },
@@ -53,7 +58,8 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   const [textLoading, setTextLoading] = useState(false);
   const [textError, setTextError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
+  const [actionError, setActionError] = useState(null);
   const [message, flash] = useToast(1800);
   const [mode, setMode] = useState('understand');
   const [question, setQuestion] = useState('');
@@ -80,14 +86,19 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   }
 
   useEffect(() => {
+    // Opening straight into study mode is an "Analisar" tap: it needs sign-in.
+    const wantsAnalysis = initialView === 'study' && !record?.analysis;
+    const needsSignIn = wantsAnalysis && !isDemoMode() && !getUser();
+    if (needsSignIn) ensureSignedIn();
     setView(initialView);
     setAnalysis(record?.analysis || null);
     setLoading(false);
-    setAnalysisRequestedFor(initialView === 'study' && !record?.analysis ? record?.id : null);
+    setAnalysisRequestedFor(wantsAnalysis && !needsSignIn ? record?.id : null);
     setExtractedText(record?.analysis?.text || '');
     setTextLoading(false);
     setTextError('');
-    setError('');
+    setError(needsSignIn ? new ApiError({ code: 'SIGN_IN_REQUIRED' }) : null);
+    setActionError(null);
     setMode('understand');
     setQuestion('');
     setConversation([]);
@@ -117,7 +128,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
         await updateRecord(record.id, { analysis: result });
         addHistoryEntry({ recordId: record.id, image: record.src, title: result.title || record.label || 'Conteúdo identificado', type: 'Análise da imagem', action: 'analyze', prompt: 'Pedi para analisar esta imagem', contentText: result.text || '', text: result.summary || '', response: result.summary || '', keyPoints: result.keyPoints || [], category: result.category || 'Estudos', subcategory: result.subcategory || result.subject || result.contentType || 'Leitura inteligente' });
       })
-      .catch((err) => { if (!cancelled && !isAbortError(err)) setError(err.message || 'Falha ao analisar a imagem.'); })
+      .catch((err) => { if (!cancelled && !isAbortError(err)) setError(asAiError(err, 'Falha ao analisar a imagem.')); })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => {
@@ -133,6 +144,7 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   async function ensureText() {
     const knownText = String(analysis?.text || extractedText || '').trim();
     if (knownText) return knownText;
+    if (!requireAI()) return '';
 
     setTextLoading(true);
     setTextError('');
@@ -173,8 +185,19 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
       setAnalysis(record.analysis || analysis);
       return;
     }
-    setError('');
+    if (!requireAI()) {
+      setError(new ApiError({ code: 'SIGN_IN_REQUIRED' }));
+      return;
+    }
+    setError(null);
     setAnalysisRequestedFor(record.id);
+  }
+
+  function retryAnalysis() {
+    if (!requireAI()) return;
+    setError(null);
+    setAnalysisRequestedFor(null);
+    setTimeout(() => setAnalysisRequestedFor(record.id), 0);
   }
 
   async function handleMode(nextMode) {
@@ -190,14 +213,16 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
       return;
     }
 
+    if (!requireAI()) return;
     setActionLoading(true);
+    setActionError(null);
     const controller = startRequest();
     try {
       const result = await requestStudyAction(record.src, { action: nextMode === 'practice' ? 'quiz' : nextMode, context: analysis, signal: controller.signal });
       if (result.learning) setAnalysis((current) => ({ ...current, learning: { ...current.learning, ...result.learning } }));
       addHistoryEntry(buildStudyHistoryEntry(record, analysis, nextMode));
     } catch (err) {
-      if (!isAbortError(err)) flash(err.message || 'Não foi possível preparar esse modo.');
+      if (!isAbortError(err)) setActionError({ error: asAiError(err, 'Não foi possível preparar esse modo.'), retry: () => handleMode(nextMode) });
     } finally {
       setActionLoading(false);
       if (requestAbortRef.current === controller) requestAbortRef.current = null;
@@ -207,15 +232,17 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   async function handleAskSubmit(suggestedQuestion = question) {
     const text = String(suggestedQuestion || '').trim();
     if (!text || actionLoading || !analysis) return;
+    if (!requireAI()) return;
     setQuestion('');
     setActionLoading(true);
+    setActionError(null);
     const controller = startRequest();
     try {
       const result = await requestStudyAction(record.src, { action: 'ask', question: text, context: analysis, signal: controller.signal });
       setConversation((current) => [...current, { question: text, reply: result.reply || 'Não consegui formular uma resposta agora.' }]);
       addHistoryEntry({ recordId: record.id, image: record.src, title: analysis.title || record.label || 'Conversa sobre a imagem', type: 'Pergunta à IA', action: 'ask', prompt: text, contentText: analysis.text || '', text: result.reply || '', response: result.reply || '', category: analysis.category || 'Estudos', subcategory: analysis.subcategory || analysis.subject || analysis.contentType || 'Conversa contextual' });
     } catch (err) {
-      if (!isAbortError(err)) flash(err.message || 'Não foi possível enviar a pergunta.');
+      if (!isAbortError(err)) setActionError({ error: asAiError(err, 'Não foi possível enviar a pergunta.'), retry: () => handleAskSubmit(text) });
     } finally {
       setActionLoading(false);
       if (requestAbortRef.current === controller) requestAbortRef.current = null;
@@ -295,15 +322,8 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
               {error ? (
                 <View className="gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-4" accessibilityRole="alert">
                   <Text className="text-[14px] font-bold text-red-700">Análise indisponível</Text>
-                  <Text className="text-[13px] text-red-600">{error}</Text>
-                  <Text className="text-[12px] text-red-400">Verifique a conexão ou ative o modo demonstração para apresentar o fluxo sem depender da IA ao vivo.</Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => { setError(''); setAnalysisRequestedFor(null); setTimeout(() => setAnalysisRequestedFor(record.id), 0); }}
-                    className="mt-1 self-start rounded-full bg-red-600 px-4 py-2"
-                  >
-                    <Text className="text-[13px] font-semibold text-white">Tentar novamente</Text>
-                  </Pressable>
+                  <Text className="text-[13px] text-red-600">{error.message}</Text>
+                  <AiErrorActions error={error} onRetry={retryAnalysis} onNavigateAway={onClose} />
                 </View>
               ) : null}
               {analysis ? (
@@ -354,6 +374,12 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
 
                   {actionLoading ? (
                     <Text className="text-[13px] text-slate-500">Preparando seu próximo passo...</Text>
+                  ) : null}
+                  {actionError ? (
+                    <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert">
+                      <Text className="text-[13px] text-red-600">{actionError.error.message}</Text>
+                      <AiErrorActions error={actionError.error} onRetry={actionError.retry} onNavigateAway={onClose} />
+                    </View>
                   ) : null}
                   {!actionLoading && mode !== 'ask' ? (
                     <StudyModeContent
