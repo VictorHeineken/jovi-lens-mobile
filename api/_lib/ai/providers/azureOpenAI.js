@@ -1,4 +1,4 @@
-import { abortableTimeout, emptyResponseError, httpError, notConfigured, timeoutError } from './shared.js';
+import { abortableTimeout, emptyResponseError, httpError, notConfigured, ROLE_STYLE, timeoutError } from './shared.js';
 
 const DEFAULT_API_VERSION = '2024-10-21';
 const DEFAULT_TTS_API_VERSION = '2025-04-01-preview';
@@ -17,14 +17,6 @@ function roleVoice(voice) {
   };
   return voices[voice] || voices.narrator;
 }
-
-const ROLE_STYLE = {
-  A: 'Fale em português do Brasil como uma apresentadora curiosa e próxima, com ritmo natural, leve sorriso na voz, micro-pausas entre ideias e entonação de conversa. Evite soar como leitura de roteiro.',
-  B: 'Fale em português do Brasil como um professor calmo e experiente, com voz clara, calor humano, pequenas pausas explicativas e ênfase suave nos termos importantes. Evite monotonia e tom robótico.',
-  narrator: 'Fale em português do Brasil como um narrador educacional natural, acolhedor e fluido, com pausas curtas, respiração realista e cadência de podcast. Evite leitura apressada ou artificial.',
-  coach: 'Fale em português do Brasil como uma IA tutora simpática em modo conversa. Faça perguntas com energia calma, deixe pausas naturais para o aluno responder em voz alta e evite tom de locução.',
-  feedback: 'Fale em português do Brasil como um professor que corrige com acolhimento. Primeiro valide o raciocínio, depois explique com clareza o que estava certo ou faltando.',
-};
 
 export const capabilities = { chat: true, vision: true, tts: true, stt: true };
 
@@ -141,4 +133,10 @@ export async function transcribe({ buffer, mimeType = 'audio/webm', filename = '
   } finally {
     clear();
   }
+}
+
+// Azure OpenAI is a server-only provider (never a BYOK option), so there is no
+// user key to validate.
+export async function validateKey() {
+  throw notConfigured('Azure OpenAI não aceita chave do usuário.');
 }

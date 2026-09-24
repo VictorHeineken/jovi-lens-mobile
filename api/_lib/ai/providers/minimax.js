@@ -32,9 +32,9 @@ export const ttsChunkLimit = 9500;
 
 export const capabilities = { chat: true, vision: true, tts: true, stt: false };
 
-function getConfig() {
+function getConfig(credentials) {
   return {
-    apiKey: process.env.MINIMAX_API_KEY,
+    apiKey: credentials?.apiKey || process.env.MINIMAX_API_KEY,
     baseUrl: (process.env.MINIMAX_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, ''),
     ttsBaseUrl: (process.env.MINIMAX_TTS_BASE_URL || DEFAULT_TTS_BASE_URL).replace(/\/$/, ''),
     chatModel: process.env.MINIMAX_CHAT_MODEL || DEFAULT_CHAT_MODEL,
@@ -42,8 +42,8 @@ function getConfig() {
   };
 }
 
-export function isConfigured(capability) {
-  const config = getConfig();
+export function isConfigured(capability, credentials) {
+  const config = getConfig(credentials);
   if (capability === 'chat' || capability === 'vision') return Boolean(config.apiKey && config.chatModel);
   if (capability === 'tts') return Boolean(config.apiKey && config.ttsModel);
   return false;
@@ -60,9 +60,9 @@ function checkBaseResp(payload, message) {
   throw error;
 }
 
-export async function complete({ messages, maxTokens = 1400, timeoutMs = 22000 }) {
-  const config = getConfig();
-  if (!isConfigured('chat')) throw notConfigured('MiniMax não está configurado.');
+export async function complete({ messages, maxTokens = 1400, timeoutMs = 22000, credentials }) {
+  const config = getConfig(credentials);
+  if (!isConfigured('chat', credentials)) throw notConfigured('MiniMax não está configurado.');
 
   const { controller, clear } = abortableTimeout(timeoutMs);
   try {
@@ -95,9 +95,9 @@ export async function complete({ messages, maxTokens = 1400, timeoutMs = 22000 }
 }
 
 // --- Text-to-speech (T2A v2) --------------------------------------------
-export async function speak({ text, voice = 'narrator', format = 'mp3', timeoutMs = 30000 }) {
-  const config = getConfig();
-  if (!isConfigured('tts')) throw notConfigured('TTS da MiniMax não está configurado.');
+export async function speak({ text, voice = 'narrator', format = 'mp3', timeoutMs = 30000, credentials }) {
+  const config = getConfig(credentials);
+  if (!isConfigured('tts', credentials)) throw notConfigured('TTS da MiniMax não está configurado.');
   const voiceId = ROLE_VOICE[voice] || ROLE_VOICE.narrator;
 
   const { controller, clear } = abortableTimeout(timeoutMs);
@@ -130,4 +130,16 @@ export async function speak({ text, voice = 'narrator', format = 'mp3', timeoutM
   } finally {
     clear();
   }
+}
+
+// MiniMax has no speech-to-text; the capability flag keeps callers away, and
+// this only exists so every adapter exposes the same interface.
+export async function transcribe() {
+  throw Object.assign(new Error('MiniMax não oferece transcrição.'), { code: 'BYOK_CAPABILITY_UNSUPPORTED' });
+}
+
+// MiniMax has no cheap key-check endpoint: a tiny completion proves the key.
+export async function validateKey(credentials) {
+  await complete({ messages: [{ role: 'user', content: 'Responda apenas {"ok":true}' }], maxTokens: 20, timeoutMs: 15000, credentials });
+  return { ok: true };
 }

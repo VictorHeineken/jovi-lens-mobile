@@ -193,7 +193,7 @@ function normalizeSubject(action, result, subjectName, meta) {
     const calendarEvent = result?.calendarEvent && typeof result.calendarEvent === 'object' ? {
       title: asText(result.calendarEvent.title, '', 160),
       startsAt: asText(result.calendarEvent.startsAt, '', 80),
-      source: asText(result.calendarEvent.source, 'Outlook', 40),
+      source: asText(result.calendarEvent.source, 'Google Agenda', 40),
       topics: asList(result.calendarEvent.topics, 8),
       strategy: asText(result.calendarEvent.strategy, '', 500),
     } : null;
@@ -286,7 +286,7 @@ function normalizeLearningPreferences(preferences = {}) {
     level: ['beginner', 'intermediate', 'advanced'].includes(preferences.level) ? preferences.level : 'intermediate',
     sort: ['relevance', 'viewCount', 'date'].includes(preferences.sort) ? preferences.sort : 'relevance',
     studyCalendar: calendarEvents.length ? {
-      provider: preferences.studyCalendar?.provider === 'outlook' ? 'outlook' : 'outlook',
+      provider: preferences.studyCalendar?.provider === 'outlook' ? 'outlook' : 'google',
       syncedAt: asText(preferences.studyCalendar?.syncedAt, '', 80),
       events: calendarEvents,
     } : null,

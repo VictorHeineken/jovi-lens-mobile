@@ -6,6 +6,7 @@ import transcribe from '../api/transcribe.js';
 import videoRecommendations from '../api/video-recommendations.js';
 import authGoogle from '../api/auth/google.js';
 import me from '../api/me.js';
+import byokValidate from '../api/byok/validate.js';
 
 const POST_ROUTES = {
   '/api/analyze-image': analyzeImage,
@@ -14,6 +15,7 @@ const POST_ROUTES = {
   '/api/transcribe': transcribe,
   '/api/video-recommendations': videoRecommendations,
   '/api/auth/google': authGoogle,
+  '/api/byok/validate': byokValidate,
 };
 
 const GET_ROUTES = {

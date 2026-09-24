@@ -26,7 +26,7 @@ function safePreferences(preferences = {}) {
     level: ['beginner', 'intermediate', 'advanced'].includes(preferences.level) ? preferences.level : 'intermediate',
     sort: ['relevance', 'viewCount', 'date'].includes(preferences.sort) ? preferences.sort : 'relevance',
     studyCalendar: calendarEvents.length ? {
-      provider: preferences.studyCalendar?.provider === 'outlook' ? 'outlook' : 'outlook',
+      provider: preferences.studyCalendar?.provider === 'outlook' ? 'outlook' : 'google',
       syncedAt: typeof preferences.studyCalendar?.syncedAt === 'string' ? preferences.studyCalendar.syncedAt.slice(0, 80) : '',
       events: calendarEvents,
     } : null,
