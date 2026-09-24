@@ -7,11 +7,16 @@ import {
   buildSubjectExamPrompt,
   buildSubjectQuestionsPrompt,
   buildTextExtractionPrompt,
-  buildYouTubeSearchPrompt,
+  buildVideoRecommendationsPrompt,
 } from './prompts.js';
-import { getProvider, getProviderByName } from './providers/index.js';
+import { getProvider } from './providers/index.js';
 import { completeSubjectWithDemo, completeWithDemo } from './providers/demo.js';
-import { fallbackYouTubeQuery, isYouTubeConfigured, searchYouTubeVideos, styleMatchReason } from '../youtube.js';
+import {
+  demoVideoRecommendations,
+  fallbackVideoSearchQuery,
+  normalizeVideoRecommendations,
+  styleMatchReason,
+} from '../videoRecommendations.js';
 
 // Scans for the first balanced top-level {...} object, skipping over quoted
 // strings — unlike a greedy /\{[\s\S]*\}/ match, this can't overrun into
@@ -184,15 +189,46 @@ function normalizeSubject(action, result, subjectName, meta) {
       topic: asText(r?.topic, '', 80),
       when: asText(r?.when, 'em 3 dias', 40),
     })).filter((r) => r.topic);
-    return { ...base, overview: asText(result?.overview, '', 400), sessions, spacedReview };
+    const calendarEvent = result?.calendarEvent && typeof result.calendarEvent === 'object' ? {
+      title: asText(result.calendarEvent.title, '', 160),
+      startsAt: asText(result.calendarEvent.startsAt, '', 80),
+      source: asText(result.calendarEvent.source, 'Outlook', 40),
+      topics: asList(result.calendarEvent.topics, 8),
+      strategy: asText(result.calendarEvent.strategy, '', 500),
+    } : null;
+    return { ...base, overview: asText(result?.overview, '', 400), sessions, spacedReview, ...(calendarEvent?.title ? { calendarEvent } : {}) };
   }
 
   if (action === 'podcast-script') {
     const segments = (Array.isArray(result?.segments) ? result.segments : []).slice(0, 24).map((seg) => ({
-      speaker: ['A', 'B', 'narrator'].includes(String(seg?.speaker)) ? seg.speaker : 'narrator',
+      speaker: ['A', 'B', 'narrator', 'coach', 'feedback'].includes(String(seg?.speaker)) ? seg.speaker : 'narrator',
       text: asText(seg?.text, '', 900),
     })).filter((seg) => seg.text);
-    return { ...base, format: result?.format === 'single' ? 'single' : 'dialogue', title: asText(result?.title, `Podcast · ${subject}`, 120), segments };
+    const interactions = (Array.isArray(result?.interactions) ? result.interactions : []).slice(0, 8).map((item, index) => {
+      const options = (Array.isArray(item?.options) ? item.options : []).slice(0, 4).map((option, optionIndex) => ({
+        id: asText(option?.id, `${index + 1}-${optionIndex + 1}`, 40),
+        text: asText(option?.text, '', 300),
+        correct: Boolean(option?.correct),
+      })).filter((option) => option.text);
+      return {
+        id: asText(item?.id, `drive-${index + 1}`, 60),
+        topic: asText(item?.topic, 'Revisão', 80),
+        prompt: asText(item?.prompt, '', 400),
+        options,
+        feedbackCorrect: asText(item?.feedbackCorrect, 'Boa. Esse é o raciocínio principal.', 500),
+        feedbackWrong: asText(item?.feedbackWrong, 'Quase. Volte ao conceito e compare com a alternativa correta.', 500),
+      };
+    }).filter((item) => item.prompt && item.options.length >= 2);
+    const requestedFormat = ['dialogue', 'single', 'drive'].includes(String(result?.format)) ? result.format : 'dialogue';
+    return {
+      ...base,
+      format: requestedFormat,
+      title: asText(result?.title, `Podcast · ${subject}`, 120),
+      durationMinutes: clampInt(result?.durationMinutes, 4, 45, Math.max(5, Math.round(segments.reduce((sum, seg) => sum + seg.text.length, 0) / 850))),
+      takeaways: asList(result?.takeaways, 5),
+      segments,
+      interactions,
+    };
   }
 
   // lesson-script
@@ -201,85 +237,86 @@ function normalizeSubject(action, result, subjectName, meta) {
     bullets: asList(slide?.bullets, 5),
     narration: asText(slide?.narration, '', 900),
   })).filter((slide) => slide.heading || slide.narration);
-  return { ...base, title: asText(result?.title, `Aula · ${subject}`, 120), soraPrompt: asText(result?.soraPrompt, '', 400), slides };
+  return { ...base, title: asText(result?.title, `Aula · ${subject}`, 120), slides };
 }
 
-function buildSubjectPrompt(action, subject) {
-  if (action === 'questions') return buildSubjectQuestionsPrompt(subject);
-  if (action === 'exam') return buildSubjectExamPrompt(subject);
-  if (action === 'plan') return buildStudyPlanPrompt(subject);
-  if (action === 'podcast-script') return buildPodcastScriptPrompt(subject, { format: subject?.format });
-  return buildLessonScriptPrompt(subject);
+function buildSubjectPrompt(action, subject, preferences) {
+  if (action === 'questions') return buildSubjectQuestionsPrompt(subject, preferences);
+  if (action === 'exam') return buildSubjectExamPrompt(subject, preferences);
+  if (action === 'plan') return buildStudyPlanPrompt(subject, preferences);
+  if (action === 'podcast-script') return buildPodcastScriptPrompt(subject, { format: subject?.format, preferences });
+  return buildLessonScriptPrompt(subject, preferences);
 }
 
-export async function runSubjectAI({ action = 'questions', subject = {} } = {}) {
+export async function runSubjectAI({ action = 'questions', subject = {}, preferences = {} } = {}) {
   if (!SUBJECT_ACTIONS.has(action)) {
     throw Object.assign(new Error('Ação de matéria inválida.'), { code: 'AI_INVALID_RESPONSE' });
   }
   const subjectName = String(subject?.name || subject?.subject || 'Matéria').slice(0, 80);
 
   if (isDemoMode()) {
-    const demo = await completeSubjectWithDemo({ action, subject });
+    const demo = await completeSubjectWithDemo({ action, subject, preferences });
     return normalizeSubject(action, demo.result, subjectName, demo);
   }
 
   // Longer budget than a single-image action: subject scripts are the biggest outputs.
-  const completion = await getProvider('chat').complete({ messages: [{ role: 'user', content: buildSubjectPrompt(action, subject) }], maxTokens: 2600, timeoutMs: 45000 });
+  const completion = await getProvider('chat').complete({ messages: [{ role: 'user', content: buildSubjectPrompt(action, subject, normalizeLearningPreferences(preferences)) }], maxTokens: 2600, timeoutMs: 45000 });
   const result = parseJson(completion.text);
   return normalizeSubject(action, result, subjectName, completion);
 }
 
 function normalizeLearningPreferences(preferences = {}) {
+  const calendarEvents = Array.isArray(preferences.studyCalendar?.events) ? preferences.studyCalendar.events.slice(0, 5).map((event) => ({
+    id: asText(event?.id, '', 120),
+    type: event?.type === 'assignment' ? 'assignment' : 'exam',
+    subject: asText(event?.subject, '', 80),
+    title: asText(event?.title, '', 160),
+    startsAt: asText(event?.startsAt, '', 80),
+    topics: asList(event?.topics, 8),
+  })).filter((event) => event.title && event.startsAt) : [];
   return {
+    studyGoal: ['vestibular', 'enem', 'school_exam', 'general'].includes(preferences.studyGoal) ? preferences.studyGoal : 'vestibular',
+    studyContext: ['classes', 'exam_season', 'catch_up', 'maintenance'].includes(preferences.studyContext) ? preferences.studyContext : 'classes',
+    weeklyPace: ['light', 'regular', 'intense'].includes(preferences.weeklyPace) ? preferences.weeklyPace : 'regular',
+    practiceMode: ['concept_first', 'questions_first', 'mixed'].includes(preferences.practiceMode) ? preferences.practiceMode : 'mixed',
+    reviewMethod: ['spaced', 'retrieval', 'interleaved', 'flashcards'].includes(preferences.reviewMethod) ? preferences.reviewMethod : 'spaced',
     videoStyle: ['animated', 'balanced', 'calm', 'exam'].includes(preferences.videoStyle) ? preferences.videoStyle : 'balanced',
     duration: ['short', 'standard', 'long'].includes(preferences.duration) ? preferences.duration : 'standard',
     level: ['beginner', 'intermediate', 'advanced'].includes(preferences.level) ? preferences.level : 'intermediate',
     sort: ['relevance', 'viewCount', 'date'].includes(preferences.sort) ? preferences.sort : 'relevance',
+    studyCalendar: calendarEvents.length ? {
+      provider: preferences.studyCalendar?.provider === 'outlook' ? 'outlook' : 'outlook',
+      syncedAt: asText(preferences.studyCalendar?.syncedAt, '', 80),
+      events: calendarEvents,
+    } : null,
   };
 }
 
-export async function runYouTubeRecommendations({ subject = {}, preferences = {} } = {}) {
+export async function runVideoRecommendations({ subject = {}, preferences = {} } = {}) {
   const normalizedPreferences = normalizeLearningPreferences(preferences);
-  const fallbackQuery = fallbackYouTubeQuery(subject, normalizedPreferences);
+  const fallbackQuery = fallbackVideoSearchQuery(subject, normalizedPreferences);
 
   if (isDemoMode()) {
-    const query = encodeURIComponent(fallbackQuery);
-    return {
-      query: fallbackQuery,
-      focus: `Demonstração de busca para ${subject.name || 'a matéria'}.`,
-      reason: styleMatchReason(normalizedPreferences),
-      mode: 'demo',
-      videos: [
-        { id: 'demo-1', title: `Buscar aula de ${subject.name || 'estudos'}`, description: 'Abra a busca do YouTube com os filtros da demonstração.', channelTitle: 'YouTube', thumbnail: '', url: `https://www.youtube.com/results?search_query=${query}` },
-      ],
-    };
-  }
-
-  if (!isYouTubeConfigured()) {
-    throw Object.assign(new Error('YouTube não está configurado.'), { code: 'YOUTUBE_NOT_CONFIGURED' });
+    return demoVideoRecommendations(subject, normalizedPreferences);
   }
 
   const completion = await getProvider('chat').complete({
-    messages: [{ role: 'user', content: buildYouTubeSearchPrompt(subject, normalizedPreferences) }],
-    maxTokens: 500,
+    messages: [{ role: 'user', content: buildVideoRecommendationsPrompt(subject, normalizedPreferences) }],
+    maxTokens: 1300,
     timeoutMs: 18000,
   });
   const plan = parseJson(completion.text);
-  const query = String(plan?.query || fallbackQuery).replace(/[\r\n]/g, ' ').trim().slice(0, 180) || fallbackQuery;
-  const videos = await searchYouTubeVideos({ query, preferences: normalizedPreferences });
-  return {
-    query,
-    focus: asText(plan?.focus, `Aula selecionada para ${subject.name || 'a matéria'}.`, 240),
+  return normalizeVideoRecommendations(plan, subject, normalizedPreferences, {
     reason: styleMatchReason(normalizedPreferences),
-    mode: 'live',
     provider: completion.provider,
     model: completion.model,
-    videos,
-  };
+    mode: 'live',
+    fallbackQuery,
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Audio + video services (live only; Demo Mode uses the browser's Web Speech).
+// Audio services (live only; Demo Mode uses the browser's Web Speech).
 // ---------------------------------------------------------------------------
 
 const DEFAULT_TTS_CHUNK = 4000; // Azure/OpenAI /audio/speech caps input at 4096 chars.
@@ -322,26 +359,4 @@ export async function synthesizeSpeech({ text, voice = 'narrator', format = 'mp3
 
 export async function transcribeAudio({ buffer, mimeType, filename }) {
   return getProvider('stt').transcribe({ buffer, mimeType, filename });
-}
-
-// jobId is prefixed with the provider name (e.g. "azure-openai:abc123") so a
-// later poll always targets whichever provider actually created the job,
-// independent of what AI_VIDEO_PROVIDER resolves to by the time it's polled.
-export async function startVideoLesson({ prompt, seconds, width, height }) {
-  const provider = getProvider('video');
-  const job = await provider.createVideoJob({ prompt, seconds, width, height });
-  return { jobId: `${provider.name}:${job.id}`, status: job.status };
-}
-
-export async function pollVideoLesson({ jobId }) {
-  const sep = String(jobId || '').indexOf(':');
-  if (sep <= 0) throw Object.assign(new Error('jobId inválido.'), { code: 'AI_INVALID_RESPONSE' });
-  const provider = getProviderByName(jobId.slice(0, sep));
-  const rawJobId = jobId.slice(sep + 1);
-  const job = await provider.getVideoJob(rawJobId);
-  if (job.status === 'succeeded' && job.generationId) {
-    const content = await provider.getVideoContent(job.generationId);
-    return { status: 'succeeded', video: content.buffer.toString('base64'), mimeType: content.mimeType };
-  }
-  return { status: job.status, failure: job.failure };
 }

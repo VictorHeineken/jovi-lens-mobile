@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
+import { daysUntilEvent, formatEventDate } from '../../shared/studyCalendar.js';
 
 export default function StudyPlan({ subject, savedPlan, savedProgress = {}, savedLessons = [], onSave, onProgressSave }) {
   const [plan, setPlan] = useState(savedPlan || null);
@@ -54,6 +55,7 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
   return (
     <div className="studio-panel">
       {plan.overview && <p className="studio-overview"><Icon name="sparkle" size={13} /> {plan.overview}</p>}
+      {plan.calendarEvent && <CalendarDeadline event={plan.calendarEvent} />}
       <div className="plan-progress">
         <span>{doneCount}/{totalTasks} tarefas</span>
         <div className="plan-progress-bar"><i style={{ width: `${totalTasks ? (doneCount / totalTasks) * 100 : 0}%` }} /></div>
@@ -97,12 +99,23 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
   );
 }
 
+function CalendarDeadline({ event }) {
+  return (
+    <div className="plan-deadline">
+      <span><Icon name="calendar" size={13} /> Prova detectada no {event.source || 'Outlook'}</span>
+      <strong>{event.title}</strong>
+      <small>{formatEventDate(event)} · em {daysUntilEvent(event)} dias</small>
+      {event.strategy && <p>{event.strategy}</p>}
+    </div>
+  );
+}
+
 function SavedLessons({ lessons = [] }) {
   if (!lessons.length) return null;
   return (
     <div className="plan-videos">
-      <span className="studio-subtitle"><Icon name="bookmark" size={13} /> Aulas salvas na trilha</span>
-      {lessons.map((lesson) => <a className="plan-video-link" href={lesson.url} target="_blank" rel="noopener noreferrer" key={lesson.id}><span><Icon name="play" size={12} /><strong>{lesson.title}</strong></span><small>{lesson.channelTitle}</small><Icon name="arrow-up-right" size={13} /></a>)}
+      <span className="studio-subtitle"><Icon name="bookmark" size={13} /> Buscas de aula salvas</span>
+      {lessons.map((lesson) => <a className="plan-video-link" href={lesson.url} target="_blank" rel="noopener noreferrer" key={lesson.id}><span><Icon name="search" size={12} /><strong>{lesson.title}</strong></span><small>{lesson.channelTitle}</small><Icon name="arrow-up-right" size={13} /></a>)}
     </div>
   );
 }

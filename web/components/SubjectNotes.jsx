@@ -3,10 +3,16 @@ import Icon from './Icon.jsx';
 import { narration, noteToSpeech } from '../services/audio.js';
 
 const THEME_META = {
-  'História': { icon: 'history', description: 'Linha do tempo, indústria e transporte da Revolução Industrial.' },
+  'História': { icon: 'history', description: 'Revolução Industrial, fábricas, trabalho e consumo.' },
   'Programação': { icon: 'code', description: 'Guias técnicos separados por linguagem e camada.' },
   'Livros': { icon: 'book', description: 'Leituras identificadas por imagem e organizadas por tema.' },
   'Fotografia': { icon: 'camera', description: 'Equipamentos, acervos e o processo por trás de cada imagem.' },
+  'Matemática': { icon: 'target', description: 'Equações, raciocínio lógico e aplicações em segurança digital.' },
+  'Física': { icon: 'route', description: 'Experimentos, movimento, energia e relações mensuráveis.' },
+  'Química': { icon: 'layers', description: 'Laboratório, vidrarias, misturas e precisão de medidas.' },
+  'Biologia': { icon: 'sparkle', description: 'Células, microscopia e organização dos seres vivos.' },
+  'Geografia': { icon: 'history', description: 'Cartografia, projeções e leitura crítica do espaço.' },
+  'Artes': { icon: 'image', description: 'Cor, composição e processo de criação visual.' },
 };
 const DEFAULT_THEME_META = { icon: 'note', description: 'Conteúdos organizados por tema.' };
 
@@ -65,11 +71,15 @@ function formatNoteDate(value) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
 }
 
-export default function SubjectNotes({ notes = [], records = [], onOpen, onOpenStudio, onFavorite, onRemove, onEdit }) {
+export default function SubjectNotes({ notes = [], records = [], focusSubject = '', onOpen, onOpenStudio, onFavorite, onRemove, onEdit }) {
   const [openSubject, setOpenSubject] = useState(null);
   const [activeSubtheme, setActiveSubtheme] = useState({});
   const subjects = useMemo(() => groupBySubject(notes), [notes]);
   const subthemeCount = subjects.reduce((total, subject) => total + subject.subthemes.length, 0);
+
+  useEffect(() => {
+    if (focusSubject) setOpenSubject(focusSubject);
+  }, [focusSubject]);
 
   function toggleSubject(subject) {
     setOpenSubject((current) => (current === subject ? null : subject));

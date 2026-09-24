@@ -105,9 +105,9 @@ export function hasKnownAudioSignature(base64, mimeType) {
 // internal details out of the response body. Handlers extend `messages`.
 export function errorResponse(error, messages = {}) {
   const code = error?.code || 'AI_UNAVAILABLE';
-  const status = ['AI_NOT_CONFIGURED', 'YOUTUBE_NOT_CONFIGURED'].includes(code) ? 503
-    : ['AI_RATE_LIMITED', 'YOUTUBE_QUOTA_EXCEEDED'].includes(code) ? 429
-    : ['AI_TIMEOUT', 'YOUTUBE_TIMEOUT'].includes(code) ? 504
+  const status = code === 'AI_NOT_CONFIGURED' ? 503
+    : code === 'AI_RATE_LIMITED' ? 429
+    : code === 'AI_TIMEOUT' ? 504
     : 502;
   const base = {
     AI_NOT_CONFIGURED: 'Este recurso ao vivo ainda não está configurado. Ative o modo demonstração ou configure o serviço de IA.',

@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
+import { daysUntilEvent, formatEventDate } from '../shared/studyCalendar.js';
 
 export default function StudyPlan({ subject, savedPlan, savedProgress = {}, savedLessons = [], onSave, onProgressSave }) {
   const [plan, setPlan] = useState(savedPlan || null);
@@ -75,6 +76,7 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
           <Text className="flex-1 text-[13px] text-slate-600">{plan.overview}</Text>
         </View>
       ) : null}
+      {plan.calendarEvent ? <CalendarDeadline event={plan.calendarEvent} /> : null}
       <View className="gap-1.5">
         <Text className="text-[12px] text-slate-500">{doneCount}/{totalTasks} tarefas</Text>
         <View className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -142,19 +144,33 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
   );
 }
 
+function CalendarDeadline({ event }) {
+  return (
+    <View className="gap-1.5 rounded-2xl border border-indigo-100 bg-indigo-50 p-3">
+      <View className="flex-row items-center gap-1.5">
+        <Icon name="calendar" size={13} color="#4f46e5" />
+        <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">Prova detectada no {event.source || 'Outlook'}</Text>
+      </View>
+      <Text className="text-[14px] font-bold text-slate-900">{event.title}</Text>
+      <Text className="text-[12px] text-slate-500">{formatEventDate(event)} · em {daysUntilEvent(event)} dias</Text>
+      {event.strategy ? <Text className="text-[12px] leading-4 text-slate-600">{event.strategy}</Text> : null}
+    </View>
+  );
+}
+
 function SavedLessons({ lessons = [] }) {
   if (!lessons.length) return null;
   return (
     <View className="gap-2">
       <View className="flex-row items-center gap-1.5">
         <Icon name="bookmark" size={13} color="#64748b" />
-        <Text className="text-[12px] font-semibold text-slate-500">Aulas salvas na trilha</Text>
+        <Text className="text-[12px] font-semibold text-slate-500">Buscas de aula salvas</Text>
       </View>
       {lessons.map((lesson) => (
         <Pressable accessibilityRole="button" key={lesson.id} onPress={() => Linking.openURL(lesson.url)} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
           <View className="flex-1 gap-0.5">
             <View className="flex-row items-center gap-1.5">
-              <Icon name="play" size={12} color="#4f46e5" />
+              <Icon name="search" size={12} color="#4f46e5" />
               <Text className="flex-1 text-[13px] font-semibold text-slate-900" numberOfLines={1}>{lesson.title}</Text>
             </View>
             <Text className="text-[11px] text-slate-400">{lesson.channelTitle}</Text>

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
+import StudentDashboard from '../components/StudentDashboard.jsx';
 import { useAppData } from '../context/AppDataContext.jsx';
-import { isDemoMode } from '../services/imageAnalysis.js';
 import { createBackup, downloadBackup, readBackupFile } from '../services/dataTransfer.js';
 import { isGoogleSignInConfigured, renderGoogleSignInButton, signOutGoogle } from '../services/googleAuth.js';
+import { createDemoOutlookCalendar, daysUntilEvent, EMPTY_STUDY_CALENDAR, formatEventDate } from '../../shared/studyCalendar.js';
 
 const DEMO_USER = {
   id: 'demo-student',
@@ -12,12 +13,61 @@ const DEMO_USER = {
   picture: '',
 };
 
-export default function Profile() {
-  const { user, setUser, plan, setPlan, records, notes, aiHistory, subjectArtifacts, learningPreferences, setLearningPreferences, restoreLocalData, clearLocalData } = useAppData();
+const STUDY_GOAL_OPTIONS = [
+  { value: 'vestibular', label: 'Vestibular' },
+  { value: 'enem', label: 'ENEM' },
+  { value: 'school_exam', label: 'Prova da escola' },
+  { value: 'general', label: 'Revisão geral' },
+];
+const STUDY_CONTEXT_OPTIONS = [
+  { value: 'classes', label: 'Acompanhar aulas' },
+  { value: 'exam_season', label: 'Período de provas' },
+  { value: 'catch_up', label: 'Recuperar atrasos' },
+  { value: 'maintenance', label: 'Manter revisão' },
+];
+const WEEKLY_PACE_OPTIONS = [
+  { value: 'light', label: 'Leve · 15 min/dia' },
+  { value: 'regular', label: 'Regular · 30 min/dia' },
+  { value: 'intense', label: 'Intensivo · 60 min/dia' },
+];
+const PRACTICE_MODE_OPTIONS = [
+  { value: 'concept_first', label: 'Entender primeiro' },
+  { value: 'questions_first', label: 'Questões primeiro' },
+  { value: 'mixed', label: 'Misto' },
+];
+const REVIEW_METHOD_OPTIONS = [
+  { value: 'spaced', label: 'Revisão espaçada' },
+  { value: 'retrieval', label: 'Teste ativo' },
+  { value: 'interleaved', label: 'Misturar temas' },
+  { value: 'flashcards', label: 'Flashcards' },
+];
+const VIDEO_STYLE_OPTIONS = [
+  { value: 'animated', label: 'Animada e visual' },
+  { value: 'balanced', label: 'Equilibrada' },
+  { value: 'calm', label: 'Calma e detalhada' },
+  { value: 'exam', label: 'Focada em exercícios' },
+];
+const DURATION_OPTIONS = [
+  { value: 'short', label: 'Curta · até 15 min' },
+  { value: 'standard', label: 'Média · 15 a 40 min' },
+  { value: 'long', label: 'Aprofundada · mais de 40 min' },
+];
+const LEVEL_OPTIONS = [
+  { value: 'beginner', label: 'Estou começando' },
+  { value: 'intermediate', label: 'Já tenho base' },
+  { value: 'advanced', label: 'Quero aprofundar' },
+];
+const SORT_OPTIONS = [
+  { value: 'relevance', label: 'Melhor combinação' },
+  { value: 'viewCount', label: 'Mais populares' },
+  { value: 'date', label: 'Mais recentes' },
+];
+
+export default function Profile({ embedded = false }) {
+  const { user, setUser, plan, setPlan, records, notes, aiHistory, subjects, subjectArtifacts, learningPreferences, setLearningPreferences, studyCalendar, setStudyCalendar, restoreLocalData, clearLocalData } = useAppData();
   const [authMessage, setAuthMessage] = useState('');
   const fileRef = useRef(null);
   const googleButtonRef = useRef(null);
-  const demoMode = isDemoMode();
 
   const trialActive = plan.type === 'trial' && new Date(plan.endsAt) > new Date();
   const daysLeft = trialActive ? Math.max(1, Math.ceil((new Date(plan.endsAt) - new Date()) / 86400000)) : 0;
@@ -59,13 +109,30 @@ export default function Profile() {
   }
 
   function exportData() {
-    downloadBackup(createBackup({ records, notes, aiHistory, plan, user, subjectArtifacts, learningPreferences }));
+    downloadBackup(createBackup({ records, notes, aiHistory, plan, user, subjectArtifacts, learningPreferences, studyCalendar }));
     setAuthMessage('Backup dos seus estudos exportado para este dispositivo.');
   }
 
   function updateLearningPreference(key, value) {
     setLearningPreferences({ ...learningPreferences, [key]: value });
     setAuthMessage('Preferências de aprendizagem atualizadas.');
+  }
+
+  function connectOutlookDemo() {
+    setStudyCalendar(createDemoOutlookCalendar());
+    setAuthMessage('Outlook conectado em modo demo. As provas detectadas já entram no plano de estudo.');
+  }
+
+  function preparePresentationDemo() {
+    setUser(DEMO_USER);
+    setPlan({ type: 'pro', demo: true, presentationMode: true, activatedAt: new Date().toISOString() });
+    setStudyCalendar(createDemoOutlookCalendar());
+    setAuthMessage('Modo apresentação pronto: estudante demo, História e provas do Outlook já estão preparados.');
+  }
+
+  function disconnectOutlookDemo() {
+    setStudyCalendar(EMPTY_STUDY_CALENDAR);
+    setAuthMessage('Calendário desconectado.');
   }
 
   async function importData(event) {
@@ -96,11 +163,16 @@ export default function Profile() {
       ? 'Copilot liberado'
       : 'Estude com mais profundidade';
 
+  const Container = embedded ? 'section' : 'main';
+  const containerClassName = embedded ? 'profile-page origin-profile-view' : 'light-page profile-page';
+
   return (
-    <main className="light-page profile-page">
-      <header className="mobile-header">
-        <div><div className="eyebrow"><Icon name="user" size={13} /> Seu espaço</div><h1>Perfil</h1></div>
-      </header>
+    <Container className={containerClassName}>
+      {!embedded && (
+        <header className="mobile-header">
+          <div><div className="eyebrow"><Icon name="user" size={13} /> Seu espaço</div><h1>Perfil</h1></div>
+        </header>
+      )}
 
       <section className="profile-card">
         <div className="avatar placeholder"><span>{user ? 'AB' : <Icon name="user" size={19} />}</span></div>
@@ -124,6 +196,15 @@ export default function Profile() {
         <button className="primary-wide demo-login-button" onClick={enterDemoAccount}><Icon name="user" size={16} /> Entrar como estudante</button>
       </section>}
 
+      <section className="presentation-mode-card">
+        <div>
+          <span className="plan-label">Modo apresentação</span>
+          <h2>Demo pronta em um toque</h2>
+          <p>Ativa a aluna demo, libera o Copilot e conecta as provas do Outlook para mostrar o fluxo completo sem criar nada na hora.</p>
+        </div>
+        <button onClick={preparePresentationDemo}><Icon name="sparkle" size={16} /> Preparar demo</button>
+      </section>
+
       <section className="plan-card">
         <div className="plan-top">
           <div><span className="plan-label">JOVI Copilot</span><h2>{planTitle}</h2></div>
@@ -140,18 +221,62 @@ export default function Profile() {
         <small>Exemplo de apresentação: não há cobrança, assinatura ou login externo neste fluxo.</small>
       </section>
 
-      <section className="settings-card">
-        <div><span>Inteligência</span><strong>{demoMode ? 'Modo demonstração' : 'Azure OpenAI'}</strong></div>
-        <div><span>Conta</span><strong>Perfil local de estudante</strong></div>
-        <div><span>Cobrança</span><strong>Não configurada</strong></div>
-      </section>
       <section className="learning-preferences-card">
-        <div className="learning-preferences-heading"><div><strong>Seu jeito de aprender</strong><span>Usamos essas escolhas para encontrar aulas mais adequadas no YouTube.</span></div><Icon name="sparkle" size={18} /></div>
-        <label>Estilo da aula<select value={learningPreferences.videoStyle} onChange={(event) => updateLearningPreference('videoStyle', event.target.value)}><option value="animated">Animada e visual</option><option value="balanced">Equilibrada</option><option value="calm">Calma e detalhada</option><option value="exam">Focada em exercícios</option></select></label>
-        <label>Duração preferida<select value={learningPreferences.duration} onChange={(event) => updateLearningPreference('duration', event.target.value)}><option value="short">Curta · até 15 min</option><option value="standard">Média · 15 a 40 min</option><option value="long">Aprofundada · mais de 40 min</option></select></label>
-        <label>Nível atual<select value={learningPreferences.level} onChange={(event) => updateLearningPreference('level', event.target.value)}><option value="beginner">Estou começando</option><option value="intermediate">Já tenho base</option><option value="advanced">Quero aprofundar</option></select></label>
-        <label>Critério de busca<select value={learningPreferences.sort} onChange={(event) => updateLearningPreference('sort', event.target.value)}><option value="relevance">Melhor combinação</option><option value="viewCount">Mais populares</option><option value="date">Mais recentes</option></select></label>
+        <div className="learning-preferences-heading"><div><strong>Seu plano de estudo</strong><span>Usamos essas escolhas nas perguntas, simulados, podcasts, planos e recomendações de vídeo.</span></div><Icon name="sparkle" size={18} /></div>
+        <div className="learning-preferences-summary" aria-label="Personalização aplicada">
+          <span>Perguntas alinhadas</span>
+          <span>Simulado no foco</span>
+          <span>Vídeos no seu foco</span>
+        </div>
+        <div className="learning-preferences-grid">
+          <PreferenceSelect label="Objetivo principal" options={STUDY_GOAL_OPTIONS} value={learningPreferences.studyGoal} onChange={(value) => updateLearningPreference('studyGoal', value)} />
+          <PreferenceSelect label="Estratégia geral" options={STUDY_CONTEXT_OPTIONS} value={learningPreferences.studyContext} onChange={(value) => updateLearningPreference('studyContext', value)} />
+          <PreferenceSelect label="Ritmo de estudo" options={WEEKLY_PACE_OPTIONS} value={learningPreferences.weeklyPace} onChange={(value) => updateLearningPreference('weeklyPace', value)} />
+          <PreferenceSelect label="Como praticar" options={PRACTICE_MODE_OPTIONS} value={learningPreferences.practiceMode} onChange={(value) => updateLearningPreference('practiceMode', value)} />
+          <PreferenceSelect label="Revisão preferida" options={REVIEW_METHOD_OPTIONS} value={learningPreferences.reviewMethod} onChange={(value) => updateLearningPreference('reviewMethod', value)} />
+          <PreferenceSelect label="Estilo da aula" options={VIDEO_STYLE_OPTIONS} value={learningPreferences.videoStyle} onChange={(value) => updateLearningPreference('videoStyle', value)} />
+          <PreferenceSelect label="Duração preferida" options={DURATION_OPTIONS} value={learningPreferences.duration} onChange={(value) => updateLearningPreference('duration', value)} />
+          <PreferenceSelect label="Nível atual" options={LEVEL_OPTIONS} value={learningPreferences.level} onChange={(value) => updateLearningPreference('level', value)} />
+          <PreferenceSelect label="Critério de busca" options={SORT_OPTIONS} value={learningPreferences.sort} onChange={(value) => updateLearningPreference('sort', value)} />
+        </div>
       </section>
+      <section className={`outlook-card${studyCalendar.connected ? ' connected' : ''}`}>
+        <div className="outlook-card-head">
+          <div><strong>Calendário de provas</strong><span>Use o Outlook para ajustar o plano por matéria com datas reais.</span></div>
+          <Icon name="calendar" size={18} />
+        </div>
+        {studyCalendar.connected ? (
+          <>
+            <div className="outlook-status"><span>Outlook conectado</span><b>{studyCalendar.account}</b></div>
+            <div className="outlook-events">
+              {studyCalendar.events.slice(0, 3).map((event) => (
+                <div className="outlook-event" key={event.id}>
+                  <span>{event.subject}</span>
+                  <strong>{event.title}</strong>
+                  <small>{formatEventDate(event)} · em {daysUntilEvent(event)} dias</small>
+                </div>
+              ))}
+            </div>
+            <div className="outlook-actions">
+              <button onClick={connectOutlookDemo}><Icon name="rotate" size={14} /> Atualizar provas</button>
+              <button onClick={disconnectOutlookDemo}><Icon name="close" size={14} /> Desconectar</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p>Ao conectar, o JOVI detecta eventos de prova e muda a prioridade do plano automaticamente.</p>
+            <button className="primary-wide" onClick={connectOutlookDemo}><Icon name="calendar" size={16} /> Conectar Outlook · Demo</button>
+          </>
+        )}
+        <small>Demo local: nenhum login Microsoft real é feito nesta versão.</small>
+      </section>
+      <StudentDashboard
+        subjects={subjects}
+        notes={notes}
+        aiHistory={aiHistory}
+        subjectArtifacts={subjectArtifacts}
+        studyCalendar={studyCalendar}
+      />
       <section className="data-tools-card">
         <div><div><strong>Seus dados</strong><span>Faça uma cópia local ou restaure um backup anterior.</span></div><Icon name="download" size={18} /></div>
         <div className="data-tools-actions"><button onClick={exportData}><Icon name="download" size={14} /> Exportar backup</button><button onClick={() => fileRef.current?.click()}><Icon name="upload" size={14} /> Importar backup</button></div>
@@ -164,6 +289,16 @@ export default function Profile() {
       </section>
       <input ref={fileRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={importData} />
       {authMessage && <div className="inline-message" role="status"><Icon name="info" size={15} /> {authMessage}</div>}
-    </main>
+    </Container>
+  );
+}
+
+function PreferenceSelect({ label, options, value, onChange }) {
+  return (
+    <label>{label}
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>
   );
 }

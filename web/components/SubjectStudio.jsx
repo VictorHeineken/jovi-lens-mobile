@@ -1,15 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Icon from './Icon.jsx';
 import SubjectExam from './SubjectExam.jsx';
 import StudyPlan from './StudyPlan.jsx';
 import PodcastPlayer from './PodcastPlayer.jsx';
 import LessonPlayer from './LessonPlayer.jsx';
-import YouTubeRecommendations from './YouTubeRecommendations.jsx';
+import VideoRecommendations from './VideoRecommendations.jsx';
 import useDialogAccessibility from './useDialogAccessibility.js';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { useAppData } from '../context/AppDataContext.jsx';
+import { buildSubjectInsights } from '../../shared/subjectInsights.js';
+import { getPresentationExamResult } from '../../shared/demoSubjectArtifacts.js';
 
 const TABS = [
+  { id: 'overview', label: 'Visão', icon: 'layers' },
   { id: 'questions', label: 'Perguntas', icon: 'question' },
   { id: 'exam', label: 'Simulado', icon: 'target' },
   { id: 'podcast', label: 'Podcast', icon: 'waveform' },
@@ -17,20 +20,37 @@ const TABS = [
   { id: 'plan', label: 'Plano', icon: 'route' },
 ];
 
-export default function SubjectStudio({ subject, onClose }) {
+export default function SubjectStudio({ subject, initialTab = 'overview', initialPodcastFormat = null, onClose }) {
   const { saveSubjectArtifact, getSubjectArtifact } = useAppData();
   const dialogRef = useDialogAccessibility(onClose, Boolean(subject));
-  const [tab, setTab] = useState('questions');
+  const [tab, setTab] = useState(initialTab);
+
+  useEffect(() => {
+    setTab(initialTab || 'overview');
+  }, [initialTab, subject?.name]);
 
   if (!subject) return null;
 
-  const examResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
+  const rawExamResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
+  const examResult = getPresentationExamResult(subject, rawExamResult);
+  const savedExam = getSubjectArtifact(subject.name, 'exam')?.data || null;
   const savedPlan = getSubjectArtifact(subject.name, 'plan')?.data || null;
   const savedPlanProgress = getSubjectArtifact(subject.name, 'planProgress')?.data || {};
   const savedQuestions = getSubjectArtifact(subject.name, 'questions')?.data || null;
   const savedPodcast = getSubjectArtifact(subject.name, 'podcast')?.data || null;
+  const savedPodcasts = getSubjectArtifact(subject.name, 'podcasts')?.data || null;
   const savedLesson = getSubjectArtifact(subject.name, 'lesson')?.data || null;
-  const savedYouTubeLessons = getSubjectArtifact(subject.name, 'youtubeLessons')?.data || null;
+  const savedVideoRecommendations = getSubjectArtifact(subject.name, 'videoRecommendations')?.data || null;
+  const insightArtifacts = {
+    questions: savedQuestions ? { data: savedQuestions } : null,
+    exam: savedExam ? { data: savedExam } : null,
+    examResult: examResult ? { data: examResult } : null,
+    plan: savedPlan ? { data: savedPlan } : null,
+    podcast: savedPodcast ? { data: savedPodcast } : null,
+    videoRecommendations: savedVideoRecommendations ? { data: savedVideoRecommendations } : null,
+    lesson: savedLesson ? { data: savedLesson } : null,
+  };
+  const insights = buildSubjectInsights(subject, insightArtifacts);
 
   return (
     <div ref={dialogRef} className="sheet-backdrop" role="dialog" aria-modal="true" aria-label={`Estúdio da matéria ${subject.name}`}>
@@ -58,13 +78,102 @@ export default function SubjectStudio({ subject, onClose }) {
         </div>
 
         <div className="studio-body">
+          {tab === 'overview' && <SubjectOverview subject={subject} insights={insights} />}
           {tab === 'questions' && <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} />}
-          {tab === 'exam' && <SubjectExam subject={subject} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} />}
-          {tab === 'podcast' && <PodcastPlayer subject={subject} saved={savedPodcast} onSave={(data) => saveSubjectArtifact(subject.name, 'podcast', data)} />}
-          {tab === 'lesson' && <div className="studio-lesson-stack"><YouTubeRecommendations subject={subject} saved={savedYouTubeLessons} examResult={examResult} onSave={(data) => saveSubjectArtifact(subject.name, 'youtubeLessons', data)} /><LessonPlayer subject={subject} saved={savedLesson} onSave={(data) => saveSubjectArtifact(subject.name, 'lesson', data)} /></div>}
-          {tab === 'plan' && <StudyPlan subject={subject} savedPlan={savedPlan} savedProgress={savedPlanProgress} savedLessons={savedYouTubeLessons?.videos?.filter((video) => video.saved) || []} onSave={(data) => saveSubjectArtifact(subject.name, 'plan', data)} onProgressSave={(data) => saveSubjectArtifact(subject.name, 'planProgress', data)} />}
+          {tab === 'exam' && <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} />}
+          {tab === 'podcast' && (
+            <PodcastPlayer
+              key={initialPodcastFormat || 'podcast-default'}
+              subject={subject}
+              saved={savedPodcast}
+              savedVariants={savedPodcasts?.formats}
+              initialFormat={initialPodcastFormat}
+              onSave={(data) => {
+                saveSubjectArtifact(subject.name, 'podcast', data);
+                if (savedPodcasts?.formats) saveSubjectArtifact(subject.name, 'podcasts', { ...savedPodcasts, formats: { ...savedPodcasts.formats, [data.format || 'dialogue']: data } });
+              }}
+            />
+          )}
+          {tab === 'lesson' && <div className="studio-lesson-stack"><VideoRecommendations subject={subject} saved={savedVideoRecommendations} examResult={examResult} onSave={(data) => saveSubjectArtifact(subject.name, 'videoRecommendations', data)} /><LessonPlayer subject={subject} saved={savedLesson} onSave={(data) => saveSubjectArtifact(subject.name, 'lesson', data)} /></div>}
+          {tab === 'plan' && <StudyPlan subject={subject} savedPlan={savedPlan} savedProgress={savedPlanProgress} savedLessons={savedVideoRecommendations?.videos?.filter((video) => video.saved) || []} onSave={(data) => saveSubjectArtifact(subject.name, 'plan', data)} onProgressSave={(data) => saveSubjectArtifact(subject.name, 'planProgress', data)} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SubjectOverview({ subject, insights }) {
+  return (
+    <div className="studio-panel subject-overview-panel">
+      <div className="studio-hero">
+        <span className="studio-panel-kicker"><Icon name="layers" size={13} /> Painel inteligente</span>
+        <h3>Mapa, revisão e domínio de {subject.name}</h3>
+        <p>Uma visão pronta para mostrar o que estudar, onde está fraco e como revisar hoje.</p>
+      </div>
+
+      <section className="insight-card">
+        <div className="insight-card-head"><Icon name="route" size={15} /><strong>Mapa da matéria</strong></div>
+        <div className="subject-map">
+          {insights.map.map((item) => (
+            <div className={`subject-map-node status-${item.status.toLowerCase().replace(/\s+/g, '-')}`} key={item.topic}>
+              <span>{String(item.order).padStart(2, '0')}</span>
+              <strong>{item.topic}</strong>
+              <small>{item.status}{item.mastery !== null ? ` · ${item.mastery}%` : ` · ${item.noteCount} nota${item.noteCount === 1 ? '' : 's'}`}</small>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="insight-card">
+        <div className="insight-card-head"><Icon name="target" size={15} /><strong>Radar de dificuldade</strong></div>
+        <div className="difficulty-radar">
+          {insights.radar.slice(0, 6).map((item) => (
+            <div className="difficulty-row" key={item.topic}>
+              <div><strong>{item.topic}</strong><span>{item.label}</span></div>
+              <div className="difficulty-bar" aria-label={`${item.percent}% de domínio`}><i style={{ width: `${Math.max(6, item.percent)}%` }} /></div>
+              <b>{item.percent}%</b>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="insight-card">
+        <div className="insight-card-head"><Icon name="clock" size={15} /><strong>Revisão do dia</strong></div>
+        <div className="review-today">
+          {insights.reviewToday.map((task) => (
+            <article key={`${task.label}-${task.topic}`}>
+              <span>{task.label} · {task.minutes} min</span>
+              <strong>{task.text}</strong>
+              <small>{task.topic}</small>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="insight-card">
+        <div className="insight-card-head"><Icon name="cards" size={15} /><strong>Flashcards automáticos</strong></div>
+        <div className="subject-flashcards">
+          {insights.flashcards.slice(0, 6).map((card, index) => (
+            <article key={`${card.front}-${index}`}>
+              <span>{card.topic}</span>
+              <strong>{card.front}</strong>
+              <p>{card.back}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="insight-card">
+        <div className="insight-card-head"><Icon name="history" size={15} /><strong>{subject.name === 'História' ? 'Linha do tempo de História' : 'Sequência de estudo'}</strong></div>
+        <div className="history-timeline">
+          {insights.timeline.map((item) => (
+            <article key={item.topic}>
+              <span>{item.marker}</span>
+              <div><strong>{item.topic}</strong><p>{item.text}</p></div>
+            </article>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

@@ -51,11 +51,15 @@ test('getSubjectDemo builds questions from the notes it is given', () => {
   const result = getSubjectDemo({
     action: 'questions',
     subject: { name: 'História', notes: [{ subtheme: 'Revolução Industrial', title: 'As fábricas de Viena' }] },
+    preferences: { studyGoal: 'enem', practiceMode: 'questions_first', reviewMethod: 'retrieval' },
   });
   assert.equal(result.subject, 'História');
   assert.equal(result.questions.length, 1);
   assert.match(result.questions[0].question, /Revolução Industrial/);
+  assert.match(result.questions[0].question, /ENEM/);
   assert.match(result.questions[0].question, /As fábricas de Viena/);
+  assert.match(result.questions[0].answer, /questões primeiro/);
+  assert.match(result.questions[0].answer, /teste ativo/);
   assert.equal(result.questions[0].topic, 'Revolução Industrial');
 });
 
@@ -83,6 +87,7 @@ test('getSubjectDemo exam returns the flat shape SubjectExam reads', () => {
   const result = getSubjectDemo({
     action: 'exam',
     subject: { name: 'História', notes: [{ subtheme: 'Indústria' }, { subtheme: 'Transporte' }] },
+    preferences: { studyGoal: 'school_exam' },
   });
   // Assert the flat `questions` field specifically: components/SubjectExam.jsx
   // reads `exam.questions` and nothing else, so nesting it (say, under `.exam`)
@@ -91,6 +96,7 @@ test('getSubjectDemo exam returns the flat shape SubjectExam reads', () => {
   assert.equal(typeof result.durationMinutes, 'number');
   assert.ok(Array.isArray(result.questions), 'questions must be a flat array on the result');
   assert.equal(result.questions.length, 2);
+  assert.match(result.questions[0].question, /prova da escola/);
 
   result.questions.forEach((item) => {
     assert.ok(Array.isArray(item.options) && item.options.length > 1);
@@ -131,4 +137,60 @@ test('getDemoAction uses the image context instead of the circle script when giv
   assert.doesNotMatch(reply, /πr²/);
   assert.match(reply, /carvão/);
   assert.equal(getDemoAction({ action: 'quiz', context }).learning.practice.question, context.learning.practice.question);
+});
+
+test('getSubjectDemo plan reflects global study strategy, pace and review method', () => {
+  const result = getSubjectDemo({
+    action: 'plan',
+    subject: { name: 'História', notes: [{ subtheme: 'Indústria' }, { subtheme: 'Transporte' }] },
+    preferences: { studyContext: 'exam_season', weeklyPace: 'intense', practiceMode: 'questions_first', reviewMethod: 'interleaved' },
+  });
+
+  assert.match(result.overview, /período de provas/);
+  assert.match(result.overview, /ritmo intensivo/);
+  assert.equal(result.sessions[0].durationMinutes, 45);
+  assert.ok(result.sessions[0].tasks.some((task) => /Resolver primeiro/.test(task)));
+  assert.ok(result.sessions[0].tasks.some((task) => /Comparar este subtema/.test(task)));
+});
+
+test('getSubjectDemo plan prioritizes a subject exam detected from Outlook', () => {
+  const result = getSubjectDemo({
+    action: 'plan',
+    subject: { name: 'História', notes: [{ subtheme: 'Indústria' }, { subtheme: 'Transporte' }] },
+    preferences: {
+      studyCalendar: {
+        provider: 'outlook',
+        events: [{
+          title: 'Prova de História · Revolução Industrial',
+          subject: 'História',
+          startsAt: '2026-09-28T08:00:00-03:00',
+          source: 'Outlook',
+          topics: ['Indústria', 'Transporte'],
+        }],
+      },
+    },
+  });
+
+  assert.match(result.overview, /Outlook/);
+  assert.equal(result.calendarEvent.source, 'Outlook');
+  assert.ok(result.sessions[0].tasks.some((task) => /Outlook/.test(task)));
+  assert.match(result.sessions[0].focus, /prioridade da prova/);
+});
+
+test('getSubjectDemo podcast drive mode behaves like an AI coach', () => {
+  const result = getSubjectDemo({
+    action: 'podcast-script',
+    subject: { name: 'Biologia', format: 'drive', notes: [{ subtheme: 'Citologia' }, { subtheme: 'Mitose' }] },
+  });
+
+  assert.equal(result.format, 'drive');
+  assert.equal(typeof result.durationMinutes, 'number');
+  assert.ok(Array.isArray(result.takeaways));
+  assert.ok(Array.isArray(result.interactions));
+  assert.ok(result.interactions.length >= 2);
+  assert.ok(result.segments.length >= 4);
+  assert.ok(result.segments.some((segment) => segment.speaker === 'coach'));
+  assert.ok(result.segments.some((segment) => segment.speaker === 'feedback'));
+  assert.ok(result.segments.every((segment) => segment.text));
+  assert.ok(result.interactions.every((item) => item.prompt && item.feedbackCorrect && item.feedbackWrong));
 });

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Copilot from './Copilot.jsx';
+import Profile from './Profile.jsx';
 import Icon from '../components/Icon.jsx';
 import { useToast } from '../../shared/toast.js';
 import NotesTimeline from '../components/NotesTimeline.jsx';
@@ -15,7 +15,7 @@ const GALLERY_TABS = [
   { id: 'albums', label: 'Álbuns', icon: 'album' },
   { id: 'notes', label: 'Notas', icon: 'note' },
   { id: 'history', label: 'Histórico', icon: 'history' },
-  { id: 'copilot', label: 'Copilot', icon: 'sparkle' },
+  { id: 'profile', label: 'Perfil', icon: 'user' },
 ];
 
 function dayKey(date) {
@@ -68,8 +68,8 @@ export default function Gallery() {
       { id: 'studied', title: 'Estudadas', subtitle: 'Fotos que já viraram aprendizado', items: studied, icon: 'sparkle' },
     ];
   }, [orderedRecords]);
-  const pageTitle = { photos: 'Fotos', albums: 'Álbuns', notes: 'Notas', history: 'Histórico', copilot: 'Copilot' }[activeTab];
-  const pageKicker = { photos: 'Galeria', albums: 'Álbum', notes: 'Memória da IA', history: 'Uso da IA', copilot: 'Inteligência avançada' }[activeTab];
+  const pageTitle = { photos: 'Fotos', albums: 'Álbuns', notes: 'Notas', history: 'Histórico', profile: 'Perfil' }[activeTab];
+  const pageKicker = { photos: 'Galeria', albums: 'Álbum', notes: 'Memória da IA', history: 'Uso da IA', profile: 'Preferências do aluno' }[activeTab];
 
   async function onFiles(event) {
     const files = [...(event.target.files || [])].slice(0, 6);
@@ -101,7 +101,7 @@ export default function Gallery() {
   const selectedAlbum = albums.find((album) => album.id === activeAlbum);
 
   return (
-    <main className={`light-page gallery-page origin-gallery${activeTab === 'copilot' ? ' copilot-active' : ''}`}>
+    <main className="light-page gallery-page origin-gallery">
       <div className="origin-gallery-scroll">
         <header className="origin-gallery-header">
           <div className="origin-gallery-title-line">
@@ -126,7 +126,7 @@ export default function Gallery() {
         {activeTab === 'albums' && (selectedAlbum ? <AlbumDetail album={selectedAlbum} onBack={() => setActiveAlbum(null)} onOpen={openRecord} /> : <AlbumsView albums={albums} onOpen={openAlbum} />)}
         {activeTab === 'notes' && <SubjectNotes notes={notes} records={orderedRecords} onOpen={openRecord} onOpenStudio={(name) => setStudioSubject(subjects.find((subject) => subject.name === name) || null)} />}
         {activeTab === 'history' && <NotesTimeline notes={notes} aiHistory={aiHistory} records={orderedRecords} onOpen={openRecord} />}
-        {activeTab === 'copilot' && <Copilot embedded />}
+        {activeTab === 'profile' && <Profile embedded />}
       </div>
 
       <nav className="origin-gallery-bottom-nav" aria-label="Navegação da galeria">

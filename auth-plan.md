@@ -13,9 +13,7 @@ per handler:
 | `api/subject-ai.js` | `subject` / 10 per min | `subject` / 40 per day |
 | `api/tts.js` | `tts` / 60 per min | `tts` / 200 per day |
 | `api/transcribe.js` | `stt` / 20 per min | `stt` / 80 per day |
-| `api/video-lesson.js` (POST) | `video` / 6 per min | `video` / 2 per day |
-| `api/video-lesson.js` (GET poll) | `video-poll` / 60 per min | `video-poll` / 300 per day |
-| `api/youtube-recommendations.js` | `youtube` / 6 per min | `youtube` / 20 per day |
+| `api/video-recommendations.js` | `video-recommendations` / 6 per min | `video-recommendations` / 20 per day |
 | `api/auth/google.js` | `auth` / 10 per min | `auth` / 60 per day |
 
 `rateBuckets` is an in-process `Map`, so it resets on restart and doesn't
@@ -76,8 +74,7 @@ export function hasValidApiKey(req) {
 
 Add as the first check, before the existing rate-limit lines, in all 7
 files: `api/analyze-image.js`, `api/subject-ai.js`, `api/tts.js`,
-`api/transcribe.js`, `api/video-lesson.js` (both the GET and POST branches),
-`api/youtube-recommendations.js`, `api/auth/google.js`.
+`api/transcribe.js`, `api/video-recommendations.js`, `api/auth/google.js`.
 
 ```js
 if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) {
@@ -129,8 +126,7 @@ export function apiFetch(path, options = {}) {
 
 Swap every RN service's `fetch(apiUrl(...), {...})` call to `apiFetch(...)`:
 `services/imageAnalysis.js`, `services/audio.js`, `services/subjectStudy.js`,
-`services/videoLesson.js` (both calls), `services/speechInput.js`,
-`services/youtubeRecommendations.js`.
+`services/speechInput.js`, `services/videoRecommendations.js`.
 
 **Web (`web/services/apiClient.js`, new file)** — same shape, no base URL:
 
@@ -144,8 +140,8 @@ export function apiFetch(path, options = {}) {
 
 Swap every web service's `fetch('/api/...', {...})` call to `apiFetch(...)`:
 `web/services/imageAnalysis.js`, `web/services/audio.js`,
-`web/services/subjectStudy.js`, `web/services/videoLesson.js` (both calls),
-`web/services/speechInput.js`, `web/services/youtubeRecommendations.js`.
+`web/services/subjectStudy.js`, `web/services/speechInput.js`,
+`web/services/videoRecommendations.js`.
 (`web/services/imageAnalysis.js`'s other `fetch(src, {signal})` call, which
 fetches an image blob, is unrelated and stays as-is.)
 

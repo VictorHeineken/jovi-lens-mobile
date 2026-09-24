@@ -7,9 +7,9 @@ projeto — para a versão React Native, veja o [README na raiz do repositório]
 ## Rotas de apresentação
 
 - `/camera` — câmera nativa do navegador + captura; a IA é opcional por imagem.
-- `/gallery` — galeria de fotos com visualização normal, Notas, Histórico e a seção Copilot.
+- `/gallery` — galeria de fotos com visualização normal, Notas, Histórico e Perfil.
 - `/notes` — notas geradas e salvas.
-- `/copilot` — aba demonstrativa do modelo avançado, com teste de 7 dias ou conexão de uma assinatura existente.
+- `/copilot` — redireciona para `/profile` para manter compatibilidade com links antigos.
 - `/profile` — conta de demonstração e acesso demonstrativo ao Copilot, sem login ou cobrança real.
 
 Na área `/notes` e no Histórico existe busca por notas, pesquisas e mídias. Notas salvas podem ser
@@ -17,13 +17,12 @@ editadas por título, matéria, subtema, tags, resumo e texto. A câmera também
 `DOCUMENTOS` para salvar várias páginas na mesma sessão, com contraste de leitura e metadados de
 ordenação. O Perfil oferece exportação, restauração e limpeza dos dados locais, sempre com confirmação.
 
-No Estúdio da matéria, a aba Vídeo aula também pode buscar aulas reais no YouTube. A Azure OpenAI
-transforma a matéria, os subtemas e as preferências do estudante em uma consulta; o backend consulta a
-YouTube Data API v3 e retorna links oficiais, filtrando idioma, região, duração e reprodução externa.
-`YOUTUBE_API_KEY` fica somente no backend.
+No Estúdio da matéria, a aba Vídeo aula também recomenda buscas de aulas em vídeo. A IA transforma a
+matéria, os subtemas e as preferências do estudante em cards com consulta sugerida, foco didático e
+critérios para escolher uma boa aula. O backend não usa a YouTube Data API.
 
 Cada recomendação pode receber feedback, ser salva na trilha da matéria e aparecer na aba Plano. Quando
-existe um simulado concluído, os subtemas com pior desempenho entram automaticamente na próxima busca.
+existe um simulado concluído, os subtemas com pior desempenho entram automaticamente na próxima recomendação.
 
 O modo de documentos é uma captura sequencial local; ele ainda não faz correção geométrica automática,
 detecção de bordas ou sincronização em nuvem.
@@ -44,16 +43,15 @@ visualizador e oferece três ações independentes: copiar o texto lido, pesquis
 escolher "Usar IA" para iniciar uma sessão de estudo. Algumas referências de exemplo estão marcadas como
 biblioteca e não entram na análise educacional.
 
-## Conta e Copilot (demo)
+## Conta e Perfil (demo)
 
 O fluxo do perfil é propositalmente local para a apresentação: "Entrar como estudante" cria uma conta
 fictícia no `localStorage`, e "Ativar acesso Copilot · Demo" libera um plano demonstrativo. Nenhuma conta
 externa, assinatura ou cobrança é realizada.
 
-A aba `/copilot` apresenta o modelo avançado como uma extensão premium do JOVI Lens. Ela oferece dois
-caminhos de demonstração: iniciar um teste de 7 dias ou simular a conexão de uma assinatura Copilot já
-existente. Após ativar, o botão "Abrir câmera com Copilot" leva à experiência principal. O modelo e a
-assinatura são ilustrativos nesta versão.
+O acesso demonstrativo ao Copilot fica concentrado no Perfil, junto das preferências do aluno. A rota
+antiga `/copilot` continua redirecionando para `/profile`, mas não existe mais uma tela separada de
+Copilot nesta versão.
 
 ## Rodar localmente
 

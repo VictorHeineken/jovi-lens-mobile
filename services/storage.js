@@ -18,6 +18,7 @@ const USER_KEY = 'jovi_mobile_user_v1';
 const SESSION_KEY = 'jovi_mobile_session_v1';
 const SUBJECT_KEY = 'jovi_mobile_subject_artifacts_v1';
 const LEARNING_PREFERENCES_KEY = 'jovi_mobile_learning_preferences_v1';
+const STUDY_CALENDAR_KEY = 'jovi_mobile_study_calendar_v1';
 const MEDIA_INDEX_KEY = 'jovi_mobile_media_index_v1';
 
 export const MEDIA_DIR = `${FileSystem.documentDirectory}jovi-media/`;
@@ -28,6 +29,11 @@ export async function ensureMediaDirExists() {
 }
 
 export const DEFAULT_LEARNING_PREFERENCES = {
+  studyGoal: 'vestibular',
+  studyContext: 'classes',
+  weeklyPace: 'regular',
+  practiceMode: 'mixed',
+  reviewMethod: 'spaced',
   videoStyle: 'animated',
   duration: 'standard',
   level: 'intermediate',
@@ -172,3 +178,5 @@ export const getSubjectArtifacts = () => readJson(SUBJECT_KEY, {});
 export const setSubjectArtifacts = (artifacts) => writeJson(SUBJECT_KEY, artifacts);
 export const getLearningPreferences = () => ({ ...DEFAULT_LEARNING_PREFERENCES, ...readJson(LEARNING_PREFERENCES_KEY, {}) });
 export const setLearningPreferences = (preferences) => writeJson(LEARNING_PREFERENCES_KEY, { ...DEFAULT_LEARNING_PREFERENCES, ...preferences });
+export const getStudyCalendar = () => readJson(STUDY_CALENDAR_KEY, null);
+export const setStudyCalendar = (calendar) => writeJson(STUDY_CALENDAR_KEY, calendar || null);

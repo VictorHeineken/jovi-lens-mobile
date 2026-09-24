@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { narration } from '../services/audio.js';
-import { pollOpeningClip, startOpeningClip } from '../services/videoLesson.js';
 import { exportLessonWebm } from '../services/videoExport.js';
 
 export default function LessonPlayer({ subject, saved, onSave }) {
@@ -11,59 +10,41 @@ export default function LessonPlayer({ subject, saved, onSave }) {
   const [error, setError] = useState('');
   const [mode, setMode] = useState('idle'); // idle | intro | slides
   const [playing, setPlaying] = useState({ index: 0, state: 'idle' });
-  const [clip, setClip] = useState({ available: false, status: 'none', url: null });
   const [exporting, setExporting] = useState(null);
-  const videoRef = useRef(null);
-  const pollRef = useRef(null);
   const titleTimerRef = useRef(null);
   const mountedRef = useRef(true);
-  const clipUrlRef = useRef(null);
+
+  const beginNarration = useCallback(() => {
+    if (!script?.slides?.length) return;
+    setMode('slides');
+    narration.start(
+      script.slides.map((slide) => ({ speaker: 'narrator', text: slide.narration || slide.heading })),
+      {
+        onUpdate: (update) => setPlaying({ index: update.superseded ? 0 : update.index, state: update.superseded ? 'idle' : update.state }),
+        onEnd: () => { setPlaying({ index: 0, state: 'idle' }); setMode('idle'); },
+      },
+    );
+  }, [script]);
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; narration.stop(); window.clearTimeout(pollRef.current); window.clearTimeout(titleTimerRef.current); };
+    return () => { mountedRef.current = false; narration.stop(); window.clearTimeout(titleTimerRef.current); };
   }, []);
 
-  useEffect(() => { clipUrlRef.current = clip.url; }, [clip.url]);
-
-  // Drive the opening once mode enters 'intro' — runs AFTER render, so the
-  // <video> ref exists (fixing the "clip never plays" tick race) and a
-  // freshly-ready clip isn't skipped. Title card is the fallback.
+  // Drive the title card once mode enters 'intro'.
   useEffect(() => {
     if (mode !== 'intro') return undefined;
     let cancelled = false;
     const advance = () => { if (!cancelled) beginNarration(); };
-    const video = videoRef.current;
-    if (clipUrlRef.current && video) {
-      video.currentTime = 0;
-      video.onended = advance;
-      video.play().catch(advance);
-    } else {
-      titleTimerRef.current = window.setTimeout(advance, 3400);
-    }
-    return () => { cancelled = true; window.clearTimeout(titleTimerRef.current); if (video) video.onended = null; };
-  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function startPolling(jobId) {
-    let attempts = 0;
-    const tick = async () => {
-      attempts += 1;
-      const result = await pollOpeningClip(jobId);
-      if (!mountedRef.current) return; // left the screen — stop polling
-      if (result.status === 'succeeded') { setClip((c) => ({ ...c, status: 'succeeded', url: result.url })); return; }
-      if (result.status === 'failed' || attempts > 24) { setClip((c) => ({ ...c, status: 'failed' })); return; }
-      pollRef.current = window.setTimeout(tick, 5000);
-    };
-    pollRef.current = window.setTimeout(tick, 4000);
-  }
+    titleTimerRef.current = window.setTimeout(advance, 3400);
+    return () => { cancelled = true; window.clearTimeout(titleTimerRef.current); };
+  }, [beginNarration, mode]);
 
   async function generate() {
     setPhase('loading');
     setError('');
     narration.stop();
-    window.clearTimeout(pollRef.current);
     window.clearTimeout(titleTimerRef.current);
-    setClip({ available: false, status: 'none', url: null });
     setMode('idle');
     setPlaying({ index: 0, state: 'idle' });
     try {
@@ -73,12 +54,6 @@ export default function LessonPlayer({ subject, saved, onSave }) {
       setScript(result);
       setPhase('ready');
       onSave?.(result);
-      const opening = await startOpeningClip({ prompt: result.soraPrompt, seconds: 5 });
-      if (!mountedRef.current) return;
-      if (opening.available && opening.jobId) {
-        setClip({ available: true, status: 'generating', url: null });
-        startPolling(opening.jobId);
-      }
     } catch (err) {
       if (!mountedRef.current) return;
       setError(err.message || 'Falha ao gerar a aula.');
@@ -86,18 +61,7 @@ export default function LessonPlayer({ subject, saved, onSave }) {
     }
   }
 
-  function beginNarration() {
-    setMode('slides');
-    narration.start(
-      script.slides.map((slide) => ({ speaker: 'narrator', text: slide.narration || slide.heading })),
-      {
-        onUpdate: (update) => setPlaying({ index: update.superseded ? 0 : update.index, state: update.superseded ? 'idle' : update.state }),
-        onEnd: () => { setPlaying({ index: 0, state: 'idle' }); setMode('idle'); },
-      },
-    );
-  }
-
-  // The [mode] effect handles the actual clip/title-card playback → beginNarration.
+  // The [mode] effect handles title-card timing before narration starts.
   function play() {
     if (!script?.slides?.length) return;
     setPlaying({ index: 0, state: 'playing' });
@@ -107,7 +71,6 @@ export default function LessonPlayer({ subject, saved, onSave }) {
   function stopAll() {
     window.clearTimeout(titleTimerRef.current);
     narration.stop();
-    if (videoRef.current) { videoRef.current.pause(); videoRef.current.onended = null; }
     setMode('idle');
     setPlaying({ index: 0, state: 'idle' });
   }
@@ -131,7 +94,7 @@ export default function LessonPlayer({ subject, saved, onSave }) {
         <div className="studio-hero">
           <span className="studio-panel-kicker"><Icon name="film" size={13} /> Vídeo aula</span>
           <h3>Aula personalizada de {subject.name}</h3>
-          <p>Slides narrados a partir das suas notas, com um clipe de abertura. Toque para assistir no app ou exporte como vídeo para compartilhar.</p>
+          <p>Slides narrados a partir das suas notas, com title card e tópicos para acompanhar. Toque para assistir no app ou exporte como vídeo para compartilhar.</p>
         </div>
         {error && <div className="studio-error" role="alert">{error}</div>}
         <button className="studio-primary" onClick={generate}><Icon name="film" size={16} /> Gerar vídeo aula</button>
@@ -146,16 +109,7 @@ export default function LessonPlayer({ subject, saved, onSave }) {
   return (
     <div className="studio-panel">
       <div className="lesson-stage">
-        {/* The clip below is muted on purpose, and it is not an accessibility gap.
-            The spoken content of a lesson comes from TTS over `slide.narration`,
-            and that same text is rendered further down as `.lesson-caption` while
-            playing — a synchronized text equivalent already exists, just in the DOM
-            instead of a WebVTT <track>. Unmuting would also let a generated clip's
-            own audio (when it has any) talk over the narration. */}
-        {mode === 'intro' && clip.url && (
-          <video ref={videoRef} className="lesson-clip" src={clip.url} playsInline muted />
-        )}
-        {mode === 'intro' && !clip.url && (
+        {mode === 'intro' && (
           <div className="lesson-titlecard">
             <span>AULA</span>
             <strong>{script.title}</strong>
@@ -184,8 +138,8 @@ export default function LessonPlayer({ subject, saved, onSave }) {
       </div>
 
       <div className="lesson-meta">
-        <span className={`lesson-clip-badge status-${clip.status}`}>
-          <Icon name="film" size={12} /> Abertura: {clip.status === 'succeeded' ? 'clipe pronto' : clip.status === 'generating' ? 'gerando…' : clip.status === 'failed' ? 'title card' : 'title card'}
+        <span className="lesson-clip-badge status-none">
+          <Icon name="film" size={12} /> Abertura: title card
         </span>
       </div>
 

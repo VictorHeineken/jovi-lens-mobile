@@ -5,9 +5,9 @@ Esta versão transforma o protótipo React existente em uma experiência mobile-
 ## Entradas de apresentação
 
 - `/camera`: abre diretamente a experiência de câmera.
-- `/gallery`: abre diretamente a galeria, com Fotos, Álbuns, Notas, Histórico e Copilot na navegação inferior.
+- `/gallery`: abre diretamente a galeria, com Fotos, Álbuns, Notas, Histórico e Perfil na navegação inferior.
 - `/notes`: histórico de notas inteligentes salvas.
-- `/copilot`: aba demonstrativa do modelo avançado e seus caminhos de acesso.
+- `/copilot`: redireciona para `/profile` para compatibilidade com links antigos.
 - `/profile`: conta de demonstração, trial fictício e acesso demonstrativo ao Copilot.
 
 Em telas desktop/tablet, o shell renderiza o app dentro de uma moldura baseada na proporção do JOVI X300 Ultra (393 × 852 lógico), com punch-hole central e acabamento verde-sálvia inspirado na referência atual da marca. Em um telefone real, a moldura e os botões físicos desaparecem e o app ocupa `100dvh` com safe areas.
@@ -45,7 +45,7 @@ O perfil não dispara login externo. O botão de entrada cria a estudante fictí
 
 O trial de 7 dias e a ativação do Copilot também são estados locais e explicitamente identificados como demo. Não existe checkout, assinatura ou cobrança neste protótipo; uma integração real pode ser adicionada depois sem misturar essa experiência com a camada visual.
 
-A aba Copilot permite iniciar o trial de 7 dias ou simular que a pessoa já possui uma assinatura paga. Ambos os caminhos atualizam o plano local e exibem o modelo avançado como selecionado. O CTA de câmera apenas conduz à experiência existente; a troca de modelo real continua fora do escopo desta demonstração.
+O acesso demonstrativo ao Copilot fica no Perfil, junto das preferências do aluno, backup e privacidade local. A tela separada de Copilot foi removida para evitar duplicidade visual no fluxo de apresentação; `/copilot` apenas redireciona para o Perfil.
 
 ## Persistência
 
@@ -58,17 +58,16 @@ A aba Copilot permite iniciar o trial de 7 dias ou simular que a pessoa já poss
 - Captura de documentos: o modo `DOCUMENTOS` salva páginas sequenciais com `collectionId` e `pageNumber`, permitindo ordenar uma digitalização simples sem afirmar correção geométrica automática.
 - Privacidade: o Perfil permite limpar mídias, notas, histórico, plano demonstrativo e artefatos locais após confirmação; os exemplos iniciais são preservados para a apresentação.
 - Preferências de aprendizagem: o Perfil permite escolher estilo da aula (animada, equilibrada, calma ou focada em exercícios), duração e nível; essas escolhas são persistidas localmente e entram na busca de vídeo.
-- Aulas externas: a Azure OpenAI cria a consulta de busca com base na matéria e nas preferências; `api/_lib/youtube.js` consulta a YouTube Data API v3 server-side e devolve links oficiais, sem expor `YOUTUBE_API_KEY` ao navegador.
-- Feedback e trilha: recomendações podem ser marcadas como úteis ou não úteis e salvas no artefato `youtubeLessons`; aulas salvas aparecem no Plano da matéria. O próximo pedido usa os subtemas com pior resultado do simulado como foco adicional.
+- Aulas externas: a IA cria cards de busca com base na matéria e nas preferências, incluindo foco didático, consulta sugerida e critérios para escolher uma boa aula. Não há YouTube Data API nem chave `YOUTUBE_API_KEY`.
+- Feedback e trilha: recomendações podem ser marcadas como úteis ou não úteis e salvas no artefato `videoRecommendations`; buscas salvas aparecem no Plano da matéria. O próximo pedido usa os subtemas com pior resultado do simulado como foco adicional.
 
 ## Execução local
 
 `npm run dev` inicia `scripts/dev.js`, que abre o servidor Node em `127.0.0.1:8787` e o Vite em `127.0.0.1:5173`. O proxy do Vite mantém o contrato `/api/analyze-image` sem expor a chave ao navegador. Também é possível iniciar apenas a API com `npm run dev:api`.
 
 As rotas de IA usam dois níveis de proteção local: rate limit por janela curta e limite diário por recurso
-(análise, matéria, TTS, transcrição e vídeo). A proteção diária ainda é em memória e chaveada pelo IP
+(análise, matéria, TTS, transcrição e recomendações). A proteção diária ainda é em memória e chaveada pelo IP
 do processo local; não deve ser tratada como quota de produção ou substituto de autenticação.
 
 A busca de aulas usa o mesmo princípio: limite curto e limite diário no endpoint
-`/api/youtube-recommendations`. Em produção, a chave do YouTube deve ser restrita no Google Cloud e o
-limite deve ser compartilhado por usuário autenticado, porque a API oficial trabalha com quota.
+`/api/video-recommendations`. Em produção, o limite deve ser compartilhado por usuário autenticado.

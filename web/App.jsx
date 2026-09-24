@@ -4,7 +4,6 @@ import AppShell from './components/AppShell.jsx';
 import { AppDataProvider } from './context/AppDataContext.jsx';
 
 const Camera = lazy(() => import('./pages/Camera.jsx'));
-const Copilot = lazy(() => import('./pages/Copilot.jsx'));
 const Gallery = lazy(() => import('./pages/Gallery.jsx'));
 const History = lazy(() => import('./pages/History.jsx'));
 const Notes = lazy(() => import('./pages/Notes.jsx'));
@@ -18,7 +17,7 @@ export default function App() {
           <Route element={<AppShell />}>
             <Route index element={<Navigate to="/camera" replace />} />
             <Route path="/camera" element={<Camera />} />
-            <Route path="/copilot" element={<Copilot />} />
+            <Route path="/copilot" element={<Navigate to="/profile" replace />} />
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/notes" element={<Notes />} />
             <Route path="/profile" element={<Profile />} />

@@ -9,12 +9,14 @@ test('createBackup excludes seeded sample media and preserves document metadata'
       { id: 'r1', source: 'camera', collectionId: 'document-1', pageNumber: 2, src: 'data:image/jpeg;base64,abc' },
     ],
     notes: [{ id: 'n1' }],
+    studyCalendar: { connected: true, provider: 'outlook', events: [{ id: 'exam-1' }] },
   });
 
   assert.deepEqual(backup.records, [
     { id: 'r1', source: 'camera', collectionId: 'document-1', pageNumber: 2, src: 'data:image/jpeg;base64,abc' },
   ]);
   assert.deepEqual(backup.notes, [{ id: 'n1' }]);
+  assert.deepEqual(backup.studyCalendar, { connected: true, provider: 'outlook', events: [{ id: 'exam-1' }] });
   assert.equal(backup.app, 'jovi-lens');
   assert.equal(backup.version, 1);
 });

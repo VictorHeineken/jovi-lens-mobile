@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
+import { DEMO_SUBJECT_ARTIFACTS } from '../../shared/demoSubjectArtifacts.js';
+import { buildExamReport } from '../../shared/studentDashboard.js';
 
 function formatClock(seconds) {
   const m = Math.floor(Math.max(0, seconds) / 60);
@@ -19,7 +21,7 @@ function computeByTopic(questions, answers) {
   return byTopic;
 }
 
-export default function SubjectExam({ subject, savedResult, onResult }) {
+export default function SubjectExam({ subject, savedExam, savedResult, onResult }) {
   const [phase, setPhase] = useState('idle'); // idle | loading | running | done
   const [exam, setExam] = useState(null);
   const [error, setError] = useState('');
@@ -28,12 +30,20 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
   const [result, setResult] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const timerRef = useRef(null);
+  const generationTimeoutRef = useRef(null);
   const answersRef = useRef({});
   const examRef = useRef(null);
   const finishedRef = useRef(false);
   const mountedRef = useRef(true);
 
-  useEffect(() => () => { mountedRef.current = false; window.clearInterval(timerRef.current); }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      window.clearInterval(timerRef.current);
+      window.clearTimeout(generationTimeoutRef.current);
+    };
+  }, []);
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { examRef.current = exam; }, [exam]);
   // Auto-submit when the clock runs out (kept out of the setState updater so
@@ -87,6 +97,47 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
     }
   }
 
+  function openReadyResult() {
+    if (!savedResult) return;
+    window.clearInterval(timerRef.current);
+    const readyExam = savedExam || { subject: subject.name, durationMinutes: 10, questions: savedResult.questions || [] };
+    setExam(readyExam);
+    examRef.current = readyExam;
+    setResult(savedResult);
+    setPhase('done');
+  }
+
+  function getReadyExam() {
+    return savedExam
+      || (savedResult?.questions?.length ? { subject: subject.name, durationMinutes: 10, questions: savedResult.questions } : null)
+      || DEMO_SUBJECT_ARTIFACTS[subject.name]?.exam?.data
+      || null;
+  }
+
+  function practiceReadyExam() {
+    const readyExam = getReadyExam();
+    if (!readyExam?.questions?.length) return start();
+    window.clearInterval(timerRef.current);
+    window.clearTimeout(generationTimeoutRef.current);
+    setError('');
+    setAnswers({});
+    answersRef.current = {};
+    finishedRef.current = false;
+    setResult(null);
+    setCurrent(0);
+    setPhase('loading');
+    generationTimeoutRef.current = window.setTimeout(() => {
+      if (!mountedRef.current) return;
+      setExam(readyExam);
+      examRef.current = readyExam;
+      setSecondsLeft((readyExam.durationMinutes || 10) * 60);
+      setPhase('running');
+      timerRef.current = window.setInterval(() => {
+        setSecondsLeft((value) => Math.max(0, value - 1));
+      }, 1000);
+    }, 1200);
+  }
+
   if (phase === 'idle') {
     return (
       <div className="studio-panel">
@@ -97,22 +148,34 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
         </div>
         {savedResult && <div className="studio-recall"><Icon name="history" size={14} /><span>Último resultado: <strong>{savedResult.percent}%</strong> ({savedResult.score}/{savedResult.total})</span></div>}
         {error && <div className="studio-error" role="alert">{error}</div>}
-        <button className="studio-primary" onClick={start}><Icon name="target" size={16} /> Iniciar simulado</button>
+        {savedResult && <button className="studio-ghost wide" onClick={openReadyResult}><Icon name="history" size={16} /> Ver último resultado</button>}
+        <button className="studio-primary" onClick={getReadyExam() ? practiceReadyExam : start}><Icon name="target" size={16} /> Fazer simulado</button>
       </div>
     );
   }
 
   if (phase === 'loading') {
-    return <div className="studio-loading"><span className="loading-orbit" /> Montando seu simulado de {subject.name}...</div>;
+    return <div className="studio-loading"><span className="loading-orbit" /> Gerando novo simulado de {subject.name}...</div>;
   }
 
   if (phase === 'done' && result) {
     const weakTopics = Object.entries(result.byTopic).filter(([, v]) => v.correct < v.total);
+    const report = buildExamReport(result);
     return (
       <div className="studio-panel">
         <div className={`exam-score${result.percent >= 60 ? ' pass' : ''}`}>
           <strong>{result.percent}%</strong>
           <span>{result.score} de {result.total} corretas</span>
+        </div>
+        <div className="exam-smart-report">
+          <div>
+            <span>Relatório inteligente</span>
+            <strong>{report.grade}</strong>
+            <p>{report.summary}</p>
+          </div>
+          <ul>
+            {report.nextSteps.map((step) => <li key={step}>{step}</li>)}
+          </ul>
         </div>
         <div className="exam-diagnosis">
           <span className="studio-subtitle"><Icon name="target" size={13} /> Diagnóstico por subtema</span>
@@ -138,7 +201,7 @@ export default function SubjectExam({ subject, savedResult, onResult }) {
             );
           })}
         </div>
-        <button className="studio-primary" onClick={start}><Icon name="rotate" size={15} /> Refazer simulado</button>
+        <button className="studio-primary" onClick={getReadyExam() ? practiceReadyExam : start}><Icon name="rotate" size={15} /> Refazer simulado</button>
       </div>
     );
   }

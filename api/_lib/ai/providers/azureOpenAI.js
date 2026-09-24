@@ -3,13 +3,30 @@ import { abortableTimeout, emptyResponseError, httpError, notConfigured, timeout
 const DEFAULT_API_VERSION = '2024-10-21';
 const DEFAULT_TTS_API_VERSION = '2025-04-01-preview';
 const DEFAULT_TRANSCRIBE_API_VERSION = '2025-04-01-preview';
-const DEFAULT_VIDEO_API_VERSION = 'preview';
 
-// Azure voices per role; browser pitch differentiates speakers client-side
-// when only one pt-BR voice exists in speechSynthesis.
-const ROLE_VOICE = { A: 'nova', B: 'onyx', narrator: 'alloy' };
+// Azure/OpenAI voice ids per role. gpt-4o-mini-tts responds better when the
+// voice and style instruction match the speaker's role, so keep this mapping
+// provider-side and configurable without leaking provider details to clients.
+function roleVoice(voice) {
+  const voices = {
+    A: process.env.AZURE_OPENAI_TTS_VOICE_A || 'nova',
+    B: process.env.AZURE_OPENAI_TTS_VOICE_B || 'onyx',
+    narrator: process.env.AZURE_OPENAI_TTS_VOICE_NARRATOR || 'alloy',
+    coach: process.env.AZURE_OPENAI_TTS_VOICE_COACH || process.env.AZURE_OPENAI_TTS_VOICE_A || 'nova',
+    feedback: process.env.AZURE_OPENAI_TTS_VOICE_FEEDBACK || process.env.AZURE_OPENAI_TTS_VOICE_B || 'onyx',
+  };
+  return voices[voice] || voices.narrator;
+}
 
-export const capabilities = { chat: true, vision: true, tts: true, stt: true, video: true };
+const ROLE_STYLE = {
+  A: 'Fale em português do Brasil como uma apresentadora curiosa e próxima, com ritmo natural, leve sorriso na voz, micro-pausas entre ideias e entonação de conversa. Evite soar como leitura de roteiro.',
+  B: 'Fale em português do Brasil como um professor calmo e experiente, com voz clara, calor humano, pequenas pausas explicativas e ênfase suave nos termos importantes. Evite monotonia e tom robótico.',
+  narrator: 'Fale em português do Brasil como um narrador educacional natural, acolhedor e fluido, com pausas curtas, respiração realista e cadência de podcast. Evite leitura apressada ou artificial.',
+  coach: 'Fale em português do Brasil como uma IA tutora simpática em modo conversa. Faça perguntas com energia calma, deixe pausas naturais para o aluno responder em voz alta e evite tom de locução.',
+  feedback: 'Fale em português do Brasil como um professor que corrige com acolhimento. Primeiro valide o raciocínio, depois explique com clareza o que estava certo ou faltando.',
+};
+
+export const capabilities = { chat: true, vision: true, tts: true, stt: true };
 
 function getConfig() {
   return {
@@ -26,7 +43,6 @@ export function isConfigured(capability) {
   if (capability === 'chat' || capability === 'vision') return hasBase && Boolean(config.deployment);
   if (capability === 'tts') return hasBase && Boolean(process.env.AZURE_OPENAI_TTS_DEPLOYMENT);
   if (capability === 'stt') return hasBase && Boolean(process.env.AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT);
-  if (capability === 'video') return hasBase && Boolean(process.env.AZURE_OPENAI_SORA_DEPLOYMENT);
   return false;
 }
 
@@ -74,7 +90,8 @@ export async function speak({ text, voice = 'narrator', format = 'mp3', timeoutM
   const deployment = process.env.AZURE_OPENAI_TTS_DEPLOYMENT;
   const apiVersion = process.env.AZURE_OPENAI_TTS_API_VERSION || DEFAULT_TTS_API_VERSION;
   if (!isConfigured('tts')) throw notConfigured('TTS da Azure OpenAI não está configurado.');
-  const voiceId = ROLE_VOICE[voice] || ROLE_VOICE.narrator;
+  const voiceId = roleVoice(voice);
+  const instructions = ROLE_STYLE[voice] || ROLE_STYLE.narrator;
 
   const { controller, clear } = abortableTimeout(timeoutMs);
   try {
@@ -83,7 +100,7 @@ export async function speak({ text, voice = 'narrator', format = 'mp3', timeoutM
       method: 'POST',
       redirect: 'error',
       headers: { 'api-key': config.apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: deployment, input: text, voice: voiceId, response_format: format }),
+      body: JSON.stringify({ model: deployment, input: text, voice: voiceId, response_format: format, instructions }),
       signal: controller.signal,
     });
     if (!response.ok) throw httpError('Falha ao gerar áudio.', response.status);
@@ -101,6 +118,7 @@ export async function speak({ text, voice = 'narrator', format = 'mp3', timeoutM
 export async function transcribe({ buffer, mimeType = 'audio/webm', filename = 'audio.webm', timeoutMs = 30000 }) {
   const config = getConfig();
   const deployment = process.env.AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT;
+  const model = process.env.AZURE_OPENAI_TRANSCRIBE_MODEL || deployment;
   const apiVersion = process.env.AZURE_OPENAI_TRANSCRIBE_API_VERSION || DEFAULT_TRANSCRIBE_API_VERSION;
   if (!isConfigured('stt')) throw notConfigured('Transcrição da Azure OpenAI não está configurada.');
 
@@ -109,6 +127,7 @@ export async function transcribe({ buffer, mimeType = 'audio/webm', filename = '
     const url = `${config.endpoint}/openai/deployments/${encodeURIComponent(deployment)}/audio/transcriptions?api-version=${encodeURIComponent(apiVersion)}`;
     const form = new FormData();
     form.append('file', new Blob([buffer], { type: mimeType }), filename);
+    form.append('model', model);
     form.append('response_format', 'json');
     const response = await fetch(url, { method: 'POST', redirect: 'error', headers: { 'api-key': config.apiKey }, body: form, signal: controller.signal });
     if (!response.ok) throw httpError('Falha ao transcrever o áudio.', response.status);
@@ -118,72 +137,6 @@ export async function transcribe({ buffer, mimeType = 'audio/webm', filename = '
     return { text, model: deployment, provider: 'azure-openai' };
   } catch (error) {
     if (error?.name === 'AbortError') throw timeoutError('Tempo limite da transcrição excedido.');
-    throw error;
-  } finally {
-    clear();
-  }
-}
-
-// --- Video generation (Sora) — opening clip for the video lesson ------------
-function videoBase() {
-  const config = getConfig();
-  const deployment = process.env.AZURE_OPENAI_SORA_DEPLOYMENT;
-  const apiVersion = process.env.AZURE_OPENAI_VIDEO_API_VERSION || DEFAULT_VIDEO_API_VERSION;
-  if (!isConfigured('video')) throw notConfigured('Geração de vídeo (Sora) da Azure OpenAI não está configurada.');
-  return { config, deployment, apiVersion };
-}
-
-export async function createVideoJob({ prompt, seconds = 5, width = 480, height = 854, timeoutMs = 30000 }) {
-  const { config, deployment, apiVersion } = videoBase();
-  const { controller, clear } = abortableTimeout(timeoutMs);
-  try {
-    const url = `${config.endpoint}/openai/v1/video/generations/jobs?api-version=${encodeURIComponent(apiVersion)}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      redirect: 'error',
-      headers: { 'api-key': config.apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: deployment, prompt, n_seconds: seconds, n_variants: 1, width, height }),
-      signal: controller.signal,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw httpError('Falha ao iniciar o vídeo.', response.status);
-    return { id: payload?.id, status: payload?.status || 'queued' };
-  } catch (error) {
-    if (error?.name === 'AbortError') throw timeoutError('Tempo limite ao iniciar o vídeo.');
-    throw error;
-  } finally {
-    clear();
-  }
-}
-
-export async function getVideoJob(jobId, { timeoutMs = 20000 } = {}) {
-  const { config, apiVersion } = videoBase();
-  const { controller, clear } = abortableTimeout(timeoutMs);
-  try {
-    const url = `${config.endpoint}/openai/v1/video/generations/jobs/${encodeURIComponent(jobId)}?api-version=${encodeURIComponent(apiVersion)}`;
-    const response = await fetch(url, { redirect: 'error', headers: { 'api-key': config.apiKey }, signal: controller.signal });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw httpError('Falha ao consultar o vídeo.', response.status);
-    const generationId = payload?.generations?.[0]?.id || null;
-    return { status: payload?.status || 'unknown', generationId, failure: payload?.failure_reason || null };
-  } catch (error) {
-    if (error?.name === 'AbortError') throw timeoutError('Tempo limite ao consultar o vídeo.');
-    throw error;
-  } finally {
-    clear();
-  }
-}
-
-export async function getVideoContent(generationId, { timeoutMs = 45000 } = {}) {
-  const { config, apiVersion } = videoBase();
-  const { controller, clear } = abortableTimeout(timeoutMs);
-  try {
-    const url = `${config.endpoint}/openai/v1/video/generations/${encodeURIComponent(generationId)}/content/video?api-version=${encodeURIComponent(apiVersion)}`;
-    const response = await fetch(url, { redirect: 'error', headers: { 'api-key': config.apiKey }, signal: controller.signal });
-    if (!response.ok) throw httpError('Falha ao baixar o vídeo.', response.status);
-    return { buffer: Buffer.from(await response.arrayBuffer()), mimeType: 'video/mp4' };
-  } catch (error) {
-    if (error?.name === 'AbortError') throw timeoutError('Tempo limite ao baixar o vídeo.');
     throw error;
   } finally {
     clear();
