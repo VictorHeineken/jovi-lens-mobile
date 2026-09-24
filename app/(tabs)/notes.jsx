@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
 import { ScrollView, Text, View } from 'react-native';
 import Icon from '../../components/Icon.jsx';
 import SubjectNotes from '../../components/SubjectNotes.jsx';
@@ -24,6 +25,17 @@ export default function NotesScreen() {
 
   function openStudio(subjectName) {
     setStudioSubject(subjects.find((subject) => subject.name === subjectName) || null);
+  }
+
+  // Opened from an exam reminder (?subject=…): show that subject's studio
+  // until it is closed, then drop the param.
+  const { subject: subjectParam } = useLocalSearchParams();
+  const reminderSubject = subjectParam ? subjects.find((subject) => subject.name === subjectParam) || null : null;
+  const activeStudio = studioSubject || reminderSubject;
+
+  function closeStudio() {
+    setStudioSubject(null);
+    if (subjectParam) router.setParams({ subject: undefined });
   }
 
   return (
@@ -66,7 +78,7 @@ export default function NotesScreen() {
           onClose={() => { setSelected(null); setSelectedView('viewer'); }}
         />
       ) : null}
-      {studioSubject ? <SubjectStudio subject={studioSubject} onClose={() => setStudioSubject(null)} /> : null}
+      {activeStudio ? <SubjectStudio subject={activeStudio} onClose={closeStudio} /> : null}
       {editing ? (
         <NoteEditor
           note={editing}

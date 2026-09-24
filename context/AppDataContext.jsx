@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import {
   deleteMediaRecord,
   clearMediaRecords,
@@ -25,6 +26,8 @@ import { demoAssetModule } from '../services/demoAssets.js';
 import { analysisFromNote } from '../shared/demoResponses.js';
 import { isDemoMode } from '../services/env.js';
 import { subscribeUser } from '../services/googleAuth.js';
+import { syncExamReminders } from '../services/notifications.js';
+import { shouldAutoSync, subjectNamesFrom, syncCalendar } from '../services/calendarSync.js';
 
 const AppDataContext = createContext(null);
 
@@ -771,6 +774,7 @@ export function AppDataProvider({ children }) {
     const calendar = normalizeStudyCalendar(next || EMPTY_STUDY_CALENDAR);
     setStudyCalendarState(calendar);
     persistStudyCalendar(calendar);
+    syncExamReminders(calendar).catch(() => {});
   }, []);
 
   const restoreLocalData = useCallback(async (backup) => {
@@ -818,6 +822,28 @@ export function AppDataProvider({ children }) {
   // Matérias derived from saved notes (category → subthemes + note bodies).
   // Uncategorized notes fall under "Outros", matching how SubjectNotes groups them.
   const subjects = useMemo(() => aggregateSubjects(notes), [notes]);
+
+  // Exam reminders are reconciled on every launch (the calendar may have
+  // changed while the app was closed). Works off the demo calendar too.
+  useEffect(() => {
+    syncExamReminders(normalizeStudyCalendar(getStudyCalendar() || EMPTY_STUDY_CALENDAR)).catch(() => {});
+  }, []);
+
+  // Read-only Google calendar: re-sync when the app comes back to the
+  // foreground, at most every 15 minutes, and only while signed in.
+  const autoSyncRef = useRef(null);
+  useEffect(() => {
+    autoSyncRef.current = () => {
+      if (DEMO || !user || !shouldAutoSync()) return;
+      syncCalendar({ subjectNames: subjectNamesFrom(subjects), setStudyCalendar }).catch(() => {});
+    };
+  }, [user, subjects, setStudyCalendar]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') autoSyncRef.current?.();
+    });
+    return () => subscription.remove();
+  }, []);
 
   // Persists one generated artifact (plan/exam/script/examResult) for a matéria.
   const saveSubjectArtifact = useCallback((subjectName, key, data) => {

@@ -3,6 +3,8 @@ import { Alert, Image, Pressable, ScrollView, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import Icon from '../../components/Icon.jsx';
 import StudentDashboard from '../../components/StudentDashboard.jsx';
+import CalendarCard from '../../components/CalendarCard.jsx';
+import ExamRemindersCard from '../../components/ExamRemindersCard.jsx';
 import { useTopInset } from '../../hooks/safeArea.js';
 import { useAnnounce } from '../../hooks/announce.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
@@ -303,6 +305,11 @@ export default function ProfileScreen() {
             <Text className="text-[11px] text-slate-400">Demo local: nenhum login Microsoft real é feito nesta versão.</Text>
           </View>
         ) : null}
+
+        {demo ? null : <CalendarCard />}
+
+        {/* Also shown in the presentation build: reminders work off the demo calendar. */}
+        <ExamRemindersCard />
 
         <StudentDashboard
           subjects={subjects}
