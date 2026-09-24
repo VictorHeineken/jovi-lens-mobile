@@ -1,5 +1,7 @@
 # Production plan — `prod_app`
 
+> Implementation details: see [`prod-implementation-spec.md`](prod-implementation-spec.md).
+
 Goal: a signed Android APK that works **with demo mode off**. It must analyze photos, generate
 podcasts and lessons, and integrate a real calendar. Its backend is deployed on Vercel. The backend
 authenticates users, enforces per-user quotas, and rejects requests that don't come from a genuine
@@ -374,7 +376,7 @@ people farming Google accounts, and a per-IP daily sign-up cap limits that.
 | D3 | **Sign-in is mandatory** for any live AI call |
 | D4 | **Limited sideloaded APK** distribution, with no Play Store for now. The integrity check relies on the signing cert and package name, not Play recognition (Phase B4) |
 | D5 | **Google Calendar of the signed-in account**, read through the device calendar provider, filtered to that account (Phase D1) |
-| D6 | **Real phone notifications**: local scheduled ones via `expo-notifications` (Phase D2) |
+| D6 | **Real phone notifications**, exam reminders only (3 days and 1 day before, 19:00), local via `expo-notifications` |
 | D7 | **The web app doesn't ship** |
 | D8 | **A separate presentation build** (EAS profile `presentation`, separate applicationId) |
 | D9 | Copilot trial and pro become **credits + own-key status** (Phase C3) |
@@ -385,6 +387,7 @@ people farming Google accounts, and a per-IP daily sign-up cap limits that.
 |---|---|
 | Q1 | **3 credits for life** per Google account (Redis `SETNX`, never refilled) |
 | Q2 | **Read-only calendar. The app must never write to it.** This is enforced by holding only `READ_CALENDAR` (Phase D1) |
+| Q4 | Credits: every AI generation costs 1. TTS/STT are own-key only. Web keeps working locally through a dev bypass. No backward compatibility with v1.0.4 installs |
 | Q3 | **No tester list.** Anyone with the APK can sign in with any Gmail account. Possible because sign-in uses only the basic scopes and the calendar is read on the device, with no OAuth scope (Phase D1) |
 
 ---
