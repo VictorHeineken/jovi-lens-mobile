@@ -60,7 +60,10 @@ Do these before the milestones that need them. Each produces values for §3.
 | H4 | **OAuth clients** (Credentials): (a) **Web application** client, no redirect URIs needed; (b) **Android** client, package `com.jovilens.app`, SHA-1 = `RELEASE_SHA1`; (c) **Android** client, package `com.jovilens.app`, SHA-1 = `DEBUG_SHA1`. | `GOOGLE_WEB_CLIENT_ID` (from a) |
 | H5 | Enable **Play Integrity API** in the project. Create a **service account** `integrity-verifier` (no project role needed) → Keys → JSON. Base64 it: `base64 -i key.json \| tr -d '\n'`. | `PLAY_INTEGRITY_SA_JSON_B64` |
 | H6 | **Gemini API key** for the server in Google AI Studio (free tier). Free-tier content may be used by Google to improve its products, which the privacy page states (§6.15). | `GEMINI_API_KEY` |
-| H7 | **Vercel project** imported from GitHub. Root directory = repo root, Framework preset **Other**, Node.js **22.x**, production branch `main`. Add **Upstash Redis** from the Vercel Marketplace (region São Paulo `sa-east-1`) and connect it to the project, which injects its REST URL and token env vars. Leave Deployment Protection on for **Preview** only. Production must stay public. | `KV_REST_API_URL` / `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`), `VERCEL_DOMAIN` |
+| H7 | **Vercel project** imported from GitHub. Root directory = repo root, Framework preset **Other**, Node.js **22.x**, production branch `main`. Add **Upstash Redis** from the Vercel Marketplace (region São Paulo `sa-east-1`) and connect it to the project, which injects its REST URL and token env vars. Leave Deployment Protection on for **Preview** only. Production must stay public. The app can't
+call protected Preview URLs, so every device test (M5–M8) runs against **Production**. Test risky
+changes by setting `JOVI_REQUIRE_INTEGRITY=false` in Production temporarily, never by opening
+Preview. | `KV_REST_API_URL` / `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`), `VERCEL_DOMAIN` |
 | H8 | Secrets: `openssl rand -hex 32` twice. | `JOVI_API_KEY`, `JOVI_SESSION_SECRET` |
 | H9 | **EAS**: `eas login`, `eas init` (writes `extra.eas.projectId` into `app.json`, so commit it). `eas env:create --environment production --name EXPO_PUBLIC_JOVI_API_KEY --value <JOVI_API_KEY> --visibility sensitive`. | — |
 
@@ -261,16 +264,30 @@ with messages from §5.4.
    - `ctx.byok = { provider, apiKey } | null`.
 6. **Dev bypass.** `bypass = process.env.JOVI_LOCAL_DEV_BYPASS === 'true' && !process.env.VERCEL`. If
    set: `ctx.user = { sub: 'dev:'+ip, email: 'dev@local' }` and steps 7, 8, 12 and 13 are skipped.
-   Burst limits still apply. On first use, log `console.warn('JOVI_LOCAL_DEV_BYPASS ativo — nunca use em produção')`.
+   Step 10 is also skipped when no user key was sent, so `tts` and `transcribe` fall through to the
+   server provider (§5.12). Burst limits still apply. On first use, log `console.warn('JOVI_LOCAL_DEV_BYPASS ativo — nunca use em produção')`.
 7. **Session** (`auth === 'session'`). No `Authorization: Bearer` → `401 SIGN_IN_REQUIRED`. Present
    but `verifySession` returns null → `401 SESSION_INVALID`. Set `ctx.user = { sub, email }`.
 8. **Integrity** (`integrity && JOVI_REQUIRE_INTEGRITY === 'true'`). Run `verifyIntegrity(req, bodySha256)`
    (§5.8). Failure → `403 INTEGRITY_FAILED`; Google unreachable → `503 INTEGRITY_UNAVAILABLE`.
 9. **Burst limit.** `id = ctx.user?.sub ?? ip`. If `hit('rl:'+scope+':'+id, 60) > burstPerMinute`,
    return `429 RATE_LIMITED`.
-10. **BYOK requirement.** For `byok === 'required'`: no key → `403 BYOK_REQUIRED`. If the provider's
+10. **BYOK requirement.** For `byok === 'required'` (skipped under the bypass when no key was sent;
+    see step 6): no key → `403 BYOK_REQUIRED`. If the provider's
     `capabilities[byokCapability]` is false (MiniMax STT) → `400 BYOK_CAPABILITY_UNSUPPORTED`.
 11. **Validate.** `validate(body)` → on error return it (codes `INVALID_INPUT` / `TEXT_TOO_LONG` / …).
+    The existing validators (`safeInput` in `analyze-image.js`, `subject-ai.js` and
+    `video-recommendations.js`, plus the inline checks in `tts.js` and `transcribe.js`) must be
+    adapted to this exact contract:
+    - Success returns `{ input: <the fields they return today> }`. `analyze-image`'s input is
+      `{ image, mimeType, action, question, context }`; `subject-ai`'s is
+      `{ action, subject, preferences }`; `video-recommendations`'s is `{ subject, preferences }`;
+      `tts`'s is `{ text, voice, format }`; `transcribe`'s is `{ audio, mimeType }`.
+    - Failure returns `{ error: { status: 400, code: 'INVALID_INPUT', message } }`, keeping each
+      validator's existing pt-BR message. The only exceptions are `tts` text over 2000 chars
+      (`code: 'TEXT_TOO_LONG'`) and bad or oversized images and audio (`code: 'INVALID_INPUT'`,
+      today's message).
+    - `run(input, ctx)` receives exactly that `input` object.
 12. **Idempotency** (applies when `cost > 0 && !ctx.byok && !bypass`):
     - The header `idempotency-key` must match a UUID v4 regex, otherwise `400 IDEMPOTENCY_KEY_REQUIRED`.
     - Key = `idem:{sub}:{uuid}`. Run `setNX(key,'pending',600)`.
@@ -1063,8 +1080,9 @@ In the presentation build the same reminders work off the demo calendar.
 ### 6.15 Privacy page (`public/privacy.html`, pt-BR)
 
 Sections (plain HTML, one page):
-1. **Quem somos:** um projeto acadêmico, with a contact email (the repo owner's; ask if unknown and
-   leave `contato@exemplo` as the only placeholder in the whole project).
+1. **Quem somos:** um projeto acadêmico, with the contact email **`contato@exemplo.com`**. This is a
+   deliberate placeholder decided by the project owner. Use it as is, and leave it as the only
+   placeholder in the project, to be replaced before real distribution.
 2. **Dados da conta Google:** id, email and name, used only to identify the account and count the 3
    free credits. The session lasts 30 days.
 3. **Fotos, textos e áudios:** sent to the AI provider only to process each request. They aren't
@@ -1081,6 +1099,43 @@ Sections (plain HTML, one page):
    app is running on an unmodified device.
 8. **Exclusão:** "Apagar dados" in the app removes local data. For account credit records, email
    the contact.
+
+### 6.16 Versioning
+
+- `app.json`: `expo.version` = **`1.1.0`**. Leave `android.versionCode` at `4`: EAS builds use the
+  remote version (`appVersionSource: "remote"` + `autoIncrement`), and only local Gradle builds read
+  the `app.json` value. For a local release build, bump `versionCode` by hand above the last
+  installed one.
+- Root `package.json` `version` = `1.1.0`.
+- The git tag `v1.1.0` is created at the end of M8, on the commit that passes the QA.
+
+### 6.17 CI — `.github/workflows/check.yml` (new, added in M1)
+
+```yaml
+name: check
+on:
+  push:
+    branches: [main, prod_app]
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm ci
+        working-directory: web
+      - run: npm test
+        working-directory: web
+```
+
+It needs no secrets. Tests use the in-memory store and mocked `fetch` (§11). The live smoke test
+`scripts/smoke-ai.js` is **not** part of CI.
 
 ---
 
@@ -1164,14 +1219,14 @@ Each milestone ends with `npm run check` passing and a commit.
 
 | # | Scope | Acceptance |
 |---|---|---|
-| **M1** | §5.1 Vercel files; §5.2 store; §5.3 guard; §5.4 errors; §5.5 routes (except integrity: `integrity:true` specified but not enforced yet since the env flag is off); §5.6 credits; §5.11 logging; §5.12 bypass; local-api changes; handler refactor; `/api/me`; tests `guard`, `credits`, `store`, `authGoogle` | Tests pass. with `JOVI_LOCAL_DEV_BYPASS=true` in the root `.env`, `cd web && npm run dev` (starts `server/local-api.js` and Vite): the web app analyzes a photo end to end. [HUMAN H7] deploy: `GET https://<domain>/api/me` without auth → 401 SIGN_IN_REQUIRED; `/privacy.html` loads |
+| **M1** | §6.17 CI workflow; §5.1 Vercel files; §5.2 store; §5.3 guard; §5.4 errors; §5.5 routes (except integrity: `integrity:true` specified but not enforced yet since the env flag is off); §5.6 credits; §5.11 logging; §5.12 bypass; local-api changes; handler refactor; `/api/me`; tests `guard`, `credits`, `store`, `authGoogle` | Tests pass. with `JOVI_LOCAL_DEV_BYPASS=true` in the root `.env`, `cd web && npm run dev` (starts `server/local-api.js` and Vite): the web app analyzes a photo end to end. [HUMAN H7] deploy: `GET https://<domain>/api/me` without auth → 401 SIGN_IN_REQUIRED; `/privacy.html` loads |
 | **M2** | §5.9 Gemini + OpenAI adapters, provider interface with credentials, MiniMax `validateKey`, `/api/byok/validate`, calendar wording; tests `geminiProvider`, `openaiProvider`, `byokRedaction` | Tests pass |
 | **M3** | **Live smoke test** (needs H6): a script `scripts/smoke-ai.js` (Node) calls the Gemini adapter directly with the server key: complete (text), complete (a tiny JPEG from `assets/demo/`), speak (the 2000-char pt-BR sample), transcribe (the speak output). It prints the mime, sizes and timings. Apply §5.9 contingencies only if needed | All 4 succeed. TTS mime is `audio/mpeg`, or the WAV contingency is applied. The 2000-char TTS base64 is < 4,000,000 |
 | **M4** | App foundations: §6.1 variants, §6.2 deps, §6.3 gating, §6.4 apiClient, §6.7 errors + `AiErrorActions`, §6.8 TTS/STT, empty states, lint to 0 new warnings | `APP_VARIANT=presentation` dev run behaves like today's demo. `APP_VARIANT=development` shows an empty gallery and notes, and AI actions prompt for sign-in |
 | **M5** | §6.5 native Google sign-in, §6.6 credits + BYOK UI | On a dev build against the local server (with `JOVI_REQUIRE_INTEGRITY=false`, bypass off): sign in → credits 3 → analyze → 2 → … → 402 → "Adicionar minha chave" → save a Gemini key → analyze works with no credit change; TTS is live with BYOK and device voice without it |
-| **M6** | §6.9 native module (integrity part), §6.10, §5.8 server verification, `integrity.test.js` | [HUMAN H1, H2, H5] A release-signed APK against a Preview/Production deployment with `JOVI_REQUIRE_INTEGRITY=true`: calls succeed. The **same APK re-signed with a different key** (`apksigner sign --ks other.jks`) → every AI call returns `INTEGRITY_FAILED`. Apply the §6.10 contingency only if standard requests fail off-Play |
+| **M6** | §6.9 native module (integrity part), §6.10, §5.8 server verification, `integrity.test.js` | [HUMAN H1, H2, H5] A release-signed APK against the **Production** deployment (Preview is protected, see H7) with `JOVI_REQUIRE_INTEGRITY=true`: calls succeed. The **same APK re-signed with a different key** (`apksigner sign --ks other.jks`) → every AI call returns `INTEGRITY_FAILED`. Apply the §6.10 contingency only if standard requests fail off-Play |
 | **M7** | §6.9 calendar functions, §6.11, §6.12, `examDetection`/`examReminders`/`nativeReadOnly` tests | On a device with a Google account holding a test event "Prova de História" in 4 days: connect → the event appears with subject História → enabling reminders schedules 2 notifications (visible via a temporary debug log of `getAllScheduledNotificationsAsync` that's removed before commit) → tapping a delivered test notification (set one 1 min ahead in a dev-only branch, then remove it) opens the História studio. `adb shell dumpsys package com.jovilens.app \| grep WRITE_CALENDAR` shows it's not granted or requested |
-| **M8** | §6.15 privacy page, §10 docs, `eas.json` final, production and presentation EAS builds [HUMAN H9], and the §13 QA on a physical device | QA checklist passes. Tag `v1.1.0` |
+| **M8** | §6.15 privacy page, §10 docs, `eas.json` final, §6.16 version bump, production and presentation EAS builds [HUMAN H9], and the §13 QA on a physical device | QA checklist passes. Tag `v1.1.0` |
 
 ---
 
