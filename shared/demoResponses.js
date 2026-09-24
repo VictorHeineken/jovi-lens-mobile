@@ -66,13 +66,90 @@ export function getDemoAnalysis() {
   return structuredClone(DEMO_ANALYSIS);
 }
 
-export function getDemoAction({ action = 'explain', question = '' } = {}) {
-  const analysis = getDemoAnalysis();
+// The seeded album photos each already have a hand-written note (title,
+// summary, key points, text). Without an analysis of their own, opening one in
+// the viewer fell through to DEMO_ANALYSIS — so every sample, from a steam
+// locomotive to Python code, "was" the circle-area exercise. This shapes a
+// note into the same analysis contract the AI returns, so each sample studies
+// its own content. `distractors` are key points from unrelated notes, used as
+// the wrong options in the quiz.
+export function analysisFromNote(note, { distractors = [] } = {}) {
+  const keyPoints = Array.isArray(note.keyPoints) ? note.keyPoints.filter(Boolean) : [];
+  const topic = note.subcategory || note.category || 'este conteúdo';
+  const [firstPoint = note.summary] = keyPoints;
+  const wrongOptions = distractors.filter((item) => item && !keyPoints.includes(item)).slice(0, 3);
+  // Rotate the right answer's slot so it isn't always the same letter.
+  const answerIndex = String(note.title || '').length % (wrongOptions.length + 1);
+  const options = [...wrongOptions];
+  options.splice(answerIndex, 0, firstPoint);
+
+  return {
+    text: note.text || note.summary || '',
+    language: 'pt',
+    title: note.title,
+    summary: note.summary || '',
+    keyPoints,
+    category: note.category || 'Estudos',
+    subcategory: note.subcategory,
+    contentType: 'Imagem de estudo',
+    subject: topic,
+    topicPath: note.topicPath,
+    confidence: 0.94,
+    suggestedQuestions: [
+      `Explique melhor: ${firstPoint}`,
+      `Qual é a ideia principal sobre ${topic.toLowerCase()}?`,
+      'Me dê um exemplo parecido.',
+    ],
+    learning: {
+      understand: {
+        title: 'Primeiro, entenda a ideia',
+        intro: note.summary || '',
+        steps: keyPoints.map((text, index) => ({ label: `Ponto ${index + 1}`, text })),
+      },
+      solve: {
+        title: 'Lendo a imagem passo a passo',
+        prompt: `O que esta imagem ensina sobre ${topic.toLowerCase()}?`,
+        answer: note.summary || '',
+        steps: [
+          'Observe os detalhes da imagem antes de tirar conclusões.',
+          ...keyPoints,
+        ],
+      },
+      practice: {
+        title: 'Agora é com você',
+        question: `Qual afirmação está de acordo com "${note.title}"?`,
+        options,
+        answerIndex,
+        feedback: `Isso! ${firstPoint}.`,
+        hint: `Releia o resumo: ${note.summary || ''}`.trim(),
+      },
+      flashcards: [
+        { front: `Qual é a ideia central de "${note.title}"?`, back: note.summary || firstPoint },
+        ...keyPoints.map((point, index) => ({ front: `${topic}: ponto-chave ${index + 1}`, back: point })),
+      ],
+    },
+  };
+}
+
+// An `ask` about anything but the built-in circle exercise must be answered
+// from the image's own analysis, not with the πr² script.
+function contextualReply(context, question) {
+  const points = Array.isArray(context.keyPoints) ? context.keyPoints : [];
+  const words = String(question).toLowerCase().split(/\W+/u).filter((word) => word.length > 3);
+  const match = points.find((point) => words.some((word) => point.toLowerCase().includes(word)));
+  const lead = match || points[0] || context.summary || '';
+  return `Pensando em "${context.title}": ${lead}. ${context.summary || ''} Quer que eu detalhe algum desses pontos?`.replace(/\.\./g, '.').trim();
+}
+
+export function getDemoAction({ action = 'explain', question = '', context = null } = {}) {
+  const isOwnContext = context?.title && context.title !== DEMO_ANALYSIS.title;
+  const analysis = isOwnContext && context.learning ? structuredClone(context) : getDemoAnalysis();
 
   if (action === 'extract') return { action, text: analysis.text, language: analysis.language, confidence: analysis.confidence };
 
   if (action === 'ask') {
     const normalizedQuestion = String(question || '').trim();
+    if (isOwnContext) return { action, reply: contextualReply(context, normalizedQuestion) };
     return {
       action,
       reply: DEMO_ANSWERS[normalizedQuestion] || 'Pense na fórmula A = πr²: qual valor você já conhece e qual precisa descobrir? Se quiser, posso explicar esse passo de outro jeito.',

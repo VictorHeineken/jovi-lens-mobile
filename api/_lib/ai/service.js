@@ -105,7 +105,7 @@ function normalizeTextExtraction(result, meta) {
 
 export async function runStudyAI({ action = 'analyze', question = '', context = null, imageDataUrl }) {
   if (isDemoMode()) {
-    const demo = await completeWithDemo({ action, question });
+    const demo = await completeWithDemo({ action, question, context });
     if (action === 'extract') return normalizeTextExtraction(demo.result, demo);
     return action === 'analyze' ? normalizeAnalysis(demo.result, demo) : { ...demo.result, provider: demo.provider, model: demo.model, mode: 'demo' };
   }

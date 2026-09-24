@@ -24,6 +24,7 @@ import { aggregateSubjects } from '../shared/subjects.js';
 import { mergeDemoSubjectArtifacts } from '../shared/demoSubjectArtifacts.js';
 import { EMPTY_STUDY_CALENDAR, normalizeStudyCalendar } from '../shared/studyCalendar.js';
 import { demoAssetModule } from '../services/demoAssets.js';
+import { analysisFromNote } from '../shared/demoResponses.js';
 
 const AppDataContext = createContext(null);
 
@@ -60,7 +61,7 @@ const studyAssets = {
 // records existed for 12 notes, so most notes displayed an unrelated photo
 // (whichever of the 3 their recordId happened to land on) — see the note's
 // own `image` field, which was already correct but never actually shown.
-const samples = [
+const sampleMedia = [
   { id: 'sample-1', src: studyAssets.history[0], createdAt: '2026-08-25T19:20:00.000Z', source: 'sample', label: 'Fábrica de velas do século 19', aiAvailable: true },
   { id: 'sample-2', src: studyAssets.history[1], createdAt: '2026-08-25T11:05:00.000Z', source: 'sample', label: 'Operários saindo da fábrica', aiAvailable: true },
   { id: 'sample-3', src: studyAssets.history[2], createdAt: '2026-08-24T16:40:00.000Z', source: 'sample', label: 'Locomotiva a vapor de 1814', aiAvailable: true },
@@ -89,7 +90,7 @@ const samples = [
 // to an unresolvable `{ uri }` and renders as "Indisponível" — which is the exact
 // bug the asset map was added to fix. Fail loudly in development instead.
 if (__DEV__) {
-  const missing = [...Object.values(studyAssets).flat(), ...samples.map((sample) => sample.src)]
+  const missing = [...Object.values(studyAssets).flat(), ...sampleMedia.map((sample) => sample.src)]
     .filter((src) => !demoAssetModule(src));
   if (missing.length) {
     console.error(`[JOVI] demo assets sem módulo em services/demoAssets.js: ${missing.join(', ')}`);
@@ -555,6 +556,20 @@ const sampleNotes = [
     createdAt: '2026-08-17T08:15:00.000Z',
   },
 ];
+
+// Each sample photo carries its own note's content as a ready analysis, so
+// opening it in the viewer studies that photo instead of requesting a fresh
+// one — which in Demo Mode always came back as the generic circle-area
+// exercise. Samples are never persisted, so this is rebuilt on every launch.
+const samples = sampleMedia.map((record) => {
+  const note = sampleNotes.find((item) => item.recordId === record.id);
+  if (!note) return record;
+  const distractors = sampleNotes.filter((item) => item.category !== note.category).map((item) => item.keyPoints?.[0]);
+  const offset = sampleNotes.indexOf(note);
+  const rotated = [...distractors.slice(offset), ...distractors.slice(0, offset)];
+  // Every 3rd one keeps the options from repeating the same few categories.
+  return { ...record, analysis: analysisFromNote(note, { distractors: rotated.filter((_, index) => index % 3 === 0) }) };
+});
 
 function getInitialNotes() {
   const stored = getNotes();

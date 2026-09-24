@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getDemoAction, getDemoAnalysis, getSubjectDemo } from '../shared/demoResponses.js';
+import { analysisFromNote, getDemoAction, getDemoAnalysis, getSubjectDemo } from '../shared/demoResponses.js';
 
 // This module is the offline fallback behind every AI feature, so in Demo Mode it
 // IS the product — a presentation with no network shows nothing but this output.
@@ -106,6 +106,37 @@ test('getSubjectDemo exam returns the flat shape SubjectExam reads', () => {
     // `q.topic`, so both fields are load-bearing, not decorative.
     assert.ok(item.topic, 'each question needs a topic for the per-topic breakdown');
   });
+});
+
+const locomotiveNote = {
+  title: 'A engenharia das primeiras locomotivas a vapor',
+  summary: 'As primeiras locomotivas a vapor usavam soluções diferentes das ferrovias modernas.',
+  keyPoints: ['A tração por engrenagem foi testada cedo', 'O carvão foi um dos primeiros usos', 'A ferrovia barateou o transporte'],
+  text: 'Esta gravura de 1814 mostra uma roda dentada central.',
+  category: 'História',
+  subcategory: 'Transporte e máquinas a vapor',
+};
+
+test('analysisFromNote builds an analysis about the note, not the circle fixture', () => {
+  const analysis = analysisFromNote(locomotiveNote, { distractors: ['Variáveis guardam valores', 'HTML estrutura o conteúdo', 'Grifar ajuda a fixar'] });
+  assert.equal(analysis.title, locomotiveNote.title);
+  assert.equal(analysis.category, 'História');
+  assert.deepEqual(analysis.keyPoints, locomotiveNote.keyPoints);
+  assert.doesNotMatch(JSON.stringify(analysis), /πr²|círculo/);
+
+  const { practice } = analysis.learning;
+  assert.equal(practice.options.length, 4);
+  assert.equal(practice.options[practice.answerIndex], locomotiveNote.keyPoints[0]);
+  assert.ok(analysis.learning.flashcards.length > 0);
+  assert.ok(analysis.learning.understand.steps.length === locomotiveNote.keyPoints.length);
+});
+
+test('getDemoAction uses the image context instead of the circle script when given one', () => {
+  const context = analysisFromNote(locomotiveNote);
+  const reply = getDemoAction({ action: 'ask', question: 'Por que usavam carvão?', context }).reply;
+  assert.doesNotMatch(reply, /πr²/);
+  assert.match(reply, /carvão/);
+  assert.equal(getDemoAction({ action: 'quiz', context }).learning.practice.question, context.learning.practice.question);
 });
 
 test('getSubjectDemo plan reflects global study strategy, pace and review method', () => {
