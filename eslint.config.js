@@ -141,7 +141,7 @@ export default [
     // This file itself is included: without it, `eslint --print-config
     // eslint.config.js` returns zero rules — parsed (a syntax error would still
     // be caught), but nothing in it is actually checked.
-    files: ['api/**/*.js', 'server/**/*.js', 'tests/**/*.js', 'web/tests/**/*.js', 'web/scripts/**/*.js', 'eslint.config.js'],
+    files: ['api/**/*.js', 'server/**/*.js', 'scripts/**/*.js', 'tests/**/*.js', 'web/tests/**/*.js', 'web/scripts/**/*.js', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
