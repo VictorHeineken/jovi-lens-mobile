@@ -3,9 +3,9 @@
 // services/ directory, which made the backend depend on a client.
 import { getDemoAction, getDemoAnalysis, getSubjectDemo } from '../../../../shared/demoResponses.js';
 
-export async function completeWithDemo({ action = 'analyze', question = '' }) {
+export async function completeWithDemo({ action = 'analyze', question = '', context = null }) {
   if (action === 'analyze') return { result: getDemoAnalysis(), provider: 'demo', model: 'jovi-lens-demo' };
-  return { result: getDemoAction({ action, question }), provider: 'demo', model: 'jovi-lens-demo' };
+  return { result: getDemoAction({ action, question, context }), provider: 'demo', model: 'jovi-lens-demo' };
 }
 
 export async function completeSubjectWithDemo({ action = 'questions', subject = {} }) {

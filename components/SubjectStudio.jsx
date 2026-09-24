@@ -71,7 +71,11 @@ export default function SubjectStudio({ subject, onClose }) {
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 px-4 pb-3" accessibilityRole="tablist" accessibilityLabel="Ferramentas da matéria">
+        {/* A horizontal ScrollView in a flex column grows to fill the free height
+            on Android (and its children stretch with it), turning each tab into a
+            tall vertical pill. flexGrow: 0 keeps the row at its content height;
+            items-center stops the pills from stretching. */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerClassName="items-center gap-2 px-4 pb-3" accessibilityRole="tablist" accessibilityLabel="Ferramentas da matéria">
           {TABS.map((item) => {
             const active = tab === item.id;
             return (

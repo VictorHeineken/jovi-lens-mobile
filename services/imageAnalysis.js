@@ -68,7 +68,7 @@ async function requestAnalysis(src, { action = 'analyze', question = '', context
   if (isDemoMode()) {
     await wait(action === 'analyze' ? 1100 : 520);
     if (action === 'extract') return { text: getDemoAnalysis().text, language: 'pt', confidence: 0.96, provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' };
-    return action === 'analyze' ? { ...getDemoAnalysis(), provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' } : getDemoAction({ action, question });
+    return action === 'analyze' ? { ...getDemoAnalysis(), provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' } : getDemoAction({ action, question, context });
   }
 
   const prepared = await prepareImageForAI(src, 1600);
