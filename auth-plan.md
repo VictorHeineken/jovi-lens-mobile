@@ -1,3 +1,5 @@
+> Superseded by prod-plan.md / prod-implementation-spec.md; kept for history.
+
 # Backend auth plan
 
 Context: `server/local-api.js` (local dev) and each `api/*.js` handler (Vercel-style

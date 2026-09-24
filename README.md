@@ -1,143 +1,136 @@
 # JOVI Lens
 
-Experiência de estudo "foto → IA → aprendizado" do projeto JOVI. Este repositório contém dois clientes que
-compartilham o mesmo backend:
+Experiência de estudo "foto → IA → aprendizado" do projeto JOVI. Este repositório contém:
 
 - **App React Native (Expo)** — nesta pasta raiz (`app/`, `components/`, `services/`, `context/`, ...).
-  A versão instalável para Android/iOS; veja o [plano de migração](react-native-migration-plan.md) para o
-  que foi portado, decisões tomadas e o que ainda falta verificar em um dispositivo real.
-- **App web (Vite + React)** — em [`web/`](web/README.md). A versão original do projeto, PWA instalável
-  via navegador.
-- **Backend compartilhado** — `api/` (handlers estilo Vercel serverless) + `server/local-api.js` (wrapper
-  HTTP para rodar `api/` localmente). Os dois clientes chamam exatamente os mesmos endpoints.
+  Distribuído **apenas como APK Android instalado manualmente** (sem Play Store). iOS e web não são
+  publicados.
+- **Backend** — `api/` (Vercel Functions) + `server/local-api.js` (wrapper HTTP para rodar `api/`
+  localmente).
+- **App web (Vite + React)** — em [`web/`](web/README.md). Não é publicado, mas continua funcionando
+  **localmente** (veja [Desenvolvimento local](#desenvolvimento-local)).
+
+O plano de produção está em [`prod-plan.md`](prod-plan.md) (o porquê de cada decisão) e
+[`prod-implementation-spec.md`](prod-implementation-spec.md) (o que foi construído e como).
 
 ```text
 jovi-lens-mobile/
-  api/                  backend compartilhado (Azure OpenAI / MiniMax, TTS, STT e recomendações)
+  api/                  backend (Vercel Functions): IA, login, créditos, integridade
   server/               servidor HTTP local que expõe api/ em 127.0.0.1:8787
-  shared/               lógica usada pelos dois clientes e pelo backend — uma cópia só
+  shared/               lógica usada pelos clientes e pelo backend — uma cópia só
+  public/               página estática do backend (index + política de privacidade)
+  modules/jovi-native/  módulo nativo Android (Play Integrity + leitura da agenda)
   app/, components/,    app React Native (Expo) — roda a partir da raiz
   hooks/, services/,
   context/, app.json,
-  package.json
+  app.config.js, eas.json
   web/                  app web (Vite + React) — veja web/README.md
-  tests/                testes de shared/ e de api/_lib/ — `npm test` na raiz
-  .env, .env.example    variáveis compartilhadas pelos dois clientes e pelo backend
-  react-native-migration-plan.md
+  tests/                testes de shared/ e api/ — `npm test` na raiz
+  .env, .env.example    variáveis do backend e dos clientes
 ```
+
+## Arquitetura de produção
+
+```text
+APK Android ──HTTPS──► Vercel Functions (api/, região gru1) ──► Google Gemini (créditos gratuitos)
+  Google sign-in           │  guard: API key, sessão, Play Integrity,        ou o provedor da chave
+  Play Integrity           │  rate limit, idempotência, créditos             do usuário (BYOK)
+  chave BYOK (secure store)└► Upstash Redis (REST): créditos, rate limits, idempotência, replay
+```
+
+- **Login Google obrigatório** para qualquer chamada de IA (módulo nativo
+  `@react-native-google-signin/google-signin`). O backend troca o id_token por uma sessão própria de 30 dias.
+- **3 créditos por conta Google, para sempre.** 1 crédito = 1 geração de IA (análise de foto, pergunta,
+  plano, prova, podcast, aula ou recomendação). Falhas são estornadas; repetições com a mesma
+  `Idempotency-Key` não cobram de novo.
+- **Traga sua própria chave (BYOK):** Gemini, OpenAI ou MiniMax. A chave fica no `expo-secure-store`, vai
+  em cada pedido e nunca é armazenada nem registrada pelo servidor. Chamadas BYOK não gastam créditos.
+  Vozes da IA (TTS) e transcrição no servidor (STT) exigem BYOK; sem chave o app usa a voz e o
+  reconhecimento do próprio aparelho.
+- **Play Integrity** (requisições *standard*, número do projeto Cloud, fora da Play Store): o servidor
+  confere pacote, certificado de release, `MEETS_DEVICE_INTEGRITY`, requestHash e replay.
+- **Agenda somente leitura** do aparelho (`CalendarContract`), limitada à conta Google conectada;
+  `WRITE_CALENDAR` é bloqueada no manifesto. **Lembretes de prova** locais às 19h, 3 dias e 1 dia antes.
+
+### Variantes do app
+
+| Variante (`APP_VARIANT`) | Pacote | O que é |
+|---|---|---|
+| `development` | `com.jovilens.app` | Dev client; HTTP em claro permitido para a API local (`127.0.0.1:8787` via `adb reverse`) |
+| `production` | `com.jovilens.app` | APK distribuído; só HTTPS; login, créditos, BYOK e integridade |
+| `presentation` | `com.jovilens.app.demo` | Demo 100% offline com dados de exemplo (`EXPO_PUBLIC_JOVI_LENS_DEMO_MODE=true`), sem login, créditos ou integridade. Pode ser instalada ao lado da produção |
+
+Os perfis estão em [`eas.json`](eas.json); `app.config.js` aplica as diferenças sobre o `app.json`.
+Instalações antigas (v1.0.4) não são migradas: desinstale antes de instalar a v1.1.0.
 
 ## IA
 
-O fluxo real usa um provedor de IA plugável atrás de uma camada de serviço em `api/_lib/ai/`. Nenhum
-cliente recebe chave alguma: a imagem passa por `POST /api/analyze-image`, que valida o payload, aplica
-timeout e normaliza a resposta para o contrato educacional do produto — esse contrato é o mesmo não
-importa qual provedor esteja ativo, nem qual cliente (web ou nativo) fez a chamada.
+Cada provedor vive em `api/_lib/ai/providers/<nome>.js` e implementa a mesma interface (`capabilities`,
+`isConfigured`, `complete`, `speak`, `transcribe`, `validateKey`), aceitando credenciais do usuário
+(`{ apiKey }`) no lugar da chave do servidor. `AI_PROVIDER` escolhe o provedor pago pelo servidor
+(`gemini` em produção); o provedor BYOK vem do header `x-ai-provider` de cada pedido.
 
-Cada provedor vive em `api/_lib/ai/providers/<nome>.js` e implementa a mesma interface (`complete`,
-`speak`, `transcribe`, mais um objeto `capabilities`). O
-provedor ativo é escolhido pela variável `AI_PROVIDER` no `.env` (veja abaixo); `api/_lib/ai/providers/index.js`
-resolve qual módulo atende cada recurso. Hoje `azure-openai` e `minimax` estão registrados — `openai`,
-`anthropic` e `gemini` chegam em fases seguintes desta refatoração.
+| Provedor | Chat/Visão | TTS | STT | Uso |
+|---|---|---|---|---|
+| Google Gemini | ✅ | ✅ | ✅ | Servidor (créditos gratuitos) e BYOK |
+| OpenAI | ✅ | ✅ | ✅ | BYOK |
+| MiniMax | ✅ | ✅ | ❌ | BYOK (voz por reconhecimento do aparelho) |
+| Azure OpenAI | ✅ | ✅ | ✅ | Opcional, só como provedor do servidor |
 
-Nem todo provedor cobre todos os recursos — é uma limitação real das APIs, não uma lacuna de implementação:
+`scripts/smoke-ai.js` testa o adaptador Gemini ao vivo com a chave do servidor
+(`node --env-file=.env scripts/smoke-ai.js`); não faz parte do CI.
 
-| Provedor | Chat/Visão | TTS | STT |
-|---|---|---|---|
-| Azure OpenAI | ✅ | ✅ | ✅ |
-| MiniMax | ✅ | ✅ | ❌ (não confirmado) |
-| OpenAI (planejado) | ✅ | ✅ | ✅ |
-| Anthropic (planejado) | ✅ | ❌ | ❌ |
-| Google Gemini (planejado) | ✅ | ✅ | ✅ |
+## Variáveis
 
-Se `AI_PROVIDER` não cobre um recurso, use a variável de override desse recurso (`AI_TTS_PROVIDER`,
-`AI_STT_PROVIDER`, ou `AI_CHAT_PROVIDER`/`AI_VISION_PROVIDER`) para apontá-lo a outro
-provedor configurado. Sem override, o recurso simplesmente fica indisponível (erro `AI_NOT_CONFIGURED`), do
-mesmo jeito que hoje acontece quando um deployment opcional da Azure não está configurado.
+Copie `.env.example` para `.env` na raiz e preencha localmente. O backend lê as variáveis sem prefixo,
+o app web as `VITE_` e o app nativo as `EXPO_PUBLIC_`. Chaves de provedor de IA são sempre server-only.
+A lista completa, com padrões, está no `.env.example` e em `prod-implementation-spec.md` §3.
 
-Para uma apresentação sem dependência de rede, ative o Demo Mode (veja `JOVI_LENS_DEMO_MODE` /
-`VITE_JOVI_LENS_DEMO_MODE` / `EXPO_PUBLIC_JOVI_LENS_DEMO_MODE` abaixo — cada cliente lê a variável com seu
-próprio prefixo).
+Na Vercel, se qualquer variável obrigatória faltar, toda rota responde `503 SERVER_MISCONFIGURED` e o log
+de inicialização lista os nomes que faltam (nunca os valores).
 
-## Variáveis locais
+## Desenvolvimento local
 
-Copie `.env.example` para `.env` na raiz do repositório e configure os valores localmente. Este único
-`.env` é compartilhado pelo backend, pelo app web e pelo app React Native — cada um lê apenas as variáveis
-com o prefixo que lhe importa (nenhum prefixo para o backend, `VITE_` para o app web, `EXPO_PUBLIC_` para o
-app nativo). Toda chave de provedor de IA é server-only e nunca deve usar esses prefixos. O arquivo de
-exemplo deve permanecer sem valores reais.
+**Backend + app web** — o web só funciona localmente com `JOVI_LOCAL_DEV_BYPASS=true`:
 
-Principais variáveis:
-
-```text
-AI_PROVIDER=azure-openai
-AZURE_OPENAI_ENDPOINT=
-AZURE_OPENAI_API_KEY=
-AZURE_OPENAI_DEPLOYMENT=
-AZURE_OPENAI_API_VERSION=2024-12-01-preview
-AZURE_OPENAI_TTS_DEPLOYMENT=gpt-4o-mini-tts
-# opcionais: vozes por papel do podcast
-# AZURE_OPENAI_TTS_VOICE_A=nova
-# AZURE_OPENAI_TTS_VOICE_B=onyx
-# AZURE_OPENAI_TTS_VOICE_NARRATOR=alloy
-AZURE_OPENAI_TRANSCRIBE_DEPLOYMENT=gpt-4o-mini-transcribe
-# opcional se o deployment de transcrição tiver nome customizado:
-# AZURE_OPENAI_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe
-JOVI_LENS_DEMO_MODE=false
-VITE_JOVI_LENS_DEMO_MODE=false
-JOVI_WEB_URL=http://127.0.0.1:5173
-
-# App React Native (Expo) — veja react-native-migration-plan.md
-EXPO_PUBLIC_API_BASE_URL=http://SEU_IP_LOCAL:8787
+```bash
+# .env: JOVI_LOCAL_DEV_BYPASS=true, AI_PROVIDER=gemini e GEMINI_API_KEY=<sua chave>
+cd web
+npm install
+npm run dev        # sobe server/local-api.js e o Vite
 ```
 
-`AI_PROVIDER` é obrigatória para o modo ao vivo — sem ela, cada chamada de IA falha com
-`AI_NOT_CONFIGURED` apontando para o `.env.example`. Para uma apresentação sem rede, defina os flags de
-Demo Mode como `true` (o provedor de IA não importa nesse caso). Para usar um provedor ao vivo localmente,
-mantenha-os `false`, configure o bloco de variáveis do provedor escolhido e reinicie o servidor depois de
-alterar o `.env`.
+O bypass (ignorado sempre que `VERCEL` está definido) pula sessão, integridade, idempotência e créditos;
+TTS e transcrição usam o provedor do servidor. Rate limits continuam valendo.
 
-As APIs locais aplicam rate limit por janela curta e limite diário por recurso. Esses limites protegem o
-protótipo contra bursts e consumo acidental; em produção devem ser substituídos por quotas por usuário
-autenticado e um armazenamento compartilhado.
-
-## Rodar o app React Native (a partir da raiz)
+**App no celular (dev build)** — rode a API local com `JOVI_REQUIRE_INTEGRITY=false` e **sem** o bypass,
+para testar login, créditos e BYOK de verdade:
 
 ```bash
 npm install
+npx eas build --profile development --platform android   # ou: APP_VARIANT=development npm run android
+node --env-file=.env server/local-api.js
+scripts/phone-dev.sh     # adb por Wi-Fi + adb reverse da porta 8787
 npm start
 ```
 
-Isso abre o Expo CLI (QR code para um build de desenvolvimento — veja abaixo). Também disponíveis:
-`npm run android`, `npm run ios` (builds locais, exigem Android Studio/Xcode) e `npm run web` (preview em
-navegador, com limitações — veja o plano de migração).
+Nenhum código deste app roda em Expo Go (módulos nativos próprios e de terceiros). Para compilar o APK
+localmente e testá-lo em um aparelho, veja o [guia de build e teste no Android](ANDROID_BUILD.md).
 
-**Nenhum código deste app roda em Expo Go.** Ele depende de módulos nativos de terceiros
-(`react-native-vision-camera`, `expo-speech-recognition`, `react-native-mmkv`) que não vêm embutidos no
-app Expo Go — é necessário compilar um development client primeiro:
+**Demo offline** — `APP_VARIANT=presentation EXPO_PUBLIC_JOVI_LENS_DEMO_MODE=true npm start`.
 
-```bash
-npx eas build --profile development --platform android   # build na nuvem (precisa de conta Expo)
-# ou, com o Android SDK instalado localmente:
-npm run android
-```
+## Runbook de produção
 
-Configure `EXPO_PUBLIC_API_BASE_URL` no `.env` da raiz antes de rodar — aponte para o IP da sua rede local
-(não `localhost`) na porta da API (`JOVI_API_PORT`, padrão `8787`), já que o telefone/emulador é um
-dispositivo separado. Veja mais detalhes, decisões de arquitetura e o que ainda não foi testado em um
-dispositivo real no [plano de migração](react-native-migration-plan.md).
-
-Para compilar o APK localmente e testá-lo em um aparelho Android (toolchain, `adb` por Wi-Fi,
-leitura de logs e os erros já enfrentados), veja o [guia de build e teste no Android](ANDROID_BUILD.md).
-
-## Rodar o app web
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-Veja [`web/README.md`](web/README.md) para rotas, fluxo de demonstração e detalhes específicos do app web.
+- **Zerar/ajustar os créditos de um testador:** no console do Upstash, `SET credits:<sub> 3` (`<sub>` é o
+  id da conta Google, o mesmo `user.id` que `/api/me` devolve).
+- **Trocar `JOVI_API_KEY`:** gere um valor novo (`openssl rand -hex 32`), atualize na Vercel e no EAS
+  (`EXPO_PUBLIC_JOVI_API_KEY`) e publique um novo build do app — builds antigos passam a receber
+  `401 API_KEY_INVALID`.
+- **Trocar `JOVI_SESSION_SECRET`:** atualize na Vercel. Todas as sessões ficam inválidas e cada usuário
+  entra de novo silenciosamente (login Google silencioso) no próximo pedido.
+- **Testar uma mudança arriscada:** Preview da Vercel é protegido e o app não consegue chamá-lo. Use
+  Production com `JOVI_REQUIRE_INTEGRITY=false` temporariamente, nunca abra o Preview.
+- **Política de privacidade:** `https://<domínio>/privacy.html` (arquivo `public/privacy.html`).
 
 ## Testes
 
@@ -146,8 +139,10 @@ npm test        # tests/ — shared/ e api/_lib/
 cd web && npm test   # web/tests/ — só o que é específico do app web
 ```
 
-A suíte da raiz cobre `shared/` (a lógica que os dois clientes e o backend usam) e os helpers de
-`api/_lib/`. Em `web/tests/` fica apenas o que é genuinamente específico do app web, como
+A suíte da raiz cobre `shared/` (a lógica que os clientes e o backend usam), o pipeline de rotas
+(`guard`, créditos, idempotência, login, integridade, redação de chaves BYOK) e os adaptadores de IA, sempre
+com o store em memória e `fetch` simulado — sem segredos. O CI (`.github/workflows/check.yml`) roda
+`npm run check` e os testes do web a cada push. Em `web/tests/` fica apenas o que é genuinamente específico do app web, como
 `dataTransfer` — a contraparte nativa usa o sistema de arquivos em vez de `Blob`.
 
 ## Lint

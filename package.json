@@ -2,7 +2,7 @@
   "name": "jovi-lens-native",
   "main": "expo-router/entry",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "dependencies": {
     "@react-native-google-signin/google-signin": "^16.1.5",
     "expo": "~57.0.22",
