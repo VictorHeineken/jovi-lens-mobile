@@ -74,10 +74,17 @@ export function buildSmartFlashcards(subject = {}, examResult = null, limit = 6)
   });
 }
 
+// `presentation` switches on the staged numbers the pitch relies on (seeded
+// História result, synthetic streak and before/after, simulated handwriting
+// correction). Off by default: a real student only ever sees numbers derived
+// from what they actually did. `activity` is every ISO timestamp of real study
+// (history entries, own notes, exam attempts) — the streak is computed from it.
 export function buildStudentDashboard({
   subjects = [],
   subjectArtifacts = {},
   studyCalendar = {},
+  activity = [],
+  presentation = false,
   now = new Date(),
 } = {}) {
   const calendar = normalizeStudyCalendar(studyCalendar);
@@ -87,8 +94,8 @@ export function buildStudentDashboard({
 
   const subjectCards = knownSubjects.map((subject) => {
     const rawResult = subjectArtifacts?.[subject.name]?.examResult?.data || null;
-    let result = getPresentationExamResult(subject, rawResult);
-    if (subject.name === 'História') {
+    let result = getPresentationExamResult(subject, rawResult, { presentation });
+    if (presentation && subject.name === 'História') {
       const baseline = DEMO_SUBJECT_ARTIFACTS.História?.examResult?.data || null;
       if (baseline && percentOf(result) < percentOf(baseline)) result = baseline;
     }
@@ -135,12 +142,17 @@ export function buildStudentDashboard({
   const flashcards = buildSmartFlashcards(urgentSource, urgentSubject?.examResult || null, 5);
   const weeklyPlan = buildUnifiedWeeklyPlan(subjectCards, now);
   const timeline = buildLearningTimeline({ subjectCards, subjects: knownSubjects, studyCalendar: calendar, now });
-  const streak = buildStudyStreak({ subjects: knownSubjects, subjectCards });
-  const comparison = buildProgressComparison(subjectCards);
+  const streak = presentation
+    ? buildPresentationStreak({ subjects: knownSubjects, subjectCards })
+    : buildStudyStreak({ activity, now });
+  const comparison = presentation
+    ? buildPresentationComparison(subjectCards)
+    : buildProgressComparison({ subjectCards, subjectArtifacts });
   const quickReview = buildQuickReviewPack({ urgentSubject, sourceSubject: urgentSource, flashcards, nextExam, now });
   const studySession = buildStudySession({ urgentSubject, quickReview });
   const mindMap = buildMindMap(urgentSource, urgentSubject?.examResult || null);
-  const handwrittenCorrection = gradeHandwrittenAnswer({ subjectName: urgentSubject?.name || 'História' });
+  // Simulated feature (no handwriting OCR exists yet) — shown only in the pitch.
+  const handwrittenCorrection = presentation ? gradeHandwrittenAnswer({ subjectName: urgentSubject?.name || 'História' }) : null;
   const ranking = buildSubjectRanking(subjectCards);
   const today = buildTodayFocus({ urgentSubject, nextExam, quickReview, now });
   const readiness = buildReadinessStatus({ urgentSubject, nextExam, now });
@@ -379,7 +391,54 @@ export function buildLearningTimeline({ subjectCards = [], subjects = [], studyC
   ];
 }
 
-export function buildStudyStreak({ subjects = [], subjectCards = [] } = {}) {
+function localDayKey(date) {
+  const value = new Date(date);
+  if (Number.isNaN(value.getTime())) return null;
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}
+
+// Real streak: consecutive local days with study activity, ending today (or
+// yesterday — the streak is not "broken" until a whole day passes empty).
+// Every timestamp that counts as studying: AI study actions (a bare photo
+// capture does not), notes the student created, and exam attempts.
+export function collectStudyActivity({ aiHistory = [], notes = [], subjectArtifacts = {} } = {}) {
+  const fromHistory = aiHistory.filter((entry) => entry?.action && entry.action !== 'capture').map((entry) => entry.createdAt);
+  const fromNotes = notes.filter((note) => !note?.seed).map((note) => note.createdAt);
+  const fromExams = Object.values(subjectArtifacts || {}).flatMap((artifacts) => (artifacts?.examHistory?.data || []).map((attempt) => attempt?.takenAt));
+  return [...fromHistory, ...fromNotes, ...fromExams].filter(Boolean);
+}
+
+export function buildStudyStreak({ activity = [], now = new Date(), weeklyGoal = 5 } = {}) {
+  const days = new Set(activity.map(localDayKey).filter(Boolean));
+  const cursor = new Date(now);
+  if (!days.has(localDayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (days.has(localDayKey(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  const weekStart = new Date(now);
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7)); // Monday
+  let completedThisWeek = 0;
+  for (let offset = 0; offset < 7; offset += 1) {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + offset);
+    if (day > now) break;
+    if (days.has(localDayKey(day))) completedThisWeek += 1;
+  }
+  return {
+    days: streak,
+    weeklyGoal,
+    completedThisWeek: Math.min(weeklyGoal, completedThisWeek),
+    label: streak === 1 ? '1 dia de sequência' : `${streak} dias de sequência`,
+    nextMilestone: streak === 0
+      ? 'Estude hoje para começar uma sequência'
+      : streak >= 7 ? 'Meta Ouro: manter revisão até a prova' : `Faltam ${7 - streak} ${7 - streak === 1 ? 'dia' : 'dias'} para a Meta Prata`,
+  };
+}
+
+export function buildPresentationStreak({ subjects = [], subjectCards = [] } = {}) {
   const studiedSubjects = subjectCards.filter((card) => card.progress > 0).length;
   const totalNotes = subjects.reduce((sum, subject) => sum + Number(subject.count || subject.notes?.length || 0), 0);
   const days = Math.max(3, Math.min(12, studiedSubjects + Math.ceil(totalNotes / 4)));
@@ -392,10 +451,37 @@ export function buildStudyStreak({ subjects = [], subjectCards = [] } = {}) {
   };
 }
 
-export function buildProgressComparison(subjectCards = []) {
+// Real before/after: the first and the latest recorded exam attempt of the
+// same subject. With fewer than two attempts there is nothing to compare, and
+// the card says so instead of inventing a "before".
+export function buildProgressComparison({ subjectCards = [], subjectArtifacts = {} } = {}) {
+  const candidates = subjectCards
+    .map((card) => ({ card, attempts: (subjectArtifacts?.[card.name]?.examHistory?.data || []).filter((item) => typeof item?.percent === 'number') }))
+    .filter((item) => item.attempts.length >= 2);
+  if (!candidates.length) {
+    const main = subjectCards.find((card) => card.progress > 0) || subjectCards[0] || { name: 'sua matéria' };
+    return { available: false, subject: main.name, before: null, after: null, delta: 0, caption: 'Refaça um simulado para ver sua evolução aqui.' };
+  }
+  const { card, attempts } = candidates[0];
+  const before = attempts[0].percent;
+  const after = attempts[attempts.length - 1].percent;
+  return {
+    available: true,
+    subject: card.name,
+    before,
+    after,
+    delta: after - before,
+    caption: after > before && card.weakTopics?.[0]
+      ? `Continue reforçando ${card.weakTopics[0].topic}.`
+      : after > before ? 'A prática está funcionando.' : 'Revise os erros do último simulado antes de tentar de novo.',
+  };
+}
+
+export function buildPresentationComparison(subjectCards = []) {
   const main = subjectCards.find((card) => card.progress > 0) || subjectCards[0] || { name: 'História', progress: 0, weakTopics: [] };
   const before = Math.max(14, Math.min(52, main.progress - 42));
   return {
+    available: true,
     subject: main.name,
     before,
     after: main.progress,
@@ -503,6 +589,10 @@ export function buildUnifiedWeeklyPlan(subjectCards = []) {
 
 export function gradeDiscursiveAnswer({ subjectName = 'História', prompt = '', answer = '' } = {}) {
   const normalized = normalizeText(answer);
+  // An empty answer used to score 5/10.
+  if (!normalized) {
+    return { subject: subjectName, prompt, score: 0, level: 'Escreva sua resposta', feedback: 'Escreva sua resposta para receber a correção.', strengths: [], missing: ['Comece explicando a causa e depois a consequência.'], modelAnswer: '' };
+  }
   const expected = ['fabrica', 'maquina', 'trabalho', 'operario', 'producao', 'cidade', 'sindicato'];
   const hits = expected.filter((word) => normalized.includes(word));
   const score = Math.max(5, Math.min(10, 5 + hits.length));

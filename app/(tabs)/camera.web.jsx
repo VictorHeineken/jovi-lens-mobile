@@ -6,7 +6,7 @@ import Icon from '../../components/Icon.jsx';
 import SmartImageSheet from '../../components/SmartImageSheet.jsx';
 import { useTopInset } from '../../hooks/safeArea.js';
 import { useToast } from '../../shared/toast.js';
-import { imageSource } from '../../services/demoAssets.js';
+import { IMAGE_FILL, imageSource } from '../../services/demoAssets.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 
 // `react-native-vision-camera` has no web build, so this file is the browser
@@ -14,8 +14,8 @@ import { useAppData } from '../../context/AppDataContext.jsx';
 // no real device here, so the screen always renders the app's existing
 // "camera unavailable, pick from library" empty state — same layout and
 // controls as native, just without a live feed.
-const CAMERA_MODES = ['NOITE', 'VÍDEO', 'FOTO', 'RETRATO', 'MAIS'];
-const MORE_MODES = ['DOCUMENTOS', 'PANORAMA', 'MACRO', 'PRO'];
+// Same modes as the native camera (app/(tabs)/camera.jsx).
+const CAMERA_MODES = ['VÍDEO', 'FOTO', 'DOCUMENTO'];
 const ZOOM_LEVELS = ['0,6', '1x', '2x', '3x'];
 
 export default function CameraScreen() {
@@ -33,7 +33,6 @@ export default function CameraScreen() {
   const [cameraMode, setCameraMode] = useState('FOTO');
   const [zoom, setZoom] = useState('1x');
   const [lensActive, setLensActive] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [cameraMessage, notify] = useToast();
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
@@ -48,12 +47,16 @@ export default function CameraScreen() {
     if (picked.canceled || !picked.assets?.[0]) return;
     const asset = picked.assets[0];
     const src = asset.base64 ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}` : asset.uri;
-    await commitCapture(src, { source: 'upload', label: asset.fileName || 'Imagem importada' });
+    try {
+      await commitCapture(src, { source: 'upload', label: asset.fileName || 'Imagem importada' });
+    } catch (error) {
+      notify(error.message || 'Não foi possível importar essa imagem.');
+    }
   }
 
   async function commitCapture(src, { source, label }) {
     const useLens = lensActive;
-    const documentMode = cameraMode === 'DOCUMENTOS';
+    const documentMode = cameraMode === 'DOCUMENTO';
     const nextPage = documentPage + 1;
     const sessionId = documentSessionId || `document-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const record = await addRecord({
@@ -103,15 +106,12 @@ export default function CameraScreen() {
 
   function chooseMode(nextMode) {
     if (recording && nextMode !== 'VÍDEO') { notify('Finalize o vídeo antes de trocar de modo.'); return; }
-    if (nextMode === 'MAIS') { setMoreOpen((current) => !current); return; }
-    setMoreOpen(false);
-    if (nextMode !== 'DOCUMENTOS') { setDocumentSessionId(null); setDocumentPage(0); }
+    if (nextMode !== 'DOCUMENTO') { setDocumentSessionId(null); setDocumentPage(0); }
     setCameraMode(nextMode);
   }
 
   function finishDocumentSession() {
     setCameraMode('FOTO');
-    setMoreOpen(false);
     setDocumentSessionId(null);
     setDocumentPage(0);
     notify('Documento concluído. As páginas ficaram na galeria.');
@@ -153,28 +153,6 @@ export default function CameraScreen() {
         <TopbarButton icon="gallery" onPress={() => router.push('/(tabs)/gallery')} label="Abrir galeria" />
       </View>
 
-      {moreOpen ? (
-        <View className="absolute left-4 right-4 gap-2 rounded-2xl bg-black/80 p-3" style={{ top: overlayTop }} accessibilityRole="menu" accessibilityLabel="Mais modos de câmera">
-          <Text className="text-[11px] font-semibold text-slate-300">Mais modos</Text>
-          <View className="flex-row flex-wrap gap-2">
-            {MORE_MODES.map((mode) => {
-              const active = cameraMode === mode;
-              return (
-                <Pressable
-                  accessibilityRole="menuitem"
-                  accessibilityState={{ selected: active }}
-                  key={mode}
-                  onPress={() => chooseMode(mode)}
-                  className={`rounded-full px-3 py-1.5 ${active ? 'bg-indigo-600' : 'bg-white/10'}`}
-                >
-                  <Text className="text-[12px] font-medium text-white">{mode}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
-
       {lensActive ? (
         <View className="absolute left-4 right-4 flex-row items-center justify-center gap-1.5 self-center rounded-full bg-indigo-600/90 px-3 py-1.5" style={{ top: overlayTop }}>
           <Icon name="sparkle" size={14} color="#ffffff" />
@@ -182,7 +160,7 @@ export default function CameraScreen() {
         </View>
       ) : null}
 
-      {cameraMode === 'DOCUMENTOS' ? (
+      {cameraMode === 'DOCUMENTO' ? (
         <View className="absolute left-4 right-4 flex-row items-center justify-between gap-2 rounded-2xl bg-black/70 px-3 py-2.5" style={{ top: overlayTop }}>
           <View className="flex-row items-center gap-2">
             <Icon name="scan" size={16} color="#ffffff" />
@@ -219,7 +197,7 @@ export default function CameraScreen() {
 
         <View className="flex-row justify-center gap-4 px-4" accessibilityLabel="Modos da câmera">
           {CAMERA_MODES.map((mode) => {
-            const active = cameraMode === mode || (mode === 'MAIS' && MORE_MODES.includes(cameraMode));
+            const active = cameraMode === mode;
             return (
               <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} key={mode} onPress={() => chooseMode(mode)}>
                 <Text className={`text-[12px] font-semibold ${active ? 'text-amber-400' : 'text-white/70'}`}>{mode}</Text>
@@ -239,7 +217,7 @@ export default function CameraScreen() {
 
           <Pressable
             onPress={capture}
-            accessibilityLabel={lensActive ? 'Capturar e estudar com IA' : cameraMode === 'VÍDEO' ? 'Começar gravação' : cameraMode === 'DOCUMENTOS' ? 'Capturar página do documento' : 'Tirar foto'}
+            accessibilityLabel={lensActive ? 'Capturar e estudar com IA' : cameraMode === 'VÍDEO' ? 'Começar gravação' : cameraMode === 'DOCUMENTO' ? 'Capturar página do documento' : 'Tirar foto'}
             className={`h-20 w-20 items-center justify-center rounded-full border-4 ${recording ? 'border-red-500' : lensActive ? 'border-indigo-400' : 'border-white'}`}
           >
             <View className={`${recording ? 'h-7 w-7 rounded-md bg-red-500' : 'h-16 w-16 rounded-full bg-white'}`} />
@@ -273,5 +251,8 @@ function TopbarButton({ icon, text, selected, onPress, label }) {
 }
 
 function ThumbImage({ uri, onError }) {
-  return <Image source={imageSource(uri)} accessibilityIgnoresInvertColors onError={onError} className="h-full w-full" resizeMode="cover" />;
+  return <Image source={imageSource(uri)} accessibilityIgnoresInvertColors onError={onError} style={IMAGE_FILL} resizeMode="cover" resizeMethod="resize" />;
 }
+
+// A crash here stays inside this tab (the tab bar keeps working).
+export { default as ErrorBoundary } from '../../components/ErrorScreen.jsx';

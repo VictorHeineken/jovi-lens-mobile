@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import Icon from '../../components/Icon.jsx';
-import StudentDashboard from '../../components/StudentDashboard.jsx';
 import { useTopInset } from '../../hooks/safeArea.js';
 import { useAnnounce } from '../../hooks/announce.js';
+import { useToast } from '../../shared/toast.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 import { createBackup, downloadBackup, readBackupFile } from '../../services/dataTransfer.js';
+import { confirmAction } from '../../services/confirm.js';
 import { signOutGoogle, useGoogleSignIn } from '../../services/googleAuth.js';
 import { createDemoOutlookCalendar, daysUntilEvent, EMPTY_STUDY_CALENDAR, formatEventDate } from '../../shared/studyCalendar.js';
 
@@ -61,15 +62,19 @@ const LEVEL_OPTIONS = [
   { value: 'intermediate', label: 'Já tenho base' },
   { value: 'advanced', label: 'Quero aprofundar' },
 ];
-const SORT_OPTIONS = [
-  { value: 'relevance', label: 'Melhor combinação' },
-  { value: 'viewCount', label: 'Mais populares' },
-  { value: 'date', label: 'Mais recentes' },
-];
+
+function initialsOf(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return `${parts[0][0]}${parts.length > 1 ? parts[parts.length - 1][0] : ''}`.toUpperCase();
+}
 
 export default function ProfileScreen() {
-  const { user, setUser, plan, setPlan, records, notes, aiHistory, subjects, subjectArtifacts, learningPreferences, setLearningPreferences, studyCalendar, setStudyCalendar, restoreLocalData, clearLocalData } = useAppData();
-  const [authMessage, setAuthMessage] = useState('');
+  const { user, setUser, plan, setPlan, records, notes, aiHistory, subjectArtifacts, learningPreferences, setLearningPreferences, studyCalendar, setStudyCalendar, restoreLocalData, clearLocalData } = useAppData();
+  // Floating, auto-dismissing feedback: the old inline message rendered at the
+  // very bottom of a ~6,000px page, out of sight of the button that caused it.
+  const [authMessage, setAuthMessage] = useToast(3600);
+  const [exporting, setExporting] = useState(false);
   useAnnounce(authMessage);
   const topInset = useTopInset();
   const { signIn: signInWithGoogle, configured: googleConfigured } = useGoogleSignIn();
@@ -115,8 +120,24 @@ export default function ProfileScreen() {
   }
 
   async function exportData() {
-    await downloadBackup(createBackup({ records, notes, aiHistory, plan, user, subjectArtifacts, learningPreferences, studyCalendar }));
-    setAuthMessage('Backup dos seus estudos exportado para este dispositivo.');
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { data, summary } = await createBackup({ records, notes, aiHistory, plan, user, subjectArtifacts, learningPreferences, studyCalendar });
+      const shared = await downloadBackup(data);
+      const extras = [
+        summary.skippedVideos ? `${summary.skippedVideos} vídeo(s) não entram no backup` : '',
+        summary.unreadable ? `${summary.unreadable} foto(s) não puderam ser lidas` : '',
+        summary.skippedForSize ? `${summary.skippedForSize} foto(s) ficaram de fora pelo limite de tamanho` : '',
+      ].filter(Boolean).join('; ');
+      setAuthMessage(shared
+        ? `Backup pronto: ${notes.length} notas e ${summary.photos} fotos.${extras ? ` ${extras}.` : ''}`
+        : 'O compartilhamento não está disponível neste aparelho.');
+    } catch {
+      setAuthMessage('Não foi possível gerar o backup agora.');
+    } finally {
+      setExporting(false);
+    }
   }
 
   function updateLearningPreference(key, value) {
@@ -136,6 +157,15 @@ export default function ProfileScreen() {
     setAuthMessage('Modo apresentação pronto: estudante demo, História e provas do Outlook já estão preparados.');
   }
 
+  // Undoes what "Preparar demo" set up: the demo student and the demo Outlook
+  // agenda go too, otherwise Hoje kept greeting Ana and listing fake exams.
+  function leavePresentationMode() {
+    setPlan({ type: 'free' });
+    if (user?.id === DEMO_USER.id) setUser(null);
+    if (studyCalendar.account === createDemoOutlookCalendar().account) setStudyCalendar(EMPTY_STUDY_CALENDAR);
+    setAuthMessage('Modo apresentação desligado: os painéis mostram só os seus dados.');
+  }
+
   function disconnectOutlookDemo() {
     setStudyCalendar(EMPTY_STUDY_CALENDAR);
     setAuthMessage('Calendário desconectado.');
@@ -146,41 +176,30 @@ export default function ProfileScreen() {
     if (picked.canceled || !picked.assets?.[0]) return;
     try {
       const backup = await readBackupFile(picked.assets[0]);
-      Alert.alert(
-        'Importar backup',
-        'Importar este backup vai substituir suas notas, histórico e preferências locais. As mídias serão mescladas. Continuar?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Continuar',
-            onPress: async () => {
-              const result = await restoreLocalData(backup);
-              setAuthMessage(`Backup restaurado: ${result.notes} notas e ${result.records} mídias.`);
-            },
-          },
-        ],
-      );
+      const confirmed = await confirmAction({
+        title: 'Importar backup',
+        message: 'Importar este backup vai substituir suas notas, histórico e preferências locais. As fotos serão mescladas. Continuar?',
+        confirmLabel: 'Continuar',
+      });
+      if (!confirmed) return;
+      setAuthMessage('Restaurando backup...');
+      const result = await restoreLocalData(backup);
+      setAuthMessage(`Backup restaurado: ${result.notes} notas e ${result.records} fotos.${result.failedRecords ? ` ${result.failedRecords} foto(s) não vieram no arquivo ou não puderam ser gravadas.` : ''}`);
     } catch (error) {
       setAuthMessage(error.message || 'Não foi possível restaurar esse backup.');
     }
   }
 
-  function clearData() {
-    Alert.alert(
-      'Limpar dados locais',
-      'Apagar fotos, notas, histórico e preferências locais? Os exemplos da demonstração serão mantidos.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Apagar',
-          style: 'destructive',
-          onPress: async () => {
-            await clearLocalData();
-            setAuthMessage('Dados locais removidos. Os exemplos da demonstração foram mantidos.');
-          },
-        },
-      ],
-    );
+  async function clearData() {
+    const confirmed = await confirmAction({
+      title: 'Limpar dados locais',
+      message: 'Apagar fotos, notas, histórico e preferências deste aparelho? Os exemplos do app voltam ao estado inicial.',
+      confirmLabel: 'Apagar',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    await clearLocalData();
+    setAuthMessage('Dados locais removidos. Os exemplos do app foram restaurados.');
   }
 
   const planTitle = trialActive
@@ -197,10 +216,11 @@ export default function ProfileScreen() {
           <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Seu espaço</Text>
         </View>
         <Text className="-mt-2 text-[24px] font-bold text-slate-900">Perfil</Text>
+        <Text className="-mt-3 text-[12px] text-slate-500">Seu painel de estudos agora fica na aba Hoje.</Text>
 
         <View className="flex-row items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4">
           <View className="h-12 w-12 items-center justify-center rounded-full bg-indigo-100">
-            {user ? <Text className="text-[14px] font-bold text-indigo-600">AB</Text> : <Icon name="user" size={19} color="#4f46e5" />}
+            {user ? <Text className="text-[14px] font-bold text-indigo-600">{initialsOf(user.name)}</Text> : <Icon name="user" size={19} color="#4f46e5" />}
           </View>
           <View className="flex-1 gap-0.5">
             <Text className="text-[15px] font-bold text-slate-900">{user ? user.name : 'Conta de demonstração'}</Text>
@@ -246,10 +266,17 @@ export default function ProfileScreen() {
             </View>
             <Icon name="sparkle" size={18} color="#4f46e5" />
           </View>
-          <Pressable accessibilityRole="button" onPress={preparePresentationDemo} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
-            <Icon name="sparkle" size={16} color="#ffffff" />
-            <Text className="text-[14px] font-semibold text-white">Preparar demo</Text>
-          </Pressable>
+          {plan.presentationMode ? (
+            <Pressable accessibilityRole="button" onPress={leavePresentationMode} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-white py-3">
+              <Icon name="close" size={16} color="#4f46e5" />
+              <Text className="text-[14px] font-semibold text-indigo-700">Sair do modo apresentação</Text>
+            </Pressable>
+          ) : (
+            <Pressable accessibilityRole="button" onPress={preparePresentationDemo} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+              <Icon name="sparkle" size={16} color="#ffffff" />
+              <Text className="text-[14px] font-semibold text-white">Preparar demo</Text>
+            </Pressable>
+          )}
         </View>
 
         <View className="gap-3 rounded-2xl border border-slate-200 bg-white p-4">
@@ -306,7 +333,6 @@ export default function ProfileScreen() {
           <PreferenceField label="Estilo da aula" options={VIDEO_STYLE_OPTIONS} value={learningPreferences.videoStyle} onChange={(v) => updateLearningPreference('videoStyle', v)} />
           <PreferenceField label="Duração preferida" options={DURATION_OPTIONS} value={learningPreferences.duration} onChange={(v) => updateLearningPreference('duration', v)} />
           <PreferenceField label="Nível atual" options={LEVEL_OPTIONS} value={learningPreferences.level} onChange={(v) => updateLearningPreference('level', v)} />
-          <PreferenceField label="Critério de busca" options={SORT_OPTIONS} value={learningPreferences.sort} onChange={(v) => updateLearningPreference('sort', v)} />
         </View>
 
         <View className={`gap-3 rounded-2xl border p-4 ${studyCalendar.connected ? 'border-indigo-200 bg-indigo-50' : 'border-slate-200 bg-white'}`}>
@@ -355,14 +381,6 @@ export default function ProfileScreen() {
           <Text className="text-[11px] text-slate-400">Demo local: nenhum login Microsoft real é feito nesta versão.</Text>
         </View>
 
-        <StudentDashboard
-          subjects={subjects}
-          notes={notes}
-          aiHistory={aiHistory}
-          subjectArtifacts={subjectArtifacts}
-          studyCalendar={studyCalendar}
-        />
-
         <View className="gap-3 rounded-2xl border border-slate-200 bg-white p-4">
           <View className="flex-row items-start justify-between gap-2">
             <View className="flex-1">
@@ -372,9 +390,9 @@ export default function ProfileScreen() {
             <Icon name="download" size={18} color="#64748b" />
           </View>
           <View className="flex-row gap-2">
-            <Pressable accessibilityRole="button" onPress={exportData} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
+            <Pressable accessibilityRole="button" accessibilityState={{ busy: exporting, disabled: exporting }} disabled={exporting} onPress={exportData} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5 ${exporting ? 'opacity-60' : ''}`}>
               <Icon name="download" size={14} color="#475569" />
-              <Text className="text-[13px] font-medium text-slate-600">Exportar backup</Text>
+              <Text className="text-[13px] font-medium text-slate-600">{exporting ? 'Preparando...' : 'Exportar backup'}</Text>
             </Pressable>
             <Pressable accessibilityRole="button" onPress={importData} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 py-2.5">
               <Icon name="upload" size={14} color="#475569" />
@@ -399,13 +417,13 @@ export default function ProfileScreen() {
           <Text className="text-[11px] text-slate-400">Essa ação apaga fotos, notas, histórico, plano demonstrativo e artefatos do Estúdio deste dispositivo. Ela não remove os exemplos do app.</Text>
         </View>
 
-        {authMessage ? (
-          <View className="flex-row items-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5">
-            <Icon name="info" size={15} color="#64748b" />
-            <Text className="flex-1 text-[13px] text-slate-600">{authMessage}</Text>
-          </View>
-        ) : null}
       </ScrollView>
+      {authMessage ? (
+        <View className="absolute left-4 right-4 flex-row items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3" style={{ top: topInset }} accessibilityLiveRegion="polite">
+          <Icon name="info" size={15} color="#ffffff" />
+          <Text className="flex-1 text-[13px] font-medium text-white">{authMessage}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -442,3 +460,6 @@ function PreferenceField({ label, options, value, onChange }) {
     </View>
   );
 }
+
+// A crash here stays inside this tab (the tab bar keeps working).
+export { default as ErrorBoundary } from '../../components/ErrorScreen.jsx';

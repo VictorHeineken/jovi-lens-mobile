@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import * as Linking from 'expo-linking';
 import Icon from './Icon.jsx';
+import { openExternalUrl } from '../services/links.js';
+import { useAppData } from '../context/AppDataContext.jsx';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { daysUntilEvent, formatEventDate } from '../shared/studyCalendar.js';
 
 export default function StudyPlan({ subject, savedPlan, savedProgress = {}, savedLessons = [], onSave, onProgressSave }) {
+  const { studyCalendar, plan: appPlan } = useAppData();
   const [plan, setPlan] = useState(savedPlan || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -76,7 +78,9 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
           <Text className="flex-1 text-[13px] text-slate-600">{plan.overview}</Text>
         </View>
       ) : null}
-      {plan.calendarEvent ? <CalendarDeadline event={plan.calendarEvent} /> : null}
+      {/* A plan only claims a detected exam while a calendar is actually
+          connected (or in the pitch) — the preloaded example plan carries one. */}
+      {plan.calendarEvent && (studyCalendar?.connected || appPlan?.presentationMode) ? <CalendarDeadline event={plan.calendarEvent} /> : null}
       <View className="gap-1.5">
         <Text className="text-[12px] text-slate-500">{doneCount}/{totalTasks} tarefas</Text>
         <View className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -167,7 +171,7 @@ function SavedLessons({ lessons = [] }) {
         <Text className="text-[12px] font-semibold text-slate-500">Buscas de aula salvas</Text>
       </View>
       {lessons.map((lesson) => (
-        <Pressable accessibilityRole="button" key={lesson.id} onPress={() => Linking.openURL(lesson.url)} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+        <Pressable accessibilityRole="button" key={lesson.id} onPress={() => openExternalUrl(lesson.url)} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
           <View className="flex-1 gap-0.5">
             <View className="flex-row items-center gap-1.5">
               <Icon name="search" size={12} color="#4f46e5" />

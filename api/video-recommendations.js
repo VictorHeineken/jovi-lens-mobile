@@ -1,5 +1,5 @@
 import { runVideoRecommendations } from './_lib/ai/service.js';
-import { errorResponse, hasValidApiKey, isDailyLimited, isRateLimited, sessionUser } from './_lib/http.js';
+import { errorResponse, guardAiRequest } from './_lib/http.js';
 
 const MAX_NOTES = 40;
 
@@ -17,17 +17,8 @@ function safeInput(body) {
     subtheme: typeof note?.subtheme === 'string' ? note.subtheme.slice(0, 80) : '',
     topicPath: Array.isArray(note?.topicPath) ? note.topicPath.filter((topic) => typeof topic === 'string').slice(0, 3) : [],
   }));
-  const preferences = body?.preferences && typeof body.preferences === 'object' ? {
-    studyGoal: typeof body.preferences.studyGoal === 'string' ? body.preferences.studyGoal : 'vestibular',
-    studyContext: typeof body.preferences.studyContext === 'string' ? body.preferences.studyContext : 'classes',
-    weeklyPace: typeof body.preferences.weeklyPace === 'string' ? body.preferences.weeklyPace : 'regular',
-    practiceMode: typeof body.preferences.practiceMode === 'string' ? body.preferences.practiceMode : 'mixed',
-    reviewMethod: typeof body.preferences.reviewMethod === 'string' ? body.preferences.reviewMethod : 'spaced',
-    videoStyle: typeof body.preferences.videoStyle === 'string' ? body.preferences.videoStyle : 'balanced',
-    duration: typeof body.preferences.duration === 'string' ? body.preferences.duration : 'standard',
-    level: typeof body.preferences.level === 'string' ? body.preferences.level : 'intermediate',
-    sort: typeof body.preferences.sort === 'string' ? body.preferences.sort : 'relevance',
-  } : {};
+  // Preferences go through service.normalizeLearningPreferences — the one allowlist.
+  const preferences = body?.preferences;
 
   const weakTopics = Array.isArray(subject.weakTopics) ? subject.weakTopics.filter((topic) => typeof topic === 'string').slice(0, 5).map((topic) => topic.slice(0, 80)) : [];
 
@@ -36,12 +27,13 @@ function safeInput(body) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
-  if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
-  const { provided: hasSession, user: sessionOwner } = sessionUser(req);
-  if (hasSession && !sessionOwner) return res.status(401).json({ code: 'SESSION_INVALID', message: 'Sessão expirada. Faça login novamente.' });
-  if (isRateLimited(req, { scope: 'video-recommendations', max: 6 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas buscas em sequência. Tente novamente em instantes.' });
-  if (isDailyLimited(req, { scope: 'video-recommendations', max: 20 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de recomendações foi atingido. Tente novamente amanhã.' });
+  if (guardAiRequest(req, res, {
+    scope: 'video-recommendations',
+    perMinute: 6,
+    perDay: 20,
+    burstMessage: 'Muitas buscas em sequência. Tente novamente em instantes.',
+    dailyMessage: 'O limite diário de recomendações foi atingido. Tente novamente amanhã.',
+  })) return;
 
   const input = safeInput(req.body || {});
   if (input.error) return res.status(input.error.status).json({ message: input.error.message });

@@ -14,6 +14,8 @@
 // whose keys come from stored record data, so a prototype-less object keeps a
 // src of 'constructor' or '__proto__' from resolving to an Object.prototype
 // member and defeating the fallback below.
+import { rebaseMediaUri } from './storage.js';
+
 const DEMO_IMAGES = Object.assign(Object.create(null), {
   '/demo-assets/books-library.jpg': require('../assets/demo/books-library.jpg'),
   '/demo-assets/books-open.jpg': require('../assets/demo/books-open.jpg'),
@@ -45,9 +47,12 @@ const DEMO_IMAGES = Object.assign(Object.create(null), {
 // seeded demo path, or a `{ uri }` object for everything else (file:// paths
 // written by services/storage.js, data: URIs from a fresh capture, and remote
 // http(s) URLs such as external thumbnails).
+// App-owned media paths are re-anchored on the current media folder (see
+// storage.rebaseMediaUri) — a note made from a photo keeps an absolute path
+// that goes stale after an iOS update or a restore on another phone.
 export function imageSource(src) {
   if (!src) return undefined;
-  return DEMO_IMAGES[src] ?? { uri: src };
+  return DEMO_IMAGES[src] ?? { uri: rebaseMediaUri(src) };
 }
 
 // The bundled module behind a seeded /demo-assets path, or null for anything
@@ -59,3 +64,9 @@ export function demoAssetModule(src) {
   if (typeof src !== 'string') return null;
   return DEMO_IMAGES[src] ?? null;
 }
+
+// Style for an <Image> that must fill its parent box. The explicit 100% size
+// matters on react-native-web: a require()d source carries its intrinsic
+// width/height, which otherwise wins over absolute insets and draws the photo
+// at full size, cropped inside the tile.
+export const IMAGE_FILL = { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' };

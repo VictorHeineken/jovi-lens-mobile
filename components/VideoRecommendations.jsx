@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
-import * as Linking from 'expo-linking';
 import Icon from './Icon.jsx';
+import { openExternalUrl } from '../services/links.js';
+import { IMAGE_FILL } from '../services/demoAssets.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { findVideoLessons } from '../services/videoRecommendations.js';
 
@@ -104,7 +105,7 @@ export default function VideoRecommendations({ subject, saved = null, examResult
                 <View className="flex-row gap-3">
                   <View className="h-16 w-20 items-center justify-center overflow-hidden rounded-lg bg-indigo-50">
                     {video.thumbnail ? (
-                      <Image source={{ uri: video.thumbnail }} className="h-full w-full" resizeMode="cover" accessibilityIgnoresInvertColors />
+                      <Image source={{ uri: video.thumbnail }} style={IMAGE_FILL} resizeMode="cover" accessibilityIgnoresInvertColors />
                     ) : (
                       <Icon name="search" size={22} color="#4f46e5" />
                     )}
@@ -125,7 +126,7 @@ export default function VideoRecommendations({ subject, saved = null, examResult
                 ) : null}
                 <View className="flex-row items-center justify-between gap-2">
                   <View className="flex-row gap-2">
-                    <Pressable accessibilityRole="button" onPress={() => Linking.openURL(video.url)} className="flex-row items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5">
+                    <Pressable accessibilityRole="button" onPress={() => openExternalUrl(video.url)} className="flex-row items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5">
                       <Icon name="play" size={13} color="#ffffff" />
                       <Text className="text-[12px] font-medium text-white">Ir ao vídeo</Text>
                     </Pressable>

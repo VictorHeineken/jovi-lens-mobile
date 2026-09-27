@@ -1,11 +1,13 @@
 import { Tabs } from 'expo-router';
 import Icon from '../../components/Icon.jsx';
 
+// Copilot used to be a tab of its own, repeating the plan card already in
+// Perfil; "Hoje" (the study dashboard) took its place.
 const tabs = [
+  { name: 'today', title: 'Hoje', icon: 'home' },
   { name: 'camera', title: 'Câmera', icon: 'camera' },
   { name: 'gallery', title: 'Galeria', icon: 'gallery' },
   { name: 'notes', title: 'Notas', icon: 'note' },
-  { name: 'copilot', title: 'Copilot', icon: 'sparkle' },
   { name: 'profile', title: 'Perfil', icon: 'user' },
 ];
 
@@ -37,3 +39,6 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+// expo-router shows this for any route below that throws while rendering.
+export { default as ErrorBoundary } from '../../components/ErrorScreen.jsx';

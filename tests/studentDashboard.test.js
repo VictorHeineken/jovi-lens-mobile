@@ -31,6 +31,7 @@ test('buildStudentDashboard prioritizes the next Outlook exam', () => {
     subjects: [historySubject, { name: 'Geografia', count: 1, subthemes: ['Cartografia'], notes: [] }],
     subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
     studyCalendar: createDemoOutlookCalendar(now),
+    presentation: true,
     now,
   });
 
@@ -132,6 +133,7 @@ test('dashboard flashcards and comparison use presentation result for História'
   const dashboard = buildStudentDashboard({
     subjects: [historySubject],
     subjectArtifacts: { História: { examResult: { data: weakLocalResult } } },
+    presentation: true,
     now,
   });
 
@@ -176,4 +178,44 @@ test('dashboard smart notifications include exam, daily review and drive audio',
   assert.equal(dashboard.notifications[0].tone, 'attention');
   assert.ok(dashboard.notifications[1].body.includes('menor bloco'));
   assert.ok(dashboard.notifications[2].title.includes('Podcast'));
+});
+
+test('outside presentation mode the dashboard shows only real numbers', () => {
+  const weakLocalResult = {
+    ...DEMO_SUBJECT_ARTIFACTS.História.examResult.data,
+    score: 1,
+    total: 7,
+    percent: 14,
+  };
+  const dashboard = buildStudentDashboard({
+    subjects: [historySubject],
+    subjectArtifacts: { História: { examResult: { data: weakLocalResult } } },
+    now,
+  });
+  assert.equal(dashboard.urgentSubject.progress, 14);
+  assert.equal(dashboard.streak.days, 0, 'no activity means no streak');
+  assert.equal(dashboard.comparison.available, false, 'one attempt is not a before/after');
+  assert.equal(dashboard.handwrittenCorrection, null, 'simulated OCR correction is pitch-only');
+});
+
+test('the streak counts consecutive active days and survives until a day passes empty', () => {
+  const day = (offset) => new Date(now.getTime() - offset * 86_400_000).toISOString();
+  const three = buildStudentDashboard({ subjects: [historySubject], activity: [day(0), day(1), day(1), day(2), day(5)], now });
+  assert.equal(three.streak.days, 3);
+  const fromYesterday = buildStudentDashboard({ subjects: [historySubject], activity: [day(1), day(2)], now });
+  assert.equal(fromYesterday.streak.days, 2);
+  const broken = buildStudentDashboard({ subjects: [historySubject], activity: [day(2), day(3)], now });
+  assert.equal(broken.streak.days, 0);
+});
+
+test('before/after compares the first and latest real exam attempts', () => {
+  const dashboard = buildStudentDashboard({
+    subjects: [historySubject],
+    subjectArtifacts: { História: { examHistory: { data: [{ percent: 40, takenAt: '2026-09-10' }, { percent: 55 }, { percent: 71 }] } } },
+    now,
+  });
+  assert.equal(dashboard.comparison.available, true);
+  assert.equal(dashboard.comparison.before, 40);
+  assert.equal(dashboard.comparison.after, 71);
+  assert.equal(dashboard.comparison.delta, 31);
 });

@@ -19,7 +19,6 @@ export const DEFAULT_LEARNING_PREFERENCES = {
   videoStyle: 'animated',
   duration: 'standard',
   level: 'intermediate',
-  sort: 'relevance',
 };
 
 function openDb() {
@@ -112,6 +111,9 @@ function writeJson(key, value) {
 }
 
 export const getNotes = () => readJson(NOTES_KEY, []);
+// Seed (example) notes the student deleted — see shared/seedLibrary.js mergeSeedNotes.
+export const getDismissedSeedNotes = () => readJson('jovi_mobile_dismissed_seed_notes_v1', []);
+export const setDismissedSeedNotes = (ids) => writeJson('jovi_mobile_dismissed_seed_notes_v1', ids);
 export const setNotes = (notes) => writeJson(NOTES_KEY, notes);
 export const getHistory = () => readJson(HISTORY_KEY, []);
 export const setHistory = (history) => writeJson(HISTORY_KEY, history);

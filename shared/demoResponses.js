@@ -84,6 +84,9 @@ export function analysisFromNote(note, { distractors = [] } = {}) {
   options.splice(answerIndex, 0, firstPoint);
 
   return {
+    // Lets "Salvar" recognise that this analysis already lives in Notas as
+    // this example note, instead of saving a duplicate of it.
+    sourceNoteId: note.id,
     text: note.text || note.summary || '',
     language: 'pt',
     title: note.title,
@@ -103,7 +106,9 @@ export function analysisFromNote(note, { distractors = [] } = {}) {
     learning: {
       understand: {
         title: 'Primeiro, entenda a ideia',
-        intro: note.summary || '',
+        // The sheet already shows summary + key points above this block; the
+        // note body is the part that actually explains.
+        intro: note.text || note.summary || '',
         steps: keyPoints.map((text, index) => ({ label: `Ponto ${index + 1}`, text })),
       },
       solve: {

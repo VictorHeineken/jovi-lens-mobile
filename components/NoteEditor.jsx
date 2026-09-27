@@ -42,7 +42,11 @@ export default function NoteEditor({ note, onSave, onClose }) {
       title: draft.title.trim(),
       category: draft.category.trim() || 'Estudos',
       subcategory: draft.subcategory.trim() || 'Geral',
-      topicPath: [draft.subcategory.trim() || 'Geral'],
+      // Keep a deeper path (Matéria → Subtema → Nível 3) unless the subtheme
+      // itself changed; this used to flatten every edited note to one level.
+      topicPath: (draft.subcategory.trim() || 'Geral') === (note?.subcategory || 'Geral') && Array.isArray(note?.topicPath) && note.topicPath.length
+        ? note.topicPath
+        : [draft.subcategory.trim() || 'Geral'],
       summary: draft.summary.trim(),
       text: draft.text.trim(),
       tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 12),

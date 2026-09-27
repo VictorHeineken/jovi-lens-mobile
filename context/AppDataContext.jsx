@@ -3,6 +3,7 @@ import {
   deleteMediaRecord,
   clearMediaRecords,
   getAllMediaRecords,
+  getDismissedSeedNotes,
   getHistory,
   getLearningPreferences,
   getNotes,
@@ -11,6 +12,7 @@ import {
   getSubjectArtifacts,
   getUser,
   saveMediaRecord,
+  setDismissedSeedNotes,
   setHistory as persistHistory,
   setLearningPreferences as persistLearningPreferences,
   setNotes as persistNotes,
@@ -24,66 +26,9 @@ import { aggregateSubjects } from '../shared/subjects.js';
 import { mergeDemoSubjectArtifacts } from '../shared/demoSubjectArtifacts.js';
 import { EMPTY_STUDY_CALENDAR, normalizeStudyCalendar } from '../shared/studyCalendar.js';
 import { demoAssetModule } from '../services/demoAssets.js';
-import { analysisFromNote } from '../shared/demoResponses.js';
+import { mergeSeedNotes, sampleMedia, sampleNotes, sampleRecords as samples, studyAssets } from '../shared/seedLibrary.js';
 
 const AppDataContext = createContext(null);
-
-// Ported verbatim from the web app's Vite public-folder path. These strings are
-// not filesystem paths in RN — services/demoAssets.js maps each one to a
-// bundled module under assets/demo/, which is what makes the seeded samples
-// render and what lets the AI pipeline read their bytes. Keep the two in sync:
-// renaming a path here without renaming the matching key there silently falls
-// back to an unresolvable `{ uri }`.
-const ASSET_BASE = '/demo-assets';
-
-const studyAssets = {
-  history: [
-    `${ASSET_BASE}/history-factory.jpg`,
-    `${ASSET_BASE}/history-workers.jpg`,
-    `${ASSET_BASE}/history-railway.jpg`,
-    `${ASSET_BASE}/history-spinning-jenny.jpg`,
-    `${ASSET_BASE}/history-child-labor.jpg`,
-    `${ASSET_BASE}/history-crystal-palace.jpg`,
-  ],
-  programming: [`${ASSET_BASE}/programming-code.jpg`, `${ASSET_BASE}/programming-javascript.jpg`, `${ASSET_BASE}/programming-frontend.jpg`],
-  books: [`${ASSET_BASE}/books-library.jpg`, `${ASSET_BASE}/books-open.jpg`, `${ASSET_BASE}/books-shelves.jpg`],
-  photography: [`${ASSET_BASE}/camera-vintage.jpg`, `${ASSET_BASE}/camera-collection.jpg`, `${ASSET_BASE}/photography-film.jpg`],
-  math: [`${ASSET_BASE}/math-blackboard.jpg`],
-  physics: [`${ASSET_BASE}/physics-pendulum.jpg`],
-  chemistry: [`${ASSET_BASE}/chemistry-beakers.jpg`],
-  biology: [`${ASSET_BASE}/biology-cells.jpg`],
-  geography: [`${ASSET_BASE}/geography-globe.jpg`],
-  arts: [`${ASSET_BASE}/arts-palette.jpg`],
-};
-
-// One dedicated record per sampleNote below (same id suffix, same createdAt),
-// each pointing at that note's own themed photo. Previously only 3 generic
-// records existed for 12 notes, so most notes displayed an unrelated photo
-// (whichever of the 3 their recordId happened to land on) — see the note's
-// own `image` field, which was already correct but never actually shown.
-const sampleMedia = [
-  { id: 'sample-1', src: studyAssets.history[0], createdAt: '2026-08-25T19:20:00.000Z', source: 'sample', label: 'Fábrica de velas do século 19', aiAvailable: true },
-  { id: 'sample-2', src: studyAssets.history[1], createdAt: '2026-08-25T11:05:00.000Z', source: 'sample', label: 'Operários saindo da fábrica', aiAvailable: true },
-  { id: 'sample-3', src: studyAssets.history[2], createdAt: '2026-08-24T16:40:00.000Z', source: 'sample', label: 'Locomotiva a vapor de 1814', aiAvailable: true },
-  { id: 'sample-19', src: studyAssets.history[3], createdAt: '2026-08-24T12:25:00.000Z', source: 'sample', label: 'Spinning Jenny e mecanização têxtil', aiAvailable: true },
-  { id: 'sample-20', src: studyAssets.history[4], createdAt: '2026-08-24T10:10:00.000Z', source: 'sample', label: 'Jovem trabalhador em fábrica de algodão', aiAvailable: true },
-  { id: 'sample-21', src: studyAssets.history[5], createdAt: '2026-08-23T18:05:00.000Z', source: 'sample', label: 'Crystal Palace e Grande Exposição de 1851', aiAvailable: true },
-  { id: 'sample-4', src: studyAssets.programming[0], createdAt: '2026-08-24T09:15:00.000Z', source: 'sample', label: 'Código em Python', aiAvailable: true },
-  { id: 'sample-5', src: studyAssets.programming[1], createdAt: '2026-08-23T14:50:00.000Z', source: 'sample', label: 'Código em JavaScript', aiAvailable: true },
-  { id: 'sample-6', src: studyAssets.programming[2], createdAt: '2026-08-23T08:30:00.000Z', source: 'sample', label: 'Editor visual de frontend', aiAvailable: true },
-  { id: 'sample-7', src: studyAssets.books[0], createdAt: '2026-08-22T17:10:00.000Z', source: 'sample', label: 'Estante de livros da biblioteca', aiAvailable: true },
-  { id: 'sample-8', src: studyAssets.books[1], createdAt: '2026-08-22T10:05:00.000Z', source: 'sample', label: 'Livro aberto para leitura', aiAvailable: true },
-  { id: 'sample-9', src: `${ASSET_BASE}/demo-default-photo.jpg`, createdAt: '2026-08-21T15:25:00.000Z', source: 'sample', label: 'Capa do livro fotografado', aiAvailable: true },
-  { id: 'sample-10', src: studyAssets.photography[0], createdAt: '2026-08-21T09:40:00.000Z', source: 'sample', label: 'Parede de câmeras vintage', aiAvailable: true },
-  { id: 'sample-11', src: studyAssets.photography[1], createdAt: '2026-08-20T13:15:00.000Z', source: 'sample', label: 'Vitrine de câmeras raras', aiAvailable: true },
-  { id: 'sample-12', src: studyAssets.photography[2], createdAt: '2026-08-20T08:00:00.000Z', source: 'sample', label: 'Filme fotográfico de 35mm', aiAvailable: true },
-  { id: 'sample-13', src: studyAssets.math[0], createdAt: '2026-08-19T18:30:00.000Z', source: 'sample', label: 'Quadro com criptografia e equações', aiAvailable: true },
-  { id: 'sample-14', src: studyAssets.physics[0], createdAt: '2026-08-19T10:20:00.000Z', source: 'sample', label: 'Experimento de pêndulo em livro de física', aiAvailable: true },
-  { id: 'sample-15', src: studyAssets.chemistry[0], createdAt: '2026-08-18T16:05:00.000Z', source: 'sample', label: 'Béqueres de laboratório', aiAvailable: true },
-  { id: 'sample-16', src: studyAssets.biology[0], createdAt: '2026-08-18T09:35:00.000Z', source: 'sample', label: 'Células vistas ao microscópio', aiAvailable: true },
-  { id: 'sample-17', src: studyAssets.geography[0], createdAt: '2026-08-17T15:45:00.000Z', source: 'sample', label: 'Globo terrestre histórico', aiAvailable: true },
-  { id: 'sample-18', src: studyAssets.arts[0], createdAt: '2026-08-17T08:15:00.000Z', source: 'sample', label: 'Paleta de artista com tinta a óleo', aiAvailable: true },
-];
 
 // These paths and the require() keys in services/demoAssets.js are two hand-kept
 // lists that must agree. A mismatch degrades silently — the image just falls back
@@ -97,499 +42,11 @@ if (__DEV__) {
   }
 }
 
-// Fontes reais (Wikimedia Commons, domínio público/CC0) documentadas em public/demo-assets/SOURCES.md
-const THEME_SOURCES = {
-  historyFactory: { label: 'Apollokerzenfabrik innen (Historisches Museum der Stadt Wien)', url: 'https://commons.wikimedia.org/wiki/File:Apollokerzenfabrik_innen.jpg' },
-  historyWorkers: { label: 'M&K Industrial Revolution, 1900', url: 'https://commons.wikimedia.org/wiki/File:MandK_Industrial_Revolution_1900.jpg' },
-  historyRailway: { label: 'Locomotiva a vapor, 1814 (Library of Congress)', url: 'https://commons.wikimedia.org/wiki/File:Early_steam_locomotive_with_toothed_%22propelling_wheel%22_which_gripped_a_ribbed_rail_while_other_wheels_rode_on_a_smooth_rail,_and_two_coal_cars_LCCN2006691760.jpg' },
-  historySpinningJenny: { label: "Havgreaves' Spinning Jenny", url: 'https://commons.wikimedia.org/wiki/File:Havgreaves%27_Spinning_Jenny.jpg' },
-  historyChildLabor: { label: 'Youngster working in Carolina cotton mill, 1908', url: 'https://commons.wikimedia.org/wiki/File:Youngster_working_in_Carolina_cotton_mill,_1908.jpg' },
-  historyCrystalPalace: { label: 'Crystal Palace, 1851', url: 'https://commons.wikimedia.org/wiki/File:Crystal_Palace.PNG' },
-  programmingCode: { label: 'Python Code', url: 'https://commons.wikimedia.org/wiki/File:Python_Code.jpg' },
-  programmingJavascript: { label: 'JavaScript code', url: 'https://commons.wikimedia.org/wiki/File:JavaScript_code.png' },
-  programmingFrontend: { label: 'Morfik Visual Designer', url: 'https://commons.wikimedia.org/wiki/File:MorfikVisualDesigner.png' },
-  booksLibrary: { label: 'Library bookshelf', url: 'https://commons.wikimedia.org/wiki/File:Library_bookshelf.jpg' },
-  booksOpen: { label: 'Through the reading glasses (Unsplash)', url: 'https://commons.wikimedia.org/wiki/File:Through_the_reading_glasses_(Unsplash).jpg' },
-  cameraVintage: { label: 'Vintage camera', url: 'https://commons.wikimedia.org/wiki/File:Vintage_camera.jpg' },
-  cameraCollection: { label: 'Collection of old cameras', url: 'https://commons.wikimedia.org/wiki/File:Collection_of_old_cameras.jpg' },
-  photographyFilm: { label: '300 35mm film frame', url: 'https://commons.wikimedia.org/wiki/File:300_35mm_film_frame.jpg' },
-  mathBlackboard: { label: 'Mathematics (cryptography) on a blackboard', url: 'https://commons.wikimedia.org/wiki/File:Mathematics_(cryptography)_on_a_blackboard.jpg' },
-  physicsPendulum: { label: 'Practical physics (1922)', url: 'https://commons.wikimedia.org/wiki/File:Practical_physics_(1922)_(14785046215).jpg' },
-  chemistryBeakers: { label: 'Beakers', url: 'https://commons.wikimedia.org/wiki/File:Beakers.jpg' },
-  biologyCells: { label: 'Purple cells', url: 'https://commons.wikimedia.org/wiki/File:Purple_cells.jpg' },
-  geographyGlobe: { label: 'German terrestrial globe, circa 1725', url: 'https://commons.wikimedia.org/wiki/File:German_terrestrial_globe,_circa_1725.jpg' },
-  artsPalette: { label: "Palette, artist's (AM 1961.64-1)", url: 'https://commons.wikimedia.org/wiki/File:Palette,_artist%27s_(AM_1961.64-1).jpg' },
-};
-
-const sampleNotes = [
-  {
-    id: 'sample-note-1',
-    seed: true,
-    recordId: 'sample-1',
-    image: studyAssets.history[0],
-    images: [studyAssets.history[0]],
-    title: 'Como uma fábrica do século 19 organizava a produção',
-    summary: 'A gravura de uma fábrica de velas em Viena mostra como o trabalho manual em série substituiu a produção artesanal isolada durante a Revolução Industrial.',
-    keyPoints: [
-      'A produção em série divide o trabalho em etapas repetidas por pessoas diferentes',
-      'Fábricas reuniam dezenas de trabalhadores sob o mesmo teto, algo raro antes do século 19',
-      'A especialização em uma etapa aumentava a velocidade, mas reduzia a autonomia do trabalhador',
-    ],
-    text: 'Na imagem, tonéis e bancadas alinhados mostram várias pessoas realizando a mesma etapa da produção ao mesmo tempo — a lógica da linha de montagem antes mesmo da eletricidade. Essa organização em série permitiu multiplicar a produção sem depender de um único artesão dominando o processo inteiro do início ao fim.',
-    category: 'História',
-    subcategory: 'Indústria e fábricas',
-    topicPath: ['Indústria e fábricas'],
-    sources: [THEME_SOURCES.historyFactory],
-    favorite: false,
-    createdAt: '2026-08-25T19:20:00.000Z',
-  },
-  {
-    id: 'sample-note-2',
-    seed: true,
-    recordId: 'sample-2',
-    image: studyAssets.history[1],
-    images: [studyAssets.history[1]],
-    title: 'A multidão que saía das fábricas no início do século 20',
-    summary: 'Uma fotografia de operários deixando o trabalho em massa registra o novo tipo de rotina urbana criado pela industrialização.',
-    keyPoints: [
-      'A rotina de turnos fixos surgiu com a fábrica, não existia na produção artesanal',
-      'Concentrar muitos trabalhadores no mesmo local facilitou a organização coletiva',
-      'Os primeiros sindicatos nasceram de demandas como jornada de trabalho e segurança',
-    ],
-    text: 'A foto mostra dezenas de trabalhadores caminhando juntos por uma rua estreita entre prédios industriais — uma cena que só existe porque a fábrica concentrou muita gente no mesmo lugar e no mesmo turno. Foi justamente essa concentração que tornou possível a organização dos primeiros sindicatos: ficou mais fácil combinar reivindicações quando centenas de pessoas compartilhavam a mesma jornada e os mesmos problemas.',
-    category: 'História',
-    subcategory: 'Trabalhadores e movimento operário',
-    topicPath: ['Trabalhadores e movimento operário'],
-    sources: [THEME_SOURCES.historyWorkers],
-    favorite: false,
-    createdAt: '2026-08-25T11:05:00.000Z',
-  },
-  {
-    id: 'sample-note-3',
-    seed: true,
-    recordId: 'sample-3',
-    image: studyAssets.history[2],
-    images: [studyAssets.history[2]],
-    title: 'A engenharia das primeiras locomotivas a vapor',
-    summary: 'As primeiras locomotivas a vapor do início do século XIX usavam soluções de engenharia bem diferentes das ferrovias modernas.',
-    keyPoints: [
-      'A tração por engrenagem em trilho estriado foi uma das primeiras soluções testadas antes da adesão simples por atrito virar padrão',
-      'O transporte de carvão foi um dos primeiros usos práticos da locomotiva a vapor, ligando minas às fábricas',
-      'A ferrovia a vapor reduziu o custo e o tempo de transporte de matérias-primas, acelerando a industrialização britânica',
-    ],
-    text: 'Esta gravura de 1814 mostra um modelo com uma roda dentada central que se engrenava a um trilho estriado para gerar tração, enquanto as demais rodas apenas se apoiavam sobre trilhos lisos — uma resposta à dúvida da época sobre se rodas comuns teriam atrito suficiente para puxar cargas pesadas. Máquinas assim, movendo vagões de carvão como os da imagem, foram decisivas para o transporte de matéria-prima nas primeiras fábricas da Revolução Industrial.',
-    category: 'História',
-    subcategory: 'Transporte e máquinas a vapor',
-    topicPath: ['Transporte e máquinas a vapor'],
-    sources: [THEME_SOURCES.historyRailway],
-    favorite: true,
-    createdAt: '2026-08-24T16:40:00.000Z',
-  },
-  {
-    id: 'sample-note-19',
-    seed: true,
-    recordId: 'sample-19',
-    image: studyAssets.history[3],
-    images: [studyAssets.history[3]],
-    title: 'Spinning Jenny: quando a máquina acelerou o fio',
-    summary: 'A Spinning Jenny multiplicou a produção de fios e ajuda a explicar por que o setor têxtil foi uma das portas de entrada da Revolução Industrial.',
-    keyPoints: [
-      'A mecanização têxtil aumentou a produtividade antes mesmo das fábricas modernas estarem consolidadas',
-      'Uma única pessoa podia operar vários fusos, produzindo mais fio em menos tempo',
-      'O ganho técnico pressionou oficinas e trabalhadores a se adaptarem a um ritmo produtivo mais rápido',
-    ],
-    text: 'A imagem da Spinning Jenny mostra uma máquina simples, mas decisiva: ao multiplicar fusos, ela permitia produzir muito mais fio do que a roca manual. Esse avanço explica por que tecidos ficaram no centro da industrialização britânica e por que tecnologia não aparece isolada: ela muda custos, ritmo de trabalho e a relação entre artesãos, empresários e mercado.',
-    category: 'História',
-    subcategory: 'Mecanização têxtil',
-    topicPath: ['Mecanização têxtil'],
-    sources: [THEME_SOURCES.historySpinningJenny],
-    favorite: false,
-    createdAt: '2026-08-24T12:25:00.000Z',
-  },
-  {
-    id: 'sample-note-20',
-    seed: true,
-    recordId: 'sample-20',
-    image: studyAssets.history[4],
-    images: [studyAssets.history[4]],
-    title: 'Trabalho infantil e a pressão por leis fabris',
-    summary: 'Fotografias de crianças em fábricas ajudam a discutir jornadas longas, baixa proteção social e o surgimento de reformas trabalhistas.',
-    keyPoints: [
-      'Crianças eram empregadas porque recebiam menos e cabiam em espaços estreitos das máquinas',
-      'A rotina industrial expunha trabalhadores jovens a acidentes, poeira e jornadas exaustivas',
-      'Denúncias públicas e mobilização social pressionaram por leis de limitação de jornada e idade mínima',
-    ],
-    text: 'A foto de um jovem trabalhador em uma fábrica de algodão torna concreta uma consequência social da industrialização: nem todo avanço técnico significou melhora imediata de vida. A produção crescia, mas o custo humano aparecia em acidentes, exploração infantil e debates sobre o papel do Estado na proteção dos trabalhadores.',
-    category: 'História',
-    subcategory: 'Trabalho infantil e leis fabris',
-    topicPath: ['Trabalho infantil e leis fabris'],
-    sources: [THEME_SOURCES.historyChildLabor],
-    favorite: true,
-    createdAt: '2026-08-24T10:10:00.000Z',
-  },
-  {
-    id: 'sample-note-21',
-    seed: true,
-    recordId: 'sample-21',
-    image: studyAssets.history[5],
-    images: [studyAssets.history[5]],
-    title: 'Crystal Palace: a indústria exibida como espetáculo',
-    summary: 'A Grande Exposição de 1851 transformou máquinas, produtos e materiais industriais em vitrine de poder econômico e tecnológico.',
-    keyPoints: [
-      'O Crystal Palace simbolizou confiança vitoriana no progresso técnico e na produção industrial',
-      'A exposição reuniu máquinas, matérias-primas e produtos de várias regiões do mundo',
-      'O evento mostra que industrialização também envolve consumo, império, competição e propaganda',
-    ],
-    text: 'O Crystal Palace não era uma fábrica, mas uma vitrine do mundo industrial. Ao reunir máquinas e mercadorias em uma estrutura de ferro e vidro, a Grande Exposição de 1851 apresentava a indústria como sinal de modernidade, poder nacional e integração global. É um bom fechamento para ligar técnica, trabalho e mercado.',
-    category: 'História',
-    subcategory: 'Exposições industriais e consumo',
-    topicPath: ['Exposições industriais e consumo'],
-    sources: [THEME_SOURCES.historyCrystalPalace],
-    favorite: false,
-    createdAt: '2026-08-23T18:05:00.000Z',
-  },
-  {
-    id: 'sample-note-4',
-    seed: true,
-    recordId: 'sample-4',
-    image: studyAssets.programming[0],
-    images: [studyAssets.programming[0]],
-    title: 'Primeiros passos com Python',
-    summary: 'Variáveis, listas e funções são blocos fundamentais para começar a programar em Python.',
-    keyPoints: ['Variáveis guardam valores', 'Listas organizam coleções', 'Funções evitam repetição de código'],
-    text: 'Na captura de tela, o código usa exatamente esses três elementos: uma variável guarda um valor, uma lista reúne vários valores e uma função organiza uma tarefa que pode ser reutilizada em diferentes partes do programa.',
-    category: 'Programação',
-    subcategory: 'Python',
-    topicPath: ['Python'],
-    sources: [THEME_SOURCES.programmingCode],
-    favorite: true,
-    createdAt: '2026-08-24T09:15:00.000Z',
-  },
-  {
-    id: 'sample-note-5',
-    seed: true,
-    recordId: 'sample-5',
-    image: studyAssets.programming[1],
-    images: [studyAssets.programming[1]],
-    title: 'Como o JavaScript deixa uma página interativa',
-    summary: 'JavaScript é a linguagem que roda direto no navegador e permite que uma página reaja a cliques, formulários e outros eventos sem recarregar.',
-    keyPoints: [
-      'JavaScript roda no navegador e reage a eventos da página',
-      'const e let declaram variáveis com escopo controlado',
-      'Métodos como map e sort organizam dados sem repetir código',
-    ],
-    text: 'Como mostra o trecho de código na imagem, comandos como const, for e funções de callback controlam o fluxo do programa, enquanto APIs do navegador dão acesso a datas, elementos HTML e dados do usuário. É essa camada que transforma um HTML estático em uma interface interativa.',
-    category: 'Programação',
-    subcategory: 'JavaScript e desenvolvimento web',
-    topicPath: ['JavaScript e desenvolvimento web'],
-    sources: [THEME_SOURCES.programmingJavascript],
-    favorite: false,
-    createdAt: '2026-08-23T14:50:00.000Z',
-  },
-  {
-    id: 'sample-note-6',
-    seed: true,
-    recordId: 'sample-6',
-    image: studyAssets.programming[2],
-    images: [studyAssets.programming[2]],
-    title: 'O que define a camada de frontend de um site',
-    summary: 'Frontend é a parte de um sistema que o usuário vê e toca: botões, formulários, cores e espaçamento definidos por HTML e CSS.',
-    keyPoints: [
-      'HTML estrutura o conteúdo e CSS define a aparência',
-      'Estados como hover e disabled mudam o visual de um botão',
-      'Ferramentas visuais aceleram a montagem de telas e formulários',
-    ],
-    text: 'A imagem mostra um editor visual antigo montando uma tela de login ao arrastar componentes prontos e ajustar estilos, como bordas, cores e estados de hover, sem escrever cada linha manualmente. O resultado final ainda depende de HTML e CSS por trás, mas o processo de construção pode ser guiado visualmente.',
-    category: 'Programação',
-    subcategory: 'Frontend e design de interface',
-    topicPath: ['Frontend e design de interface'],
-    sources: [THEME_SOURCES.programmingFrontend],
-    favorite: false,
-    createdAt: '2026-08-23T08:30:00.000Z',
-  },
-  {
-    id: 'sample-note-7',
-    seed: true,
-    recordId: 'sample-7',
-    image: studyAssets.books[0],
-    images: [studyAssets.books[0]],
-    title: 'Por que organizar referências em uma biblioteca ajuda a estudar',
-    summary: 'Uma biblioteca com prateleiras identificadas por assunto mostra na prática como agrupar referências por tema facilita encontrar o que se precisa depois.',
-    keyPoints: [
-      'Agrupar por assunto no momento de salvar evita retrabalho de organização depois',
-      'Sinalização clara, como uma placa de categoria, reduz o tempo de busca',
-      'Uma biblioteca pessoal de referências fica mais útil quanto mais cedo é organizada',
-    ],
-    text: 'Na foto, uma placa indica "Popular Hard Cover Fiction" acima das prateleiras — uma sinalização simples que evita procurar livro por livro. O mesmo princípio vale para anotações digitais: separar o conteúdo por assunto no momento em que ele é salvo custa poucos segundos e economiza minutos de busca mais tarde.',
-    category: 'Livros',
-    subcategory: 'Biblioteca de estudo',
-    topicPath: ['Biblioteca de estudo'],
-    sources: [THEME_SOURCES.booksLibrary],
-    favorite: false,
-    createdAt: '2026-08-22T17:10:00.000Z',
-  },
-  {
-    id: 'sample-note-8',
-    seed: true,
-    recordId: 'sample-8',
-    image: studyAssets.books[1],
-    images: [studyAssets.books[1]],
-    title: 'Ler com atenção: o que muda na leitura ativa',
-    summary: 'Ler de forma ativa significa se envolver com o texto em vez de apenas passar os olhos pelas linhas.',
-    keyPoints: [
-      'Leitura ativa exige atenção e pausas, não só passar os olhos pelo texto',
-      'Grifar e reler trechos importantes ajuda a fixar o conteúdo',
-      'Um ambiente com boa luz e foco facilita a concentração no material',
-    ],
-    text: 'Na imagem, os óculos apoiados sobre a página em foco mostram exatamente esse tipo de pausa: parar para reler um trecho, grifar uma frase importante ou simplesmente prestar mais atenção aos detalhes são sinais de que a leitura virou estudo, não só entretenimento. Esse hábito aumenta a retenção do conteúdo muito mais do que uma leitura corrida.',
-    category: 'Livros',
-    subcategory: 'Leitura ativa',
-    topicPath: ['Leitura ativa'],
-    sources: [THEME_SOURCES.booksOpen],
-    favorite: false,
-    createdAt: '2026-08-22T10:05:00.000Z',
-  },
-  {
-    id: 'sample-note-9',
-    seed: true,
-    recordId: 'sample-9',
-    image: `${ASSET_BASE}/demo-default-photo.jpg`,
-    images: [`${ASSET_BASE}/demo-default-photo.jpg`, studyAssets.books[2]],
-    title: 'The Photography Storytelling Workshop',
-    summary: 'Livro de referência sobre como criar narrativas visuais por meio de sequência, enquadramento e contexto.',
-    keyPoints: ['Imagem e sequência constroem sentido', 'O contexto guia a leitura', 'Referências ajudam a criar'],
-    text: 'A capa fotografada mostra o subtítulo "A five-step guide to creating unforgettable photographs" — um roteiro de cinco etapas que o livro usa para transformar fotos soltas em uma sequência com começo, meio e fim. A fotografia pode conduzir uma história quando cada imagem contribui para uma ideia e a sequência cria uma experiência de leitura, do jeito que esse exemplar organizado em uma estante de referência sugere.',
-    category: 'Livros',
-    subcategory: 'Fotografia e narrativa',
-    topicPath: ['Fotografia e narrativa'],
-    sources: [],
-    favorite: true,
-    createdAt: '2026-08-21T15:25:00.000Z',
-  },
-  {
-    id: 'sample-note-10',
-    seed: true,
-    recordId: 'sample-10',
-    image: studyAssets.photography[0],
-    images: [studyAssets.photography[0]],
-    title: 'O que uma parede de câmeras vintage revela sobre a evolução da fotografia',
-    summary: 'Uma estante com dezenas de câmeras antigas, de modelos com fole a câmeras compactas, mostra a fotografia migrando de equipamento profissional caro para objeto de uso comum.',
-    keyPoints: [
-      'Câmeras com fole precisavam de ajuste manual de foco e exposição',
-      'Modelos compactos simplificaram a fotografia para o público geral',
-      'Comparar câmeras de décadas diferentes lado a lado evidencia a evolução técnica',
-    ],
-    text: 'Na imagem, câmeras de diferentes décadas dividem a mesma prateleira — algumas com fole de couro, típicas do início do século 20, e outras já compactas e automáticas. Cada geração resolveu de um jeito diferente o mesmo problema: capturar luz em um filme sem exigir conhecimento técnico avançado do fotógrafo.',
-    category: 'Fotografia',
-    subcategory: 'Câmeras vintage e coleções',
-    topicPath: ['Câmeras vintage e coleções'],
-    sources: [THEME_SOURCES.cameraVintage],
-    favorite: false,
-    createdAt: '2026-08-21T09:40:00.000Z',
-  },
-  {
-    id: 'sample-note-11',
-    seed: true,
-    recordId: 'sample-11',
-    image: studyAssets.photography[1],
-    images: [studyAssets.photography[1]],
-    title: 'Por que colecionadores guardam câmeras em vitrines fechadas',
-    summary: 'Uma vitrine de vidro reúne câmeras raras, incluindo um modelo com corpo de couro vermelho — peças frágeis demais para ficar expostas ao manuseio livre.',
-    keyPoints: [
-      'Peças raras ou frágeis costumam ficar isoladas do contato direto do público',
-      'A cor e o material do corpo da câmera ajudam a datar aproximadamente o modelo',
-      'Um acervo organizado facilita comparar modelos de épocas diferentes lado a lado',
-    ],
-    text: 'Repare que a vitrine da imagem protege as câmeras mais antigas e raras em um compartimento fechado, enquanto peças mais recentes ficam expostas em prateleiras abertas ao fundo. É a mesma lógica de um museu: quanto mais frágil ou raro o objeto, mais proteção ele recebe.',
-    category: 'Fotografia',
-    subcategory: 'Vitrines e acervos fotográficos',
-    topicPath: ['Vitrines e acervos fotográficos'],
-    sources: [THEME_SOURCES.cameraCollection],
-    favorite: false,
-    createdAt: '2026-08-20T13:15:00.000Z',
-  },
-  {
-    id: 'sample-note-12',
-    seed: true,
-    recordId: 'sample-12',
-    image: studyAssets.photography[2],
-    images: [studyAssets.photography[2]],
-    title: 'Como funcionava um filme fotográfico de 35mm',
-    summary: 'Antes da fotografia digital, cada imagem era registrada quimicamente em uma tira de filme físico.',
-    keyPoints: [
-      'O filme registra a imagem por reação química, não eletronicamente',
-      'As perfurações nas bordas alinham cada quadro dentro da câmera',
-      'A luz revela os quadros antes de serem ampliados em papel',
-    ],
-    text: 'Na imagem, é possível ver as perfurações na borda do filme de 35mm, que garantiam o alinhamento correto de cada quadro dentro da câmera e do projetor. Segurar o filme contra a luz, como na foto, era a forma mais simples de conferir os quadros revelados antes de ampliá-los em papel.',
-    category: 'Fotografia',
-    subcategory: 'Filme fotográfico e processo analógico',
-    topicPath: ['Filme fotográfico e processo analógico'],
-    sources: [THEME_SOURCES.photographyFilm],
-    favorite: false,
-    createdAt: '2026-08-20T08:00:00.000Z',
-  },
-  {
-    id: 'sample-note-13',
-    seed: true,
-    recordId: 'sample-13',
-    image: studyAssets.math[0],
-    images: [studyAssets.math[0]],
-    title: 'Criptografia no quadro: por que potências modulares importam',
-    summary: 'Um quadro com contas de criptografia mostra como a matemática discreta transforma operações simples em proteção de dados.',
-    keyPoints: [
-      'A aritmética modular trabalha com restos de divisão, como um relógio que volta ao início',
-      'Potências modulares são fáceis de calcular em uma direção e difíceis de inverter sem a chave',
-      'Protocolos como Diffie-Hellman usam essa assimetria para combinar segredos pela internet',
-    ],
-    text: 'A lousa mostra expressões típicas de criptografia: números elevados a potências e reduzidos por módulo. A ideia central é que algumas operações matemáticas são rápidas para quem conhece os parâmetros certos, mas muito custosas de desfazer por tentativa. É esse desequilíbrio que permite criar chaves seguras mesmo quando parte da conversa acontece em público.',
-    category: 'Matemática',
-    subcategory: 'Criptografia e aritmética modular',
-    topicPath: ['Criptografia e aritmética modular'],
-    sources: [THEME_SOURCES.mathBlackboard],
-    favorite: false,
-    createdAt: '2026-08-19T18:30:00.000Z',
-  },
-  {
-    id: 'sample-note-14',
-    seed: true,
-    recordId: 'sample-14',
-    image: studyAssets.physics[0],
-    images: [studyAssets.physics[0]],
-    title: 'O pêndulo simples e a medição do tempo',
-    summary: 'Um experimento clássico de pêndulo ajuda a entender período, gravidade e conservação de energia mecânica.',
-    keyPoints: [
-      'O período do pêndulo depende principalmente do comprimento do fio e da gravidade local',
-      'Para pequenas amplitudes, a massa do corpo tem pouca influência no tempo de oscilação',
-      'A energia alterna entre potencial gravitacional e cinética durante o movimento',
-    ],
-    text: 'A figura de um livro antigo de física mostra um pêndulo em condições controladas: comprimento conhecido, deslocamento pequeno e repetição de oscilações. Ao medir o tempo de várias idas e voltas, o estudante reduz erro experimental e observa uma regra importante: alongar o fio aumenta o período, enquanto trocar a massa não altera quase nada no modelo ideal.',
-    category: 'Física',
-    subcategory: 'Oscilações e energia',
-    topicPath: ['Oscilações e energia'],
-    sources: [THEME_SOURCES.physicsPendulum],
-    favorite: true,
-    createdAt: '2026-08-19T10:20:00.000Z',
-  },
-  {
-    id: 'sample-note-15',
-    seed: true,
-    recordId: 'sample-15',
-    image: studyAssets.chemistry[0],
-    images: [studyAssets.chemistry[0]],
-    title: 'Béqueres: medição aproximada e preparo de soluções',
-    summary: 'Béqueres são recipientes versáteis para misturar, aquecer e transferir líquidos, mas não são o instrumento mais preciso de medida.',
-    keyPoints: [
-      'A escala lateral do béquer serve para estimativas, não para medições volumétricas exatas',
-      'O bico facilita transferir líquidos com menor perda durante o despejo',
-      'Para volumes precisos, usa-se pipeta, bureta ou balão volumétrico',
-    ],
-    text: 'Na imagem, três béqueres de tamanhos diferentes mostram por que esse vidro é tão comum em laboratório: ele suporta mistura, aquecimento moderado e transferência de líquidos. A marcação lateral ajuda a se orientar, mas a leitura não tem precisão suficiente para uma titulação ou preparo rigoroso de solução padrão.',
-    category: 'Química',
-    subcategory: 'Vidrarias e medidas',
-    topicPath: ['Vidrarias e medidas'],
-    sources: [THEME_SOURCES.chemistryBeakers],
-    favorite: false,
-    createdAt: '2026-08-18T16:05:00.000Z',
-  },
-  {
-    id: 'sample-note-16',
-    seed: true,
-    recordId: 'sample-16',
-    image: studyAssets.biology[0],
-    images: [studyAssets.biology[0]],
-    title: 'Células ao microscópio e a organização da vida',
-    summary: 'Uma imagem microscópica de células evidencia que tecidos vivos são formados por unidades pequenas, especializadas e organizadas.',
-    keyPoints: [
-      'A célula é a unidade estrutural e funcional dos seres vivos',
-      'Corantes e técnicas de microscopia destacam estruturas que seriam pouco visíveis',
-      'Diferenças de forma e densidade ajudam a identificar estados celulares e tipos de tecido',
-    ],
-    text: 'A fotografia mostra células tingidas em tons de roxo, permitindo distinguir limites, núcleos e regiões mais densas. Em Biologia, imagens assim não são apenas ilustrações bonitas: elas permitem observar padrões de organização, divisão e especialização que conectam a escala microscópica ao funcionamento de órgãos e tecidos.',
-    category: 'Biologia',
-    subcategory: 'Citologia e microscopia',
-    topicPath: ['Citologia e microscopia'],
-    sources: [THEME_SOURCES.biologyCells],
-    favorite: false,
-    createdAt: '2026-08-18T09:35:00.000Z',
-  },
-  {
-    id: 'sample-note-17',
-    seed: true,
-    recordId: 'sample-17',
-    image: studyAssets.geography[0],
-    images: [studyAssets.geography[0]],
-    title: 'Globo terrestre e a diferença entre mapa e superfície real',
-    summary: 'Um globo histórico ajuda a entender projeções cartográficas, orientação e a dificuldade de representar a Terra em uma folha plana.',
-    keyPoints: [
-      'O globo preserva melhor relações de forma e distância do que um mapa plano',
-      'Toda projeção cartográfica distorce alguma combinação de área, forma, distância ou direção',
-      'Globos históricos registram também a visão de mundo e os limites do conhecimento de sua época',
-    ],
-    text: 'A foto de um globo terrestre do século XVIII mostra a Terra como uma superfície curva, não como um retângulo. Quando essa esfera é transformada em mapa plano, alguma distorção é inevitável. Por isso, estudar projeções cartográficas é estudar escolhas: o que preservar, o que deformar e para qual finalidade o mapa será usado.',
-    category: 'Geografia',
-    subcategory: 'Cartografia e projeções',
-    topicPath: ['Cartografia e projeções'],
-    sources: [THEME_SOURCES.geographyGlobe],
-    favorite: false,
-    createdAt: '2026-08-17T15:45:00.000Z',
-  },
-  {
-    id: 'sample-note-18',
-    seed: true,
-    recordId: 'sample-18',
-    image: studyAssets.arts[0],
-    images: [studyAssets.arts[0]],
-    title: 'Paleta de pintura: cor, mistura e processo artístico',
-    summary: 'Uma paleta de artista preserva rastros de mistura, escolha cromática e decisões tomadas antes da tinta chegar à tela.',
-    keyPoints: [
-      'A paleta revela relações entre cores usadas em uma obra',
-      'Misturar tintas permite ajustar saturação, temperatura e valor tonal',
-      'Marcas de uso mostram o processo do artista, não apenas o resultado final',
-    ],
-    text: 'A imagem mostra uma paleta de madeira coberta por tinta a óleo seca. Antes de uma cor aparecer na tela, ela costuma ser testada, misturada e comparada na paleta. Observar esse objeto ajuda a estudar arte como processo: escolhas de contraste, harmonia e intensidade acontecem durante a preparação da cor.',
-    category: 'Artes',
-    subcategory: 'Cor e composição',
-    topicPath: ['Cor e composição'],
-    sources: [THEME_SOURCES.artsPalette],
-    favorite: false,
-    createdAt: '2026-08-17T08:15:00.000Z',
-  },
-];
-
-// Each sample photo carries its own note's content as a ready analysis, so
-// opening it in the viewer studies that photo instead of requesting a fresh
-// one — which in Demo Mode always came back as the generic circle-area
-// exercise. Samples are never persisted, so this is rebuilt on every launch.
-const samples = sampleMedia.map((record) => {
-  const note = sampleNotes.find((item) => item.recordId === record.id);
-  if (!note) return record;
-  const distractors = sampleNotes.filter((item) => item.category !== note.category).map((item) => item.keyPoints?.[0]);
-  const offset = sampleNotes.indexOf(note);
-  const rotated = [...distractors.slice(offset), ...distractors.slice(0, offset)];
-  // Every 3rd one keeps the options from repeating the same few categories.
-  return { ...record, analysis: analysisFromNote(note, { distractors: rotated.filter((_, index) => index % 3 === 0) }) };
-});
-
 function getInitialNotes() {
   const stored = getNotes();
-  const refreshedStored = stored.map((note) => {
-    const sample = sampleNotes.find((item) => item.id === note.id);
-    if (!sample) return note;
-    return {
-      ...note,
-      recordId: sample.recordId,
-      image: sample.image,
-      images: sample.images,
-      topicPath: Array.isArray(note.topicPath) && note.topicPath.length > 1 ? note.topicPath : sample.topicPath,
-    };
-  });
-  const missingSamples = sampleNotes.filter((sample) => !refreshedStored.some((note) => note.id === sample.id));
-  const merged = [...refreshedStored, ...missingSamples];
-  const changed = missingSamples.length || refreshedStored.some((note, index) => note !== stored[index]);
-  if (!changed) return stored;
-  persistNotes(merged);
-  return merged;
+  const { notes, changed } = mergeSeedNotes(stored, getDismissedSeedNotes());
+  if (changed) persistNotes(notes);
+  return notes;
 }
 
 function getInitialSubjectArtifacts() {
@@ -602,14 +59,21 @@ export function AppDataProvider({ children }) {
   const [records, setRecords] = useState(samples);
   const recordsRef = useRef(samples);
   const recordsLoadVersionRef = useRef(0);
+  // Records whose first save (file copy + thumbnail + index write) is still in
+  // flight. The draft is already visible and tappable during that window, so
+  // updates and deletes on it are applied in memory and reconciled by
+  // addRecord once the save lands — see addRecord below.
+  const persistingRef = useRef(new Set());
   const [notes, setNotesState] = useState(getInitialNotes);
+  // Mutations read the latest notes from here, not from a render closure: a
+  // save that resolves after an await (or two quick taps) used to write back a
+  // stale list and silently drop the other change.
+  const notesRef = useRef(notes);
   const [aiHistory, setAiHistory] = useState(() => {
     const stored = getHistory();
     // Older entries embedded the full captured photo (a data: URL) per event —
-    // enough of those exhausts localStorage's whole per-origin quota, which
-    // then silently breaks every OTHER write (notes included, via writeJson's
-    // catch). Strip any leftover image field once and re-persist the cleaned
-    // history so quota is freed up even for data saved before this fix.
+    // enough of those exhausts the storage quota, which then silently breaks
+    // every OTHER write (notes included). Strip any leftover image field once.
     if (!stored.some((entry) => entry.image)) return stored;
     const cleaned = stored.map(({ image, ...rest }) => rest);
     persistHistory(cleaned);
@@ -635,10 +99,16 @@ export function AppDataProvider({ children }) {
     return () => { active = false; };
   }, []);
 
+  const commitNotes = useCallback((next) => {
+    notesRef.current = next;
+    setNotesState(next);
+    return persistNotes(next);
+  }, []);
+
   const addHistoryEntry = useCallback((entry) => {
     // recordId is enough to resolve the source photo later (NotesTimeline
-    // already falls back to it via `records`) — embedding the full image
-    // here is what exhausts localStorage's quota after enough entries.
+    // falls back to it via `records`) — embedding the image here is what
+    // exhausted the storage quota before.
     const { image, ...rest } = entry;
     const historyEntry = {
       id: `history-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -646,15 +116,20 @@ export function AppDataProvider({ children }) {
       ...rest,
     };
     setAiHistory((current) => {
-      const next = [historyEntry, ...current].slice(0, 60);
+      const next = [historyEntry, ...current].slice(0, 200);
       persistHistory(next);
       return next;
     });
     return historyEntry;
   }, []);
 
+  const replaceRecord = useCallback((record) => {
+    recordsRef.current = recordsRef.current.map((item) => item.id === record.id ? record : item);
+    setRecords(recordsRef.current);
+  }, []);
+
   const addRecord = useCallback(async ({ src, source = 'upload', label = 'Nova imagem', aiAvailable = true, mediaType = 'image', collectionId = null, pageNumber = null }) => {
-    const record = {
+    const draft = {
       id: `media-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       src,
       source,
@@ -666,12 +141,38 @@ export function AppDataProvider({ children }) {
       createdAt: new Date().toISOString(),
       analysis: null,
     };
-    recordsRef.current = [record, ...recordsRef.current];
+    recordsRef.current = [draft, ...recordsRef.current];
     setRecords(recordsRef.current);
-    await saveMediaRecord(record);
-    // Every new photo/video should show up in Histórico right away, not just
-    // after the user runs an AI analysis on it (that adds its own, richer
-    // entry via addHistoryEntry in SmartImageSheet).
+    persistingRef.current.add(draft.id);
+    // The persisted copy points at the app's own file (and thumbnail); keeping
+    // the draft in state would pin a temp/cache path — or a multi-MB data: URI
+    // — in memory for the whole session.
+    const persisted = await saveMediaRecord(draft);
+    persistingRef.current.delete(draft.id);
+    if (!persisted) {
+      // The copy or the index write failed: take the draft back out rather
+      // than leave a tile pointing at a temp file the caller is about to delete.
+      recordsRef.current = recordsRef.current.filter((item) => item.id !== draft.id);
+      setRecords(recordsRef.current);
+      throw new Error('Não foi possível salvar essa mídia no aparelho. Verifique o espaço livre e tente de novo.');
+    }
+    const current = recordsRef.current.find((item) => item.id === draft.id);
+    if (!current) {
+      // Deleted while its first save was in flight: that delete found nothing
+      // in the index yet, so undo the save here — otherwise the photo came
+      // back on the next launch.
+      await deleteMediaRecord(draft.id);
+      return null;
+    }
+    // Keep anything patched onto the draft meanwhile (an analysis, a
+    // conversation); only the storage fields come from the save.
+    const record = { ...current, src: persisted.src, ...(persisted.thumb ? { thumb: persisted.thumb } : {}) };
+    replaceRecord(record);
+    if (current !== draft && !(await saveMediaRecord(record))) {
+      console.warn('[JOVI] não foi possível gravar a atualização da mídia', draft.id);
+    }
+    // Every new photo/video shows up in Histórico right away, not only after
+    // an AI analysis (that adds its own, richer entry).
     addHistoryEntry({
       recordId: record.id,
       title: label,
@@ -682,32 +183,46 @@ export function AppDataProvider({ children }) {
       response: source === 'camera' ? 'Capturada com a câmera e salva na galeria.' : 'Importada e salva na galeria.',
     });
     return record;
-  }, [addHistoryEntry]);
+  }, [addHistoryEntry, replaceRecord]);
 
   const updateRecord = useCallback(async (id, patch) => {
     const current = recordsRef.current.find((item) => item.id === id);
     if (!current) return null;
     const updated = { ...current, ...patch };
-    recordsRef.current = recordsRef.current.map((item) => item.id === id ? updated : item);
-    setRecords(recordsRef.current);
-    if (updated.source !== 'sample') await saveMediaRecord(updated);
+    replaceRecord(updated);
+    // A record still in its first save is persisted (with this patch) by addRecord.
+    if (updated.source !== 'sample' && !persistingRef.current.has(id)) await saveMediaRecord(updated);
     return updated;
-  }, []);
+  }, [replaceRecord]);
 
   const removeRecord = useCallback(async (record) => {
-    if (!record || record.source === 'sample') return;
-    recordsRef.current = recordsRef.current.filter((item) => item.id !== record.id);
+    if (!record || record.source === 'sample') return false;
+    // Out of memory first: an update landing while the files are deleted then
+    // finds no record, instead of writing the index entry back.
+    const previous = recordsRef.current;
+    recordsRef.current = previous.filter((item) => item.id !== record.id);
     setRecords(recordsRef.current);
-    await deleteMediaRecord(record.id);
+    if (persistingRef.current.has(record.id) || await deleteMediaRecord(record.id)) return true;
+    recordsRef.current = previous;
+    setRecords(previous);
+    return false;
   }, []);
 
+  // Returns { note, created } — or null when there is nothing to save yet
+  // (no analysis) or the write failed. `created: false` means the content is
+  // already in Notas (the example note an analysis came from, or an earlier
+  // save of this same capture), so the caller can say so instead of claiming
+  // a new save.
   const saveNote = useCallback((record) => {
     if (!record?.analysis) return null;
-    const existing = notes.find((item) => item.recordId === record.id && !item.seed);
-    if (existing) return existing;
+    const current = notesRef.current;
+    const source = record.analysis.sourceNoteId ? current.find((item) => item.id === record.analysis.sourceNoteId) : null;
+    if (source) return { note: source, created: false };
+    const existing = current.find((item) => item.recordId === record.id && !item.seed);
+    if (existing) return { note: existing, created: false };
     const subcategory = record.analysis.subcategory || record.analysis.subject || record.analysis.contentType || 'Revisão';
     const note = {
-      id: `note-${Date.now()}`,
+      id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       recordId: record.id,
       image: record.src,
       images: Array.isArray(record.images) && record.images.length ? record.images : [record.src].filter(Boolean),
@@ -721,32 +236,24 @@ export function AppDataProvider({ children }) {
       favorite: false,
       createdAt: new Date().toISOString(),
     };
-    const next = [note, ...notes];
-    // Only commit the optimistic state update if the write actually landed —
-    // otherwise a quota-exceeded failure leaves the note visible for this
-    // session but silently gone on reload, with the UI still claiming success.
+    // Only commit if the write actually landed — otherwise a failed write
+    // leaves the note visible this session but gone on reload.
+    const next = [note, ...current];
     if (!persistNotes(next)) return null;
+    notesRef.current = next;
     setNotesState(next);
-    return note;
-  }, [notes]);
+    return { note, created: true };
+  }, []);
 
   const removeNote = useCallback((id) => {
-    const next = notes.filter((item) => item.id !== id);
-    setNotesState(next);
-    persistNotes(next);
-  }, [notes]);
+    const target = notesRef.current.find((item) => item.id === id);
+    if (target?.seed) setDismissedSeedNotes([...new Set([...getDismissedSeedNotes(), id])]);
+    return commitNotes(notesRef.current.filter((item) => item.id !== id));
+  }, [commitNotes]);
 
-  const updateNote = useCallback((id, patch) => {
-    const next = notes.map((note) => note.id === id ? { ...note, ...patch } : note);
-    setNotesState(next);
-    persistNotes(next);
-  }, [notes]);
+  const updateNote = useCallback((id, patch) => commitNotes(notesRef.current.map((note) => note.id === id ? { ...note, ...patch } : note)), [commitNotes]);
 
-  const toggleNoteFavorite = useCallback((id) => {
-    const next = notes.map((note) => note.id === id ? { ...note, favorite: !note.favorite } : note);
-    setNotesState(next);
-    persistNotes(next);
-  }, [notes]);
+  const toggleNoteFavorite = useCallback((id) => commitNotes(notesRef.current.map((note) => note.id === id ? { ...note, favorite: !note.favorite } : note)), [commitNotes]);
 
   const setPlan = useCallback((next) => {
     setPlanState(next);
@@ -773,13 +280,15 @@ export function AppDataProvider({ children }) {
   const restoreLocalData = useCallback(async (backup) => {
     recordsLoadVersionRef.current += 1;
     const incomingRecords = Array.isArray(backup.records) ? backup.records : [];
-    await Promise.all(incomingRecords.map((record) => saveMediaRecord(record)));
+    // Sequential: each record may decode a multi-MB data: URI to disk.
+    let restoredMedia = 0;
+    for (const record of incomingRecords) if (await saveMediaRecord(record)) restoredMedia += 1;
     const storedRecords = await getAllMediaRecords();
     const nextRecords = [...storedRecords, ...samples];
     recordsRef.current = nextRecords;
     setRecords(nextRecords);
-    setNotesState(backup.notes || []);
-    persistNotes(backup.notes || []);
+    setDismissedSeedNotes(Array.isArray(backup.dismissedSeedNotes) ? backup.dismissedSeedNotes : []);
+    commitNotes(backup.notes || []);
     setAiHistory(backup.aiHistory || []);
     persistHistory(backup.aiHistory || []);
     setPlanState(backup.plan || { type: 'free' });
@@ -790,16 +299,16 @@ export function AppDataProvider({ children }) {
     persistSubjectArtifacts(backup.subjectArtifacts || {});
     setLearningPreferences(backup.learningPreferences || DEFAULT_LEARNING_PREFERENCES);
     setStudyCalendar(backup.studyCalendar || EMPTY_STUDY_CALENDAR);
-    return { records: incomingRecords.length, notes: (backup.notes || []).length };
-  }, [setLearningPreferences, setStudyCalendar]);
+    return { records: restoredMedia, failedRecords: incomingRecords.length - restoredMedia + (backup.skippedRecords || 0), notes: (backup.notes || []).length };
+  }, [commitNotes, setLearningPreferences, setStudyCalendar]);
 
   const clearLocalData = useCallback(async () => {
     recordsLoadVersionRef.current += 1;
     await clearMediaRecords();
     recordsRef.current = samples;
     setRecords(samples);
-    setNotesState(sampleNotes);
-    persistNotes(sampleNotes);
+    setDismissedSeedNotes([]);
+    commitNotes(sampleNotes);
     setAiHistory([]);
     persistHistory([]);
     setPlanState({ type: 'free' });
@@ -813,7 +322,7 @@ export function AppDataProvider({ children }) {
     persistLearningPreferences(DEFAULT_LEARNING_PREFERENCES);
     setStudyCalendarState(EMPTY_STUDY_CALENDAR);
     persistStudyCalendar(EMPTY_STUDY_CALENDAR);
-  }, []);
+  }, [commitNotes]);
 
   // Matérias derived from saved notes (category → subthemes + note bodies).
   // Uncategorized notes fall under "Outros", matching how SubjectNotes groups them.

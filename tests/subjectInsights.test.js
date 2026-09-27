@@ -76,8 +76,16 @@ test('history presentation result replaces empty local result', () => {
     byTopic: { 'Indústria e fábricas': { correct: 0, total: 1 } },
   };
 
-  const result = getPresentationExamResult(subject, localZero);
+  const result = getPresentationExamResult(subject, localZero, { presentation: true });
 
   assert.equal(result.percent, DEMO_SUBJECT_ARTIFACTS.História.examResult.data.percent);
   assert.equal(result.total, DEMO_SUBJECT_ARTIFACTS.História.examResult.data.total);
+});
+
+test('outside presentation mode the student keeps their own exam result', () => {
+  // Regression: a real 0% (or 40%) was silently replaced by the seeded 86%.
+  const subject = { name: 'História', subthemes: ['Indústria e fábricas', 'Trabalhadores e movimento operário'] };
+  const localZero = { subject: 'História', score: 0, total: 6, percent: 0, byTopic: { 'Indústria e fábricas': { correct: 0, total: 1 } } };
+  assert.equal(getPresentationExamResult(subject, localZero), localZero);
+  assert.equal(getPresentationExamResult(subject, null), null);
 });

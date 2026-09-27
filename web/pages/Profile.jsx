@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import StudentDashboard from '../components/StudentDashboard.jsx';
+import { collectStudyActivity } from '../../shared/studentDashboard.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { createBackup, downloadBackup, readBackupFile } from '../services/dataTransfer.js';
 import { isGoogleSignInConfigured, renderGoogleSignInButton, signOutGoogle } from '../services/googleAuth.js';
@@ -57,14 +58,9 @@ const LEVEL_OPTIONS = [
   { value: 'intermediate', label: 'Já tenho base' },
   { value: 'advanced', label: 'Quero aprofundar' },
 ];
-const SORT_OPTIONS = [
-  { value: 'relevance', label: 'Melhor combinação' },
-  { value: 'viewCount', label: 'Mais populares' },
-  { value: 'date', label: 'Mais recentes' },
-];
-
 export default function Profile({ embedded = false }) {
   const { user, setUser, plan, setPlan, records, notes, aiHistory, subjects, subjectArtifacts, learningPreferences, setLearningPreferences, studyCalendar, setStudyCalendar, restoreLocalData, clearLocalData } = useAppData();
+  const studyActivity = useMemo(() => collectStudyActivity({ aiHistory, notes, subjectArtifacts }), [aiHistory, notes, subjectArtifacts]);
   const [authMessage, setAuthMessage] = useState('');
   const fileRef = useRef(null);
   const googleButtonRef = useRef(null);
@@ -237,7 +233,6 @@ export default function Profile({ embedded = false }) {
           <PreferenceSelect label="Estilo da aula" options={VIDEO_STYLE_OPTIONS} value={learningPreferences.videoStyle} onChange={(value) => updateLearningPreference('videoStyle', value)} />
           <PreferenceSelect label="Duração preferida" options={DURATION_OPTIONS} value={learningPreferences.duration} onChange={(value) => updateLearningPreference('duration', value)} />
           <PreferenceSelect label="Nível atual" options={LEVEL_OPTIONS} value={learningPreferences.level} onChange={(value) => updateLearningPreference('level', value)} />
-          <PreferenceSelect label="Critério de busca" options={SORT_OPTIONS} value={learningPreferences.sort} onChange={(value) => updateLearningPreference('sort', value)} />
         </div>
       </section>
       <section className={`outlook-card${studyCalendar.connected ? ' connected' : ''}`}>
@@ -271,11 +266,14 @@ export default function Profile({ embedded = false }) {
         <small>Demo local: nenhum login Microsoft real é feito nesta versão.</small>
       </section>
       <StudentDashboard
+        key={plan?.presentationMode ? 'presentation' : 'student'}
         subjects={subjects}
         notes={notes}
         aiHistory={aiHistory}
         subjectArtifacts={subjectArtifacts}
         studyCalendar={studyCalendar}
+        activity={studyActivity}
+        presentation={Boolean(plan?.presentationMode)}
       />
       <section className="data-tools-card">
         <div><div><strong>Seus dados</strong><span>Faça uma cópia local ou restaure um backup anterior.</span></div><Icon name="download" size={18} /></div>

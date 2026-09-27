@@ -1,35 +1,8 @@
 import { runSubjectAI } from './_lib/ai/service.js';
-import { errorResponse, hasValidApiKey, isDailyLimited, isRateLimited, sessionUser } from './_lib/http.js';
+import { errorResponse, guardAiRequest } from './_lib/http.js';
 
-const VALID_ACTIONS = new Set(['questions', 'exam', 'plan', 'podcast-script', 'lesson-script']);
+const VALID_ACTIONS = new Set(['questions', 'exam', 'plan', 'podcast-script', 'lesson-script', 'grade']);
 const MAX_NOTES = 40;
-
-function safePreferences(preferences = {}) {
-  const calendarEvents = Array.isArray(preferences.studyCalendar?.events) ? preferences.studyCalendar.events.slice(0, 5).map((event) => ({
-    id: typeof event?.id === 'string' ? event.id.slice(0, 120) : '',
-    type: event?.type === 'assignment' ? 'assignment' : 'exam',
-    subject: typeof event?.subject === 'string' ? event.subject.slice(0, 80) : '',
-    title: typeof event?.title === 'string' ? event.title.slice(0, 160) : '',
-    startsAt: typeof event?.startsAt === 'string' ? event.startsAt.slice(0, 80) : '',
-    topics: Array.isArray(event?.topics) ? event.topics.filter((topic) => typeof topic === 'string').slice(0, 8).map((topic) => topic.slice(0, 80)) : [],
-  })).filter((event) => event.title && event.startsAt) : [];
-  return {
-    studyGoal: ['vestibular', 'enem', 'school_exam', 'general'].includes(preferences.studyGoal) ? preferences.studyGoal : 'vestibular',
-    studyContext: ['classes', 'exam_season', 'catch_up', 'maintenance'].includes(preferences.studyContext) ? preferences.studyContext : 'classes',
-    weeklyPace: ['light', 'regular', 'intense'].includes(preferences.weeklyPace) ? preferences.weeklyPace : 'regular',
-    practiceMode: ['concept_first', 'questions_first', 'mixed'].includes(preferences.practiceMode) ? preferences.practiceMode : 'mixed',
-    reviewMethod: ['spaced', 'retrieval', 'interleaved', 'flashcards'].includes(preferences.reviewMethod) ? preferences.reviewMethod : 'spaced',
-    videoStyle: ['animated', 'balanced', 'calm', 'exam'].includes(preferences.videoStyle) ? preferences.videoStyle : 'balanced',
-    duration: ['short', 'standard', 'long'].includes(preferences.duration) ? preferences.duration : 'standard',
-    level: ['beginner', 'intermediate', 'advanced'].includes(preferences.level) ? preferences.level : 'intermediate',
-    sort: ['relevance', 'viewCount', 'date'].includes(preferences.sort) ? preferences.sort : 'relevance',
-    studyCalendar: calendarEvents.length ? {
-      provider: preferences.studyCalendar?.provider === 'outlook' ? 'outlook' : 'outlook',
-      syncedAt: typeof preferences.studyCalendar?.syncedAt === 'string' ? preferences.studyCalendar.syncedAt.slice(0, 80) : '',
-      events: calendarEvents,
-    } : null,
-  };
-}
 
 function safeInput(body) {
   const action = VALID_ACTIONS.has(body?.action) ? body.action : 'questions';
@@ -50,22 +23,34 @@ function safeInput(body) {
   if (!name && !notes.length) return { error: { status: 400, message: 'Salve ao menos uma nota nesta matéria para gerar este conteúdo.' } };
 
   const format = ['dialogue', 'single', 'drive'].includes(subject.format) ? subject.format : undefined;
-  return { action, subject: { name: name || 'Matéria', notes, format }, preferences: safePreferences(body?.preferences) };
+  // "grade" corrects one written answer against its model answer.
+  let grading;
+  if (action === 'grade') {
+    const raw = body?.grading && typeof body.grading === 'object' ? body.grading : {};
+    grading = {
+      question: typeof raw.question === 'string' ? raw.question.trim().slice(0, 400) : '',
+      modelAnswer: typeof raw.modelAnswer === 'string' ? raw.modelAnswer.trim().slice(0, 800) : '',
+      answer: typeof raw.answer === 'string' ? raw.answer.trim().slice(0, 1500) : '',
+    };
+    if (!grading.question || !grading.answer) return { error: { status: 400, message: 'Escreva sua resposta para receber a correção.' } };
+  }
+  // Preferences go through service.normalizeLearningPreferences — the one allowlist.
+  return { action, subject: { name: name || 'Matéria', notes, format }, preferences: body?.preferences, grading };
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
-  if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
-  const { provided: hasSession, user: sessionOwner } = sessionUser(req);
-  if (hasSession && !sessionOwner) return res.status(401).json({ code: 'SESSION_INVALID', message: 'Sessão expirada. Faça login novamente.' });
-  if (isRateLimited(req, { scope: 'subject', max: 10 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitos pedidos em sequência. Tente novamente em instantes.' });
-  if (isDailyLimited(req, { scope: 'subject', max: 40 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário do Estúdio foi atingido. Tente novamente amanhã.' });
+  // Correcting written answers has its own budget: a review session of a
+  // dozen answers must not use up the day's podcast/exam generations.
+  const grading = req.body?.action === 'grade';
+  if (guardAiRequest(req, res, grading
+    ? { scope: 'grade', perMinute: 20, perDay: 80, dailyMessage: 'O limite diário de correções foi atingido. Tente novamente amanhã.' }
+    : { scope: 'subject', perMinute: 10, perDay: 40, dailyMessage: 'O limite diário do Estúdio foi atingido. Tente novamente amanhã.' })) return;
 
   const input = safeInput(req.body || {});
   if (input.error) return res.status(input.error.status).json({ message: input.error.message });
 
   try {
-    const result = await runSubjectAI({ action: input.action, subject: input.subject, preferences: input.preferences });
+    const result = await runSubjectAI({ action: input.action, subject: input.subject, preferences: input.preferences, grading: input.grading });
     return res.status(200).json(result);
   } catch (error) {
     const mapped = errorResponse(error);

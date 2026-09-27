@@ -9,7 +9,7 @@ function restoreEnv() {
 }
 
 function mockReq({ method = 'POST', body = {}, ip = 'video-handler-test' } = {}) {
-  return { method, body, headers: {}, ip };
+  return { method, body, headers: { 'content-type': 'application/json' }, ip };
 }
 
 function mockRes() {

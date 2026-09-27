@@ -1,6 +1,7 @@
 import {
   buildActionPrompt,
   buildAnalysisPrompt,
+  buildGradeAnswerPrompt,
   buildLessonScriptPrompt,
   buildPodcastScriptPrompt,
   buildStudyPlanPrompt,
@@ -11,6 +12,7 @@ import {
 } from './prompts.js';
 import { getProvider } from './providers/index.js';
 import { completeSubjectWithDemo, completeWithDemo } from './providers/demo.js';
+import { gradeAgainstModel } from '../../../shared/answerGrading.js';
 import {
   demoVideoRecommendations,
   fallbackVideoSearchQuery,
@@ -133,7 +135,21 @@ export async function runStudyAI({ action = 'analyze', question = '', context = 
 // Subject-level generation (over ALL notes of a matéria).
 // ---------------------------------------------------------------------------
 
-const SUBJECT_ACTIONS = new Set(['questions', 'exam', 'plan', 'podcast-script', 'lesson-script']);
+const SUBJECT_ACTIONS = new Set(['questions', 'exam', 'plan', 'podcast-script', 'lesson-script', 'grade']);
+
+function normalizeGrade(result, meta) {
+  const score = clampInt(result?.score, 0, 10, 0);
+  return {
+    score,
+    level: asText(result?.level, score >= 8 ? 'Resposta completa' : score >= 6 ? 'Boa base, faltam conceitos' : 'Precisa desenvolver', 60),
+    feedback: asText(result?.feedback, '', 500),
+    strengths: asList(result?.strengths, 3),
+    missing: asList(result?.missing, 3),
+    provider: meta.provider,
+    model: meta.model,
+    mode: meta.provider === 'demo' ? 'demo' : 'live',
+  };
+}
 
 const clampInt = (value, min, max, fallback) => {
   const n = Number(value);
@@ -219,7 +235,9 @@ function normalizeSubject(action, result, subjectName, meta) {
         feedbackWrong: asText(item?.feedbackWrong, 'Quase. Volte ao conceito e compare com a alternativa correta.', 500),
       };
     }).filter((item) => item.prompt && item.options.length >= 2);
-    const requestedFormat = ['dialogue', 'single', 'drive'].includes(String(result?.format)) ? result.format : 'dialogue';
+    const requestedFormat = ['dialogue', 'single', 'drive'].includes(String(meta.requestedFormat))
+      ? meta.requestedFormat
+      : ['dialogue', 'single', 'drive'].includes(String(result?.format)) ? result.format : 'dialogue';
     return {
       ...base,
       format: requestedFormat,
@@ -248,24 +266,34 @@ function buildSubjectPrompt(action, subject, preferences) {
   return buildLessonScriptPrompt(subject, preferences);
 }
 
-export async function runSubjectAI({ action = 'questions', subject = {}, preferences = {} } = {}) {
+export async function runSubjectAI({ action = 'questions', subject = {}, preferences = {}, grading = null } = {}) {
   if (!SUBJECT_ACTIONS.has(action)) {
     throw Object.assign(new Error('Ação de matéria inválida.'), { code: 'AI_INVALID_RESPONSE' });
   }
   const subjectName = String(subject?.name || subject?.subject || 'Matéria').slice(0, 80);
+  const normalizedPreferences = normalizeLearningPreferences(preferences);
+
+  if (action === 'grade') {
+    if (isDemoMode()) return normalizeGrade(gradeAgainstModel(grading || {}), { provider: 'demo', model: 'jovi-lens-demo' });
+    const completion = await getProvider('chat').complete({ messages: [{ role: 'user', content: buildGradeAnswerPrompt(subject, grading || {}, normalizedPreferences) }], maxTokens: 700, timeoutMs: 25000 });
+    return normalizeGrade(parseJson(completion.text), completion);
+  }
 
   if (isDemoMode()) {
-    const demo = await completeSubjectWithDemo({ action, subject, preferences });
-    return normalizeSubject(action, demo.result, subjectName, demo);
+    const demo = await completeSubjectWithDemo({ action, subject, preferences: normalizedPreferences });
+    return normalizeSubject(action, demo.result, subjectName, { ...demo, requestedFormat: subject?.format });
   }
 
   // Longer budget than a single-image action: subject scripts are the biggest outputs.
-  const completion = await getProvider('chat').complete({ messages: [{ role: 'user', content: buildSubjectPrompt(action, subject, normalizeLearningPreferences(preferences)) }], maxTokens: 2600, timeoutMs: 45000 });
+  const completion = await getProvider('chat').complete({ messages: [{ role: 'user', content: buildSubjectPrompt(action, subject, normalizedPreferences) }], maxTokens: 2600, timeoutMs: 45000 });
   const result = parseJson(completion.text);
-  return normalizeSubject(action, result, subjectName, completion);
+  return normalizeSubject(action, result, subjectName, { ...completion, requestedFormat: subject?.format });
 }
 
-function normalizeLearningPreferences(preferences = {}) {
+// Single allowlist for learning preferences — the handlers pass the raw
+// client object straight through, so there is one place to extend.
+export function normalizeLearningPreferences(input = {}) {
+  const preferences = input && typeof input === 'object' ? input : {};
   const calendarEvents = Array.isArray(preferences.studyCalendar?.events) ? preferences.studyCalendar.events.slice(0, 5).map((event) => ({
     id: asText(event?.id, '', 120),
     type: event?.type === 'assignment' ? 'assignment' : 'exam',
@@ -283,7 +311,6 @@ function normalizeLearningPreferences(preferences = {}) {
     videoStyle: ['animated', 'balanced', 'calm', 'exam'].includes(preferences.videoStyle) ? preferences.videoStyle : 'balanced',
     duration: ['short', 'standard', 'long'].includes(preferences.duration) ? preferences.duration : 'standard',
     level: ['beginner', 'intermediate', 'advanced'].includes(preferences.level) ? preferences.level : 'intermediate',
-    sort: ['relevance', 'viewCount', 'date'].includes(preferences.sort) ? preferences.sort : 'relevance',
     studyCalendar: calendarEvents.length ? {
       provider: preferences.studyCalendar?.provider === 'outlook' ? 'outlook' : 'outlook',
       syncedAt: asText(preferences.studyCalendar?.syncedAt, '', 80),

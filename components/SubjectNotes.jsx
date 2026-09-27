@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
-import * as Linking from 'expo-linking';
 import Icon from './Icon.jsx';
+import { openExternalUrl } from '../services/links.js';
 import { narration, noteToSpeech } from '../services/audio.js';
 import { imageSource } from '../services/demoAssets.js';
 
@@ -251,7 +251,7 @@ function NoteDetail({ note, record, onConversation, onViewImage, onFavorite, onR
         <View className="gap-1">
           <Text className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Fontes</Text>
           {note.sources.map((source) => (
-            <Pressable accessibilityRole="button" key={source.url} onPress={() => Linking.openURL(source.url)} className="flex-row items-center gap-1">
+            <Pressable accessibilityRole="button" key={source.url} onPress={() => openExternalUrl(source.url)} className="flex-row items-center gap-1">
               <Text className="text-[12px] text-indigo-600">{source.label}</Text>
               <Icon name="arrow-up-right" size={11} color="#4f46e5" />
             </Pressable>
@@ -334,5 +334,7 @@ function MediaThumb({ src, alt }) {
       </View>
     );
   }
-  return <Image source={imageSource(src)} accessibilityIgnoresInvertColors accessibilityLabel={alt} onError={() => setFailed(true)} className="h-16 w-16 rounded-xl bg-slate-100" />;
+  // Sized through style, not className: react-native-web ignored the class
+  // sizing on <Image> and drew the photo at its intrinsic size.
+  return <Image source={imageSource(src)} accessibilityIgnoresInvertColors accessibilityLabel={alt} onError={() => setFailed(true)} style={{ width: 64, height: 64, borderRadius: 12, backgroundColor: '#f1f5f9' }} resizeMode="cover" resizeMethod="resize" />;
 }

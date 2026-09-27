@@ -21,7 +21,7 @@ const discovery = {
 
 export function useGoogleSignIn() {
   const clientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-  const [nonce] = useState(() => Math.random().toString(36).slice(2));
+  const [nonce] = useState(() => `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`);
   const [request, , promptAsync] = AuthSession.useAuthRequest(
     {
       clientId,
@@ -44,7 +44,9 @@ export function useGoogleSignIn() {
     const response = await apiFetch('/api/auth/google', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ credential: idToken }),
+      // The server checks this against the id_token's nonce claim — it binds the
+      // token to this sign-in (injection guard); replay is blocked server-side.
+      body: JSON.stringify({ credential: idToken, nonce }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.message || 'Não foi possível entrar com o Google.');

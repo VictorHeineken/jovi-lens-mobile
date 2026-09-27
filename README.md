@@ -139,6 +139,21 @@ npm run dev
 
 Veja [`web/README.md`](web/README.md) para rotas, fluxo de demonstração e detalhes específicos do app web.
 
+## Modo apresentação
+
+O app mostra só dados do próprio aluno: sequência de estudo calculada pelas datas reais de atividade,
+"antes e depois" a partir do histórico de simulados e nenhuma nota atribuída sem prova feita. Os números
+encenados para o pitch (resultado de História de 86%, sequência e evolução sintéticas, correção por foto
+simulada, "gerando simulado" com atraso) só aparecem quando `plan.presentationMode` está ligado — em
+Perfil → **Preparar demo** (ou pelo guia de apresentação do web). **Sair do modo apresentação** desfaz
+tudo, inclusive a aluna e o calendário demo.
+
+## Build de produção
+
+`app.config.js` estende o `app.json`: no perfil `production` do EAS (ou com `APP_VARIANT=production`) o
+Android deixa de aceitar HTTP em texto claro, que só é necessário para falar com a API local em
+desenvolvimento. `EXPO_PUBLIC_API_BASE_URL` precisa apontar para um backend HTTPS nesse build.
+
 ## Testes
 
 ```bash
@@ -146,8 +161,10 @@ npm test        # tests/ — shared/ e api/_lib/
 cd web && npm test   # web/tests/ — só o que é específico do app web
 ```
 
-A suíte da raiz cobre `shared/` (a lógica que os dois clientes e o backend usam) e os helpers de
-`api/_lib/`. Em `web/tests/` fica apenas o que é genuinamente específico do app web, como
+A suíte da raiz cobre `shared/` (a lógica que os dois clientes e o backend usam), os handlers de `api/`
+(limites, validação, login Google) e o servidor HTTP de `server/app.js` (Content-Type, Host, 405/413).
+A CI (`.github/workflows/ci.yml`) roda lint + testes da raiz, o check do `web/` e um bundle Android via
+`expo export` a cada push e PR. Em `web/tests/` fica apenas o que é genuinamente específico do app web, como
 `dataTransfer` — a contraparte nativa usa o sistema de arquivos em vez de `Blob`.
 
 ## Lint

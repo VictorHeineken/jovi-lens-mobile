@@ -12,14 +12,16 @@ function formatTimer(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
-export default function StudentDashboard({ subjects, notes, aiHistory, subjectArtifacts, studyCalendar }) {
-  const [query, setQuery] = useState('Revolução Industrial');
-  const [answer, setAnswer] = useState(DEFAULT_ANSWER);
+// `presentation` (plan.presentationMode) turns on the staged pitch numbers and
+// pre-filled examples; `activity` feeds the real streak (see shared/studentDashboard.js).
+export default function StudentDashboard({ subjects, notes, aiHistory, subjectArtifacts, studyCalendar, activity = [], presentation = false }) {
+  const [query, setQuery] = useState(presentation ? 'Revolução Industrial' : '');
+  const [answer, setAnswer] = useState(presentation ? DEFAULT_ANSWER : '');
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionSeconds, setSessionSeconds] = useState(10 * 60);
   const dashboard = useMemo(
-    () => buildStudentDashboard({ subjects, subjectArtifacts, studyCalendar }),
-    [subjects, subjectArtifacts, studyCalendar],
+    () => buildStudentDashboard({ subjects, subjectArtifacts, studyCalendar, activity, presentation }),
+    [subjects, subjectArtifacts, studyCalendar, activity, presentation],
   );
   const searchResults = useMemo(
     () => searchStudyMemory({ query, subjects, notes, aiHistory, subjectArtifacts, studyCalendar }),
@@ -94,7 +96,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
 
       <div className="dashboard-compact-row">
         <article className={`readiness-pill ${dashboard.readiness.tone}`}>
-          <span>Pronto para a prova</span>
+          <span>Prontidão para a prova</span>
           <strong>{dashboard.readiness.level}</strong>
           <small>{dashboard.readiness.text}</small>
         </article>
@@ -197,11 +199,15 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
 
         <section className="dashboard-mini-card comparison-card">
           <div className="dashboard-section-head"><Icon name="target" size={15} /><strong>Antes e depois</strong></div>
-          <div className="comparison-bars">
-            <span style={{ '--bar': `${dashboard.comparison.before}%` }}><b>{dashboard.comparison.before}%</b><small>Antes</small></span>
-            <span className="after" style={{ '--bar': `${dashboard.comparison.after}%` }}><b>{dashboard.comparison.after}%</b><small>Agora</small></span>
-          </div>
-          <small>+{dashboard.comparison.delta} pts em {dashboard.comparison.subject}. {dashboard.comparison.caption}</small>
+          {dashboard.comparison.available ? (
+            <>
+              <div className="comparison-bars">
+                <span style={{ '--bar': `${dashboard.comparison.before}%` }}><b>{dashboard.comparison.before}%</b><small>Primeiro</small></span>
+                <span className="after" style={{ '--bar': `${dashboard.comparison.after}%` }}><b>{dashboard.comparison.after}%</b><small>Último</small></span>
+              </div>
+              <small>{dashboard.comparison.delta >= 0 ? '+' : ''}{dashboard.comparison.delta} pts em {dashboard.comparison.subject}. {dashboard.comparison.caption}</small>
+            </>
+          ) : <small>{dashboard.comparison.caption}</small>}
         </section>
       </div>
 
@@ -283,7 +289,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
       </details>
 
       <section className="dashboard-section">
-        <div className="dashboard-section-head"><Icon name="search" size={15} /><strong>Busca global com IA</strong></div>
+        <div className="dashboard-section-head"><Icon name="search" size={15} /><strong>Buscar nos seus estudos</strong></div>
         <label className="ai-search-box">
           <Icon name="search" size={14} />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar em notas, provas, vídeos e plano" />
@@ -299,16 +305,19 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
         </div>
       </section>
 
+      {presentation ? (
       <section className="dashboard-section">
         <div className="dashboard-section-head"><Icon name="note" size={15} /><strong>Correção discursiva</strong></div>
         <textarea value={answer} onChange={(event) => setAnswer(event.target.value)} rows={4} />
         <div className="discursive-report">
           <strong>{correction.score}/10 · {correction.level}</strong>
           <p>{correction.feedback}</p>
-          <small>{correction.missing[0] || 'Resposta pronta para apresentação.'}</small>
+          <small>{correction.missing[0] || 'Sua resposta cobre os pontos principais.'}</small>
         </div>
       </section>
+      ) : null}
 
+      {dashboard.handwrittenCorrection ? (
       <details className="dashboard-details">
         <summary><Icon name="scan" size={15} /> Correção por foto</summary>
         <section className="dashboard-section handwritten-card">
@@ -323,6 +332,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
         </div>
         </section>
       </details>
+      ) : null}
 
       <details className="dashboard-details">
         <summary><Icon name="target" size={15} /> Ver ranking completo</summary>

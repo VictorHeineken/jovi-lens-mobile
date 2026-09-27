@@ -3,9 +3,30 @@
 // client identification, rate limiting and payload validation.
 
 import { timingSafeEqual } from 'node:crypto';
+import { isIPv6 } from 'node:net';
 import { verifySession } from './session.js';
 
-const rateBuckets = new Map();
+// Short-window (burst) and long-window (daily) buckets live apart: capping one
+// shared map evicted the oldest entries first — the daily ones — so a flood of
+// new client keys silently reset everyone's daily quota. Each map is swept at
+// most once a minute and capped on its own. An in-process guard for the local
+// prototype; a deployment needs a shared store keyed by account.
+const LONG_WINDOW_MS = 3_600_000;
+const buckets = { short: new Map(), long: new Map() };
+const MAX_BUCKETS = { short: 20_000, long: 200_000 };
+const SWEEP_INTERVAL_MS = 60_000;
+const lastSweepAt = { short: 0, long: 0 };
+
+function sweepBuckets(kind, now) {
+  const map = buckets[kind];
+  if (now - lastSweepAt[kind] < SWEEP_INTERVAL_MS && map.size <= MAX_BUCKETS[kind]) return;
+  lastSweepAt[kind] = now;
+  for (const [key, bucket] of map) if (now - bucket.startedAt > bucket.windowMs) map.delete(key);
+  for (const key of map.keys()) {
+    if (map.size <= MAX_BUCKETS[kind]) break;
+    map.delete(key);
+  }
+}
 
 // Static shared-secret gate — see auth-plan.md Phase 1. This is a speed bump
 // against casual/accidental use of the paid AI quota by other devices on the
@@ -33,13 +54,27 @@ export function sessionUser(req) {
   return { provided: true, user: verifySession(header.slice(7)) };
 }
 
+// IPv6 clients control a whole /64; keying on the full /128 let one client
+// rotate addresses to get fresh buckets. The address is expanded to its 8
+// groups first — the compressed text form places "::" differently for
+// addresses of the same /64. IPv4 (and IPv4-mapped) stay exact.
+function ipKey(ip) {
+  const value = String(ip).slice(0, 80).split('%')[0];
+  if (!isIPv6(value) || value.toLowerCase().startsWith('::ffff:')) return value;
+  const [head, tail = ''] = value.toLowerCase().split('::');
+  const left = head ? head.split(':') : [];
+  const right = value.includes('::') && tail ? tail.split(':') : [];
+  const groups = value.includes('::') ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left;
+  return `${groups.slice(0, 4).map((group) => group.replace(/^0+(?=.)/, '')).join(':')}::/64`;
+}
+
 export function clientKey(req) {
   const { user } = sessionUser(req);
   if (user) return `user:${user.sub}`;
   // Prefer the transport-level peer address (set by the local server from the
   // socket) — never key primarily on a client-supplied X-Forwarded-For, whose
   // left-most entry the client controls and could rotate to defeat the limiter.
-  if (req.ip) return String(req.ip).slice(0, 80);
+  if (req.ip) return ipKey(req.ip);
   const forwarded = req.headers['x-forwarded-for'];
   // Behind a trusted proxy the hop it appends is the RIGHT-most entry.
   if (forwarded) return String(forwarded).split(',').pop().trim().slice(0, 80);
@@ -50,14 +85,15 @@ export function clientKey(req) {
 // burst of cheap requests on one route never blocks another.
 export function isRateLimited(req, { windowMs = 60_000, max = 12, scope = 'default' } = {}) {
   const now = Date.now();
-  // Opportunistic eviction so the bucket map can't grow without bound.
-  if (rateBuckets.size > 500) {
-    for (const [key, bucket] of rateBuckets) if (now - bucket.startedAt > windowMs) rateBuckets.delete(key);
-  }
+  // Each bucket is judged by its OWN window: judging by the caller's window let
+  // a 60 s call delete daily buckets and silently reset everyone's daily quota.
+  const kind = windowMs >= LONG_WINDOW_MS ? 'long' : 'short';
+  sweepBuckets(kind, now);
+  const map = buckets[kind];
   const key = `${scope}:${clientKey(req)}`;
-  const bucket = rateBuckets.get(key);
-  if (!bucket || now - bucket.startedAt > windowMs) {
-    rateBuckets.set(key, { startedAt: now, count: 1 });
+  const bucket = map.get(key);
+  if (!bucket || now - bucket.startedAt > bucket.windowMs) {
+    map.set(key, { startedAt: now, count: 1, windowMs });
     return false;
   }
   bucket.count += 1;
@@ -70,6 +106,53 @@ export function isRateLimited(req, { windowMs = 60_000, max = 12, scope = 'defau
 // shared store and key it by authenticated user.
 export function isDailyLimited(req, { max = 100, scope = 'default' } = {}) {
   return isRateLimited(req, { windowMs: 86_400_000, max, scope: `daily:${scope}` });
+}
+
+// Exact MIME essence: "text/plain;application/json" contains the substring but
+// is a CORS-safelisted type a browser sends cross-site without a preflight.
+export function isJsonContentType(value) {
+  return String(value || '').split(';')[0].trim().toLowerCase() === 'application/json';
+}
+
+// The one preamble every AI handler runs, in the order that keeps the
+// status codes honest: method → JSON body → shared key → session → burst →
+// daily. The content-type check lives here too (not only in server/app.js) so
+// it holds wherever the handlers are deployed. Failed key checks are counted
+// only to cap noise from a misconfigured client — they do not slow down key
+// guessing (a correct key is always let through); the key's entropy (32 random
+// bytes) is the actual protection. Returns true when it already replied.
+export function guardAiRequest(req, res, { scope, perMinute, perDay, burstMessage, dailyMessage, checkSession = true }) {
+  if (req.method !== 'POST') {
+    res.status(405).json({ message: 'Método não permitido.' });
+    return true;
+  }
+  if (!isJsonContentType(req.headers?.['content-type'])) {
+    res.status(415).json({ message: 'Tipo de conteúdo não suportado.' });
+    return true;
+  }
+  if (!hasValidApiKey(req)) {
+    const locked = isRateLimited(req, { scope: 'apikey-failures', max: 10 });
+    res.status(locked ? 429 : 401).json(locked
+      ? { code: 'AI_RATE_LIMITED', message: 'Muitas tentativas sem autorização. Tente novamente em instantes.' }
+      : { code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
+    return true;
+  }
+  if (checkSession) {
+    const { provided, user } = sessionUser(req);
+    if (provided && !user) {
+      res.status(401).json({ code: 'SESSION_INVALID', message: 'Sessão expirada. Faça login novamente.' });
+      return true;
+    }
+  }
+  if (isRateLimited(req, { scope, max: perMinute })) {
+    res.status(429).json({ code: 'AI_RATE_LIMITED', message: burstMessage || 'Muitos pedidos em sequência. Tente novamente em instantes.' });
+    return true;
+  }
+  if (isDailyLimited(req, { scope, max: perDay })) {
+    res.status(429).json({ code: 'AI_RATE_LIMITED', message: dailyMessage || 'O limite diário deste recurso foi atingido. Tente novamente amanhã.' });
+    return true;
+  }
+  return false;
 }
 
 export function hasKnownImageSignature(base64, mimeType) {

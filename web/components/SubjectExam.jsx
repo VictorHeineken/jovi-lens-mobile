@@ -21,7 +21,7 @@ function computeByTopic(questions, answers) {
   return byTopic;
 }
 
-export default function SubjectExam({ subject, savedExam, savedResult, onResult }) {
+export default function SubjectExam({ subject, savedExam, savedResult, onResult, presentation = false }) {
   const [phase, setPhase] = useState('idle'); // idle | loading | running | done
   const [exam, setExam] = useState(null);
   const [error, setError] = useState('');
@@ -72,25 +72,36 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
     onResult?.(summary);
   }
 
-  async function start() {
-    setPhase('loading');
+  // Countdown from a fixed deadline: browsers throttle timers in background
+  // tabs, so decrementing a counter every "second" drifted.
+  function run(examData) {
+    window.clearInterval(timerRef.current);
+    window.clearTimeout(generationTimeoutRef.current);
     setError('');
     setAnswers({});
     answersRef.current = {};
     finishedRef.current = false;
     setResult(null);
     setCurrent(0);
+    setExam(examData);
+    examRef.current = examData;
+    const totalSeconds = Math.max(60, Math.round((examData.durationMinutes || 10) * 60));
+    const deadline = Date.now() + totalSeconds * 1000;
+    setSecondsLeft(totalSeconds);
+    setPhase('running');
+    timerRef.current = window.setInterval(() => {
+      setSecondsLeft(Math.max(0, Math.round((deadline - Date.now()) / 1000)));
+    }, 1000);
+  }
+
+  async function start() {
+    setPhase('loading');
+    setError('');
     try {
       const generated = await generateSubjectContent(subject, { action: 'exam' });
       if (!mountedRef.current) return; // unmounted during the request — don't start a leaked timer
       if (!generated.questions?.length) throw new Error('Não foi possível montar o simulado agora.');
-      setExam(generated);
-      examRef.current = generated;
-      setSecondsLeft((generated.durationMinutes || 10) * 60);
-      setPhase('running');
-      timerRef.current = window.setInterval(() => {
-        setSecondsLeft((value) => Math.max(0, value - 1));
-      }, 1000);
+      run(generated);
     } catch (err) {
       setError(err.message || 'Falha ao gerar o simulado.');
       setPhase('idle');
@@ -107,35 +118,26 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
     setPhase('done');
   }
 
+  // The exam the student last took comes first; the seeded one only in the pitch.
   function getReadyExam() {
-    return savedExam
-      || (savedResult?.questions?.length ? { subject: subject.name, durationMinutes: 10, questions: savedResult.questions } : null)
-      || DEMO_SUBJECT_ARTIFACTS[subject.name]?.exam?.data
+    return (savedResult?.questions?.length ? { subject: subject.name, durationMinutes: 10, questions: savedResult.questions } : null)
+      || savedExam
+      || (presentation ? DEMO_SUBJECT_ARTIFACTS[subject.name]?.exam?.data : null)
       || null;
   }
 
+  // Presentation: a short "generating" beat before the prepared exam. Outside
+  // it, retaking a saved exam opens it right away — no staged generation.
   function practiceReadyExam() {
     const readyExam = getReadyExam();
     if (!readyExam?.questions?.length) return start();
-    window.clearInterval(timerRef.current);
+    if (!presentation) { run(readyExam); return undefined; }
     window.clearTimeout(generationTimeoutRef.current);
-    setError('');
-    setAnswers({});
-    answersRef.current = {};
-    finishedRef.current = false;
-    setResult(null);
-    setCurrent(0);
     setPhase('loading');
     generationTimeoutRef.current = window.setTimeout(() => {
-      if (!mountedRef.current) return;
-      setExam(readyExam);
-      examRef.current = readyExam;
-      setSecondsLeft((readyExam.durationMinutes || 10) * 60);
-      setPhase('running');
-      timerRef.current = window.setInterval(() => {
-        setSecondsLeft((value) => Math.max(0, value - 1));
-      }, 1000);
+      if (mountedRef.current) run(readyExam);
     }, 1200);
+    return undefined;
   }
 
   if (phase === 'idle') {
@@ -149,7 +151,14 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
         {savedResult && <div className="studio-recall"><Icon name="history" size={14} /><span>Último resultado: <strong>{savedResult.percent}%</strong> ({savedResult.score}/{savedResult.total})</span></div>}
         {error && <div className="studio-error" role="alert">{error}</div>}
         {savedResult && <button className="studio-ghost wide" onClick={openReadyResult}><Icon name="history" size={16} /> Ver último resultado</button>}
-        <button className="studio-primary" onClick={getReadyExam() ? practiceReadyExam : start}><Icon name="target" size={16} /> Fazer simulado</button>
+        {presentation ? (
+          <button className="studio-primary" onClick={getReadyExam() ? practiceReadyExam : start}><Icon name="target" size={16} /> Fazer simulado</button>
+        ) : (
+          <>
+            {getReadyExam() ? <button className="studio-ghost wide" onClick={practiceReadyExam}><Icon name="rotate" size={16} /> {savedResult ? 'Refazer este simulado' : 'Fazer o simulado pronto'}</button> : null}
+            <button className="studio-primary" onClick={start}><Icon name="sparkle" size={16} /> {getReadyExam() ? 'Gerar novo simulado' : 'Fazer simulado'}</button>
+          </>
+        )}
       </div>
     );
   }
@@ -201,7 +210,7 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult 
             );
           })}
         </div>
-        <button className="studio-primary" onClick={getReadyExam() ? practiceReadyExam : start}><Icon name="rotate" size={15} /> Refazer simulado</button>
+        <button className="studio-primary" onClick={presentation && getReadyExam() ? practiceReadyExam : start}><Icon name="rotate" size={15} /> {presentation ? 'Refazer simulado' : 'Gerar novo simulado'}</button>
       </div>
     );
   }

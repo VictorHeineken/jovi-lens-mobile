@@ -1,16 +1,41 @@
-import { hasValidApiKey, isDailyLimited, isRateLimited } from '../_lib/http.js';
+import { createHash } from 'node:crypto';
+import { guardAiRequest } from '../_lib/http.js';
 import { issueSession } from '../_lib/session.js';
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido.' });
+// Each Google id_token is exchanged for a session at most once. The nonce
+// alone cannot stop a replay: it travels inside the token's readable payload,
+// so whoever holds the token can present it too. The cache is keyed on the
+// token's own claims (not its raw text, which could be re-encoded) and kept
+// until it expires — per process; a multi-instance deployment needs a shared
+// store here.
+const usedCredentials = new Map();
 
-  // Every other endpoint is rate limited and this one was not, which mattered more
-  // than it looks: it is unauthenticated by definition (it is what establishes who
-  // the caller is) and each call makes an outbound request to Google, so an
-  // unthrottled route here is a free way to hammer that dependency from our IP.
-  if (isRateLimited(req, { scope: 'apikey', max: 20 }) || !hasValidApiKey(req)) return res.status(401).json({ code: 'API_KEY_INVALID', message: 'Acesso não autorizado.' });
-  if (isRateLimited(req, { scope: 'auth', max: 10 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'Muitas tentativas de login em sequência. Tente novamente em instantes.' });
-  if (isDailyLimited(req, { scope: 'auth', max: 60 })) return res.status(429).json({ code: 'AI_RATE_LIMITED', message: 'O limite diário de tentativas de login foi atingido.' });
+function tokenKey(profile) {
+  return createHash('sha256').update(`${profile.sub}|${profile.iat}|${profile.exp}|${profile.nonce || ''}`).digest('hex');
+}
+
+function claimOnce(key, expMs) {
+  const now = Date.now();
+  for (const [hash, until] of usedCredentials) if (until <= now) usedCredentials.delete(hash);
+  if (usedCredentials.has(key)) return false;
+  usedCredentials.set(key, expMs);
+  return true;
+}
+
+export default async function handler(req, res) {
+  // Rate limited even though it is unauthenticated by definition: each call makes
+  // an outbound request to Google, so an unthrottled route here is a free way to
+  // hammer that dependency from our IP. No session check — this is where an
+  // expired session comes to be replaced, so rejecting a stale Bearer here
+  // would lock the user out of signing back in.
+  if (guardAiRequest(req, res, {
+    scope: 'auth',
+    perMinute: 10,
+    perDay: 60,
+    checkSession: false,
+    burstMessage: 'Muitas tentativas de login em sequência. Tente novamente em instantes.',
+    dailyMessage: 'O limite diário de tentativas de login foi atingido.',
+  })) return;
 
   // Comma-separated on purpose: the web app (Google Identity Services) and the
   // RN app (expo-auth-session's browser OAuth flow) are registered as separate
@@ -20,6 +45,11 @@ export default async function handler(req, res) {
   if (!allowedClientIds.length) return res.status(503).json({ message: 'Google Sign-In ainda não está configurado no servidor.' });
   const credential = req.body?.credential;
   if (typeof credential !== 'string' || credential.length < 20 || credential.length > 6000) return res.status(400).json({ message: 'Credencial Google inválida.' });
+  // The native client sends the nonce it asked Google to embed; a mismatch means
+  // the token was minted for a different sign-in (an injected token). This is
+  // not replay protection — see claimOnce() above. Optional so the web (GIS)
+  // flow, which does not send one, keeps working.
+  const nonce = typeof req.body?.nonce === 'string' ? req.body.nonce.slice(0, 200) : '';
 
   try {
     // 8s cap: without it a hung response from Google holds this handler open
@@ -33,7 +63,12 @@ export default async function handler(req, res) {
     // encouraged retries that only ate into this endpoint's own rate limit.
     if (response.status !== 400 && !response.ok) return res.status(502).json({ message: 'Não foi possível validar com o Google agora. Tente novamente.' });
     const profile = await response.json();
-    if (!response.ok || !allowedClientIds.includes(profile.aud) || !['accounts.google.com', 'https://accounts.google.com'].includes(profile.iss) || profile.email_verified !== 'true' || Number(profile.exp || 0) * 1000 <= Date.now()) return res.status(401).json({ message: 'Token Google inválido para este aplicativo.' });
+    if (!response.ok || !allowedClientIds.includes(profile.aud) || !['accounts.google.com', 'https://accounts.google.com'].includes(profile.iss) || profile.email_verified !== 'true' || Number(profile.exp || 0) * 1000 <= Date.now() || (nonce && profile.nonce !== nonce)) return res.status(401).json({ message: 'Token Google inválido para este aplicativo.' });
+
+    // Checked only after Google accepted the token, so a burst of garbage
+    // cannot fill the cache.
+    const key = tokenKey(profile);
+    if (!claimOnce(key, Number(profile.exp) * 1000)) return res.status(401).json({ message: 'Esta credencial Google já foi usada. Entre novamente.' });
 
     let session;
     try {
@@ -43,7 +78,10 @@ export default async function handler(req, res) {
       // a profile to show), but per-account quotas stay on IP-based limiting
       // until the secret is configured — same "optional until configured"
       // pattern as GOOGLE_CLIENT_ID/JOVI_API_KEY elsewhere in this file.
-      if (error?.code !== 'SESSION_NOT_CONFIGURED') throw error;
+      if (error?.code !== 'SESSION_NOT_CONFIGURED') {
+        usedCredentials.delete(key); // an internal failure must not burn the user's token
+        throw error;
+      }
     }
 
     return res.status(200).json({

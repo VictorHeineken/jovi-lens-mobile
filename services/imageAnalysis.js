@@ -8,10 +8,7 @@ import { getDemoAction, getDemoAnalysis } from '../shared/demoResponses.js';
 import { demoAssetModule } from './demoAssets.js';
 import { isDemoMode } from './env.js';
 import { apiFetch } from './apiClient.js';
-
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { rebaseMediaUri } from './storage.js';
 
 function getImageSize(uri) {
   return new Promise((resolve, reject) => {
@@ -20,10 +17,10 @@ function getImageSize(uri) {
 }
 
 // Android's image loader (Fresco) rejects `data:` URIs with "Unsupported uri
-// scheme for encoded image fetch!", and both capture flows store images as
-// data URIs (see app/(tabs)/camera.jsx and app/(tabs)/gallery.jsx). Spilling
-// the payload to a cache file first gives Image.getSize/ImageManipulator a
-// file:// URI, which both accept on every platform.
+// scheme for encoded image fetch!". Captures are stored as files now, but a
+// data: URI can still arrive (web-shaped payloads, old records), so it is
+// spilled to a cache file first — Image.getSize and ImageManipulator accept
+// file:// URIs on every platform.
 async function toLoadableUri(uri) {
   // A seeded sample's `/demo-assets/...` src names a bundled module, not a file
   // on disk, so Image.getSize and ImageManipulator both fail on it. expo-asset
@@ -34,7 +31,7 @@ async function toLoadableUri(uri) {
     if (!asset.localUri) await asset.downloadAsync();
     return { uri: asset.localUri || asset.uri, cleanup: null };
   }
-  if (typeof uri !== 'string' || !uri.startsWith('data:')) return { uri, cleanup: null };
+  if (typeof uri !== 'string' || !uri.startsWith('data:')) return { uri: rebaseMediaUri(uri), cleanup: null };
   const base64 = uri.slice(uri.indexOf(',') + 1);
   const target = `${FileSystem.cacheDirectory}jovi-ai-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
   await FileSystem.writeAsStringAsync(target, base64, { encoding: FileSystem.EncodingType.Base64 });
@@ -64,32 +61,49 @@ export async function prepareImageForAI(uri, maxSide = 1600) {
   }
 }
 
-async function requestAnalysis(src, { action = 'analyze', question = '', context = null } = {}) {
+function abortError() {
+  return Object.assign(new Error('Operação cancelada.'), { name: 'AbortError' });
+}
+
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(abortError()); return; }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener?.('abort', () => { clearTimeout(timer); reject(abortError()); });
+  });
+}
+
+// Only these two read pixels; every follow-up works from the analysis the
+// sheet already holds (see api/analyze-image.js IMAGE_ACTIONS).
+const IMAGE_ACTIONS = new Set(['analyze', 'extract']);
+
+async function requestAnalysis(src, { action = 'analyze', question = '', context = null, signal } = {}) {
   if (isDemoMode()) {
-    await wait(action === 'analyze' ? 1100 : 520);
+    await wait(action === 'analyze' ? 1100 : 520, signal);
     if (action === 'extract') return { text: getDemoAnalysis().text, language: 'pt', confidence: 0.96, provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' };
     return action === 'analyze' ? { ...getDemoAnalysis(), provider: 'demo', model: 'jovi-lens-demo', mode: 'demo' } : getDemoAction({ action, question, context });
   }
 
-  const prepared = await prepareImageForAI(src, 1600);
-  const [header, base64] = prepared.split(',');
-  const mimeType = header.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
+  const payload = { action, question, context };
+  if (IMAGE_ACTIONS.has(action) || !context) {
+    const prepared = await prepareImageForAI(src, 1600);
+    if (signal?.aborted) throw abortError();
+    const [header, base64] = prepared.split(',');
+    payload.image = base64;
+    payload.mimeType = header.match(/data:(.*?);base64/)?.[1] || 'image/jpeg';
+  }
 
   let response;
   try {
-    response = await apiFetch('/api/analyze-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64, mimeType, action, question, context }),
-    });
+    response = await apiFetch('/api/analyze-image', { method: 'POST', body: JSON.stringify(payload), signal });
   } catch (error) {
-    if (error?.name === 'AbortError') throw error;
+    if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw error;
     throw new Error('Sem conexão no momento. Confira a internet ou ative o modo demonstração.');
   }
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || 'Não foi possível analisar a imagem.');
-  return payload;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'Não foi possível analisar a imagem.');
+  return data;
 }
 
 export async function analyzeImage(src, options) {

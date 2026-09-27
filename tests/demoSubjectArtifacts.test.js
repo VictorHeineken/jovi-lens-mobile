@@ -50,3 +50,33 @@ test('mergeDemoSubjectArtifacts refreshes legacy seeded demo artifacts', () => {
   assert.notEqual(artifacts.História.podcast.data.title, 'antigo');
   assert.ok(artifacts.História.podcast.data.segments.length > 0);
 });
+
+test('example content is preloaded but no score is attributed to the student', () => {
+  // Regression: a fresh install showed História at "86% · Pronto para a prova"
+  // because the seeded exam RESULT was stored as the student's own.
+  const { artifacts } = mergeDemoSubjectArtifacts({});
+  assert.ok(artifacts.História.exam, 'the prepared exam stays available to take');
+  assert.equal(artifacts.História.examResult, undefined);
+  assert.equal(artifacts.História.planProgress, undefined);
+});
+
+test('a previously seeded score is removed while a real one is kept', () => {
+  const seeded = DEMO_SUBJECT_ARTIFACTS.História.examResult;
+  const { artifacts: cleaned, changed } = mergeDemoSubjectArtifacts({ História: { examResult: seeded } });
+  assert.equal(changed, true);
+  assert.equal(cleaned.História.examResult, undefined);
+
+  const real = { data: { percent: 40, score: 2, total: 5 }, savedAt: '2026-09-25T10:00:00.000Z' };
+  const { artifacts: kept } = mergeDemoSubjectArtifacts({ História: { examResult: real } });
+  assert.equal(kept.História.examResult, real);
+});
+
+test('a podcast the student generated survives the next launch', () => {
+  // Regression: saving { ...seededPodcasts, formats } kept the seed's demo
+  // markers, so the merge put the seeded episode back on the next launch.
+  const seeded = DEMO_SUBJECT_ARTIFACTS.História.podcasts.data;
+  const mine = { format: 'drive', title: 'Meu episódio', mode: 'live', provider: 'azure-openai', segments: [{ speaker: 'coach', text: 'oi' }] };
+  const saved = { data: { formats: { ...seeded.formats, drive: mine } }, savedAt: '2026-09-26T20:00:00.000Z' };
+  const { artifacts } = mergeDemoSubjectArtifacts({ História: { podcasts: saved } });
+  assert.equal(artifacts.História.podcasts.data.formats.drive.title, 'Meu episódio');
+});

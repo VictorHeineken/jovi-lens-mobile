@@ -21,7 +21,8 @@ const TABS = [
 ];
 
 export default function SubjectStudio({ subject, initialTab = 'overview', initialPodcastFormat = null, onClose }) {
-  const { saveSubjectArtifact, getSubjectArtifact } = useAppData();
+  const { saveSubjectArtifact, getSubjectArtifact, plan } = useAppData();
+  const presentation = Boolean(plan?.presentationMode);
   const dialogRef = useDialogAccessibility(onClose, Boolean(subject));
   const [tab, setTab] = useState(initialTab);
 
@@ -32,7 +33,8 @@ export default function SubjectStudio({ subject, initialTab = 'overview', initia
   if (!subject) return null;
 
   const rawExamResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
-  const examResult = getPresentationExamResult(subject, rawExamResult);
+  const examResult = getPresentationExamResult(subject, rawExamResult, { presentation });
+  const examHistory = getSubjectArtifact(subject.name, 'examHistory')?.data || [];
   const savedExam = getSubjectArtifact(subject.name, 'exam')?.data || null;
   const savedPlan = getSubjectArtifact(subject.name, 'plan')?.data || null;
   const savedPlanProgress = getSubjectArtifact(subject.name, 'planProgress')?.data || {};
@@ -80,7 +82,7 @@ export default function SubjectStudio({ subject, initialTab = 'overview', initia
         <div className="studio-body">
           {tab === 'overview' && <SubjectOverview subject={subject} insights={insights} />}
           {tab === 'questions' && <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} />}
-          {tab === 'exam' && <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} />}
+          {tab === 'exam' && <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} presentation={presentation} onResult={(data) => { saveSubjectArtifact(subject.name, 'examResult', data); saveSubjectArtifact(subject.name, 'examHistory', [...examHistory, { percent: data.percent, score: data.score, total: data.total, takenAt: data.takenAt }].slice(-20)); }} />}
           {tab === 'podcast' && (
             <PodcastPlayer
               key={initialPodcastFormat || 'podcast-default'}
@@ -90,7 +92,9 @@ export default function SubjectStudio({ subject, initialTab = 'overview', initia
               initialFormat={initialPodcastFormat}
               onSave={(data) => {
                 saveSubjectArtifact(subject.name, 'podcast', data);
-                if (savedPodcasts?.formats) saveSubjectArtifact(subject.name, 'podcasts', { ...savedPodcasts, formats: { ...savedPodcasts.formats, [data.format || 'dialogue']: data } });
+                // Only `formats`: spreading the seeded object carried its demo markers
+                // and the next load replaced the student's episode with the seed.
+                saveSubjectArtifact(subject.name, 'podcasts', { formats: { ...(savedPodcasts?.formats || {}), [data.format || 'dialogue']: data } });
               }}
             />
           )}

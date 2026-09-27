@@ -13,15 +13,17 @@ function formatTimer(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
 }
 
-export default function StudentDashboard({ subjects, notes, aiHistory, subjectArtifacts, studyCalendar }) {
-  const [query, setQuery] = useState('Revolução Industrial');
-  const [answer, setAnswer] = useState(DEFAULT_ANSWER);
+// `presentation` (plan.presentationMode) turns on the staged pitch numbers and
+// pre-filled examples; `activity` feeds the real streak (see shared/studentDashboard.js).
+export default function StudentDashboard({ subjects, notes, aiHistory, subjectArtifacts, studyCalendar, activity = [], presentation = false }) {
+  const [query, setQuery] = useState(presentation ? 'Revolução Industrial' : '');
+  const [answer, setAnswer] = useState(presentation ? DEFAULT_ANSWER : '');
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionSeconds, setSessionSeconds] = useState(10 * 60);
   const [openBlocks, setOpenBlocks] = useState({ flashcards: true });
   const dashboard = useMemo(
-    () => buildStudentDashboard({ subjects, subjectArtifacts, studyCalendar }),
-    [subjects, subjectArtifacts, studyCalendar],
+    () => buildStudentDashboard({ subjects, subjectArtifacts, studyCalendar, activity, presentation }),
+    [subjects, subjectArtifacts, studyCalendar, activity, presentation],
   );
   const searchResults = useMemo(
     () => searchStudyMemory({ query, subjects, notes, aiHistory, subjectArtifacts, studyCalendar }),
@@ -97,7 +99,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
 
       <View className="gap-2">
         <View className="rounded-2xl border border-slate-100 bg-white px-3 py-3">
-          <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Pronto para a prova</Text>
+          <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Prontidão para a prova</Text>
           <Text className="text-[14px] font-black text-slate-900">{dashboard.readiness.level}</Text>
           <Text className="text-[11px] text-slate-500">{dashboard.readiness.text}</Text>
         </View>
@@ -182,7 +184,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
         <View className="flex-row items-center justify-between gap-3">
           <View>
             <Text className="text-[11px] font-bold uppercase tracking-wide text-indigo-500">Streak e meta</Text>
-            <Text className="text-[24px] font-black text-slate-900">{dashboard.streak.days} dias</Text>
+            <Text className="text-[24px] font-black text-slate-900">{dashboard.streak.days} {dashboard.streak.days === 1 ? 'dia' : 'dias'}</Text>
           </View>
           <Text className="text-[12px] font-bold text-indigo-600">{dashboard.streak.completedThisWeek}/{dashboard.streak.weeklyGoal} metas</Text>
         </View>
@@ -196,11 +198,17 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
 
       <View className="gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-3">
         <Text className="text-[13px] font-bold text-slate-900">Antes e depois</Text>
-        <View className="flex-row items-end gap-3">
-          <ProgressColumn label="Antes" value={dashboard.comparison.before} tone="muted" />
-          <ProgressColumn label="Agora" value={dashboard.comparison.after} tone="strong" />
-        </View>
-        <Text className="text-[11px] text-slate-500">+{dashboard.comparison.delta} pts em {dashboard.comparison.subject}. {dashboard.comparison.caption}</Text>
+        {dashboard.comparison.available ? (
+          <>
+            <View className="flex-row items-end gap-3">
+              <ProgressColumn label="Primeiro simulado" value={dashboard.comparison.before} tone="muted" />
+              <ProgressColumn label="Último" value={dashboard.comparison.after} tone="strong" />
+            </View>
+            <Text className="text-[11px] text-slate-500">{dashboard.comparison.delta >= 0 ? '+' : ''}{dashboard.comparison.delta} pts em {dashboard.comparison.subject}. {dashboard.comparison.caption}</Text>
+          </>
+        ) : (
+          <Text className="text-[12px] text-slate-500">{dashboard.comparison.caption}</Text>
+        )}
       </View>
 
       <View className="gap-2 rounded-2xl bg-slate-50 px-3 py-3">
@@ -275,7 +283,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
         ))}
       </CollapsibleBlock>
 
-      <DashboardBlock icon="search" title="Busca global com IA">
+      <DashboardBlock icon="search" title="Buscar nos seus estudos">
         <View className="flex-row items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
           <Icon name="search" size={14} color="#64748b" />
           <TextInput
@@ -295,6 +303,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
         ))}
       </DashboardBlock>
 
+      {presentation ? (
       <DashboardBlock icon="note" title="Correção discursiva">
         <TextInput
           accessibilityLabel="Resposta discursiva para correção"
@@ -307,10 +316,12 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
         <View className="gap-1 rounded-xl bg-indigo-50 px-3 py-2.5">
           <Text className="text-[13px] font-bold text-slate-900">{correction.score}/10 · {correction.level}</Text>
           <Text className="text-[11px] text-slate-600">{correction.feedback}</Text>
-          <Text className="text-[11px] text-indigo-600">{correction.missing[0] || 'Resposta pronta para apresentação.'}</Text>
+          <Text className="text-[11px] text-indigo-600">{correction.missing[0] || 'Sua resposta cobre os pontos principais.'}</Text>
         </View>
       </DashboardBlock>
+      ) : null}
 
+      {dashboard.handwrittenCorrection ? (
       <CollapsibleBlock icon="scan" title="Correção por foto" open={!!openBlocks.handwriting} onToggle={() => toggleBlock('handwriting')}>
         <View className="gap-1 rounded-xl border border-dashed border-indigo-200 bg-indigo-50 px-3 py-3">
           <Text className="text-[10px] font-bold uppercase tracking-wide text-indigo-500">{dashboard.handwrittenCorrection.imageLabel}</Text>
@@ -321,6 +332,7 @@ export default function StudentDashboard({ subjects, notes, aiHistory, subjectAr
           <Text className="text-[11px] text-slate-600">{dashboard.handwrittenCorrection.feedback}</Text>
         </View>
       </CollapsibleBlock>
+      ) : null}
 
       <CollapsibleBlock icon="target" title="Ver ranking completo" open={!!openBlocks.ranking} onToggle={() => toggleBlock('ranking')}>
         {dashboard.ranking.map((item) => (

@@ -15,19 +15,28 @@ function scoreText(text, query) {
   return 0;
 }
 
+// Every word of the query must appear somewhere in the item, in any order —
+// a student types "revolução fábricas", not the exact phrase of a note.
+function termsOf(query) {
+  return query.split(/\s+/).filter(Boolean);
+}
+
 function resultFor(item, kind, record, query) {
   const title = item.title || item.label || 'Conteúdo sem título';
   const category = item.category || item.subcategory || 'Estudos';
   const summary = item.summary || item.response || item.text || item.analysis?.summary || '';
   const searchable = [title, category, item.subcategory, item.prompt, item.text, item.contentText, summary, ...(item.tags || [])].join(' ');
   const normalized = normalize(searchable);
-  if (!normalized.includes(query)) return null;
+  const terms = termsOf(query);
+  if (!terms.every((term) => normalized.includes(term))) return null;
 
+  // Whole-phrase matches rank first; then each term scores on its own.
+  const fieldScore = (text) => Math.max(scoreText(text, query) * 1.2, terms.reduce((sum, term) => sum + scoreText(text, term), 0) / terms.length);
   const score = Math.max(
-    scoreText(title, query),
-    scoreText(category, query) * 0.8,
-    scoreText(item.subcategory, query) * 0.7,
-    scoreText(summary, query) * 0.55,
+    fieldScore(title),
+    fieldScore(category) * 0.8,
+    fieldScore(item.subcategory) * 0.7,
+    fieldScore(summary) * 0.55,
   );
   return {
     id: `${kind}-${item.id}`,
