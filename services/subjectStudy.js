@@ -1,4 +1,5 @@
 import { getSubjectDemo } from '../shared/demoResponses.js';
+import { gradeAgainstModel } from '../shared/answerGrading.js';
 import { isDemoMode } from './env.js';
 import { apiRequest } from './apiClient.js';
 import { getLearningPreferences, getStudyCalendar } from './storage.js';
@@ -29,6 +30,20 @@ export async function generateSubjectContent(subject, { action, format } = {}) {
 
   return apiRequest('/api/subject-ai', {
     body: { action, subject: payloadSubject, preferences },
+    idempotent: true,
+  });
+}
+
+// Corrects one written answer against the question's model answer. Demo Mode
+// grades locally (concept overlap, shared/answerGrading.js) — same shape as live.
+export async function gradeAnswer(subject, { question, modelAnswer, answer }) {
+  if (isDemoMode()) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return { ...gradeAgainstModel({ answer, modelAnswer }), mode: 'demo' };
+  }
+  // Costs 1 credit like any other AI action (idempotent so a retry never double-charges).
+  return apiRequest('/api/subject-ai', {
+    body: { action: 'grade', subject: { name: subject.name, notes: subject.notes }, grading: { question, modelAnswer, answer }, preferences: getLearningPreferences() },
     idempotent: true,
   });
 }

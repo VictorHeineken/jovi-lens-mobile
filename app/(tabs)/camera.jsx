@@ -1,43 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter, useIsFocused } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { Camera, useCameraDevice, useCameraPermission, usePhotoOutput, useVideoOutput } from 'react-native-vision-camera';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Camera, useCameraDevice, useCameraPermission, useMicrophonePermission, usePhotoOutput, useVideoOutput } from 'react-native-vision-camera';
 import Icon from '../../components/Icon.jsx';
 import SmartImageSheet from '../../components/SmartImageSheet.jsx';
 import { useTopInset } from '../../hooks/safeArea.js';
 import { useToast } from '../../shared/toast.js';
-import { imageSource } from '../../services/demoAssets.js';
+import { IMAGE_FILL, imageSource } from '../../services/demoAssets.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 import { MEDIA_DIR, ensureMediaDirExists } from '../../services/storage.js';
+import { framingAspect, getAspectCrop } from '../../shared/cameraCrop.js';
 
-const CAMERA_MODES = ['NOITE', 'VÍDEO', 'FOTO', 'RETRATO', 'MAIS'];
-const MORE_MODES = ['DOCUMENTOS', 'PANORAMA', 'MACRO', 'PRO'];
+// Only modes that change what gets captured. Noite/Retrato/Panorama/Macro/Pro
+// used to be listed too, but selecting them changed nothing — a camera mode
+// that silently does nothing is worse than not offering it.
+const CAMERA_MODES = ['VÍDEO', 'FOTO', 'DOCUMENTO'];
 const ZOOM_LEVELS = ['0,6', '1x', '2x', '3x'];
 const ZOOM_TARGETS = { '0,6': 0.6, '1x': 1, '2x': 2, '3x': 3 };
+const FLASH_CYCLE = { off: 'auto', auto: 'on', on: 'off' };
+const FLASH_LABEL = { off: 'Flash desligado', auto: 'Flash automático', on: 'Flash ligado' };
 
-// Web fakes zoom by CSS-scaling the <video> preview, then crops the capture
-// canvas to match. Vision-camera does real (often optical/hybrid) zoom via
-// the `zoom` prop, so capturePhoto() already returns a zoomed-in frame —
-// only the aspect-ratio crop below is still needed, not a zoom crop too.
-function getAspectCrop(width, height, ratio) {
-  const [rw, rh] = ratio.split(':').map(Number);
-  const desiredRatio = rw / rh;
-  const sourceRatio = width / height;
-  const cropWidth = sourceRatio > desiredRatio ? height * desiredRatio : width;
-  const cropHeight = sourceRatio > desiredRatio ? height : width / desiredRatio;
-  // Clamped because expo-image-manipulator rejects the whole render when the
-  // rectangle pokes even one pixel outside the source ("Invalid crop options").
-  const w = Math.min(width, Math.max(1, Math.round(cropWidth)));
-  const h = Math.min(height, Math.max(1, Math.round(cropHeight)));
-  return {
-    originX: Math.max(0, Math.min(width - w, Math.round((width - cropWidth) / 2))),
-    originY: Math.max(0, Math.min(height - h, Math.round((height - cropHeight) / 2))),
-    width: w,
-    height: h,
-  };
-}
+// Vision-camera does real (often optical/hybrid) zoom via the `zoom` prop, so
+// the captured frame is already zoomed; only the aspect crop remains, and it
+// lives in shared/cameraCrop.js so the preview frame and the saved file agree.
 
 // capturePhoto() reports the sensor's own width/height, but the file written by
 // saveToTemporaryFileAsync() is already EXIF-rotated — so on a portrait shot the
@@ -65,19 +54,23 @@ export default function CameraScreen() {
   const recorderRef = useRef(null);
 
   const { hasPermission, canRequestPermission, requestPermission } = useCameraPermission();
+  const microphone = useMicrophonePermission();
   const [facing, setFacing] = useState('back');
   const device = useCameraDevice(facing);
   const photoOutput = usePhotoOutput();
-  // Web's getUserMedia call for the camera preview requests `audio: false` —
-  // captured videos there have no sound. Matched here for parity.
-  const videoOutput = useVideoOutput({ enableAudio: false });
+  // Video records sound when the microphone is allowed (asked when the student
+  // switches to VÍDEO); without it the recording still works, silently. The
+  // flag only follows the permission while NOT recording: changing it
+  // recreates the output, which would orphan a recording in progress.
+  const [videoAudio, setVideoAudio] = useState(microphone.hasPermission);
+  const videoOutput = useVideoOutput({ enableAudio: videoAudio });
 
-  const [flashOn, setFlashOn] = useState(false);
+  const [flashMode, setFlashMode] = useState('off');
+  const [torchOn, setTorchOn] = useState(false);
   const [aspectRatio, setAspectRatio] = useState('4:3');
   const [cameraMode, setCameraMode] = useState('FOTO');
   const [zoom, setZoom] = useState('1x');
   const [lensActive, setLensActive] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cameraMessage, notify] = useToast();
@@ -91,6 +84,10 @@ export default function CameraScreen() {
     if (!hasPermission && canRequestPermission) requestPermission();
   }, [hasPermission, canRequestPermission, requestPermission]);
 
+  useEffect(() => {
+    if (!recording) setVideoAudio(microphone.hasPermission);
+  }, [microphone.hasPermission, recording]);
+
   function zoomValue() {
     if (!device) return 1;
     const target = ZOOM_TARGETS[zoom] ?? 1;
@@ -100,16 +97,21 @@ export default function CameraScreen() {
   async function pickFromLibrary() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) { notify('Permita o acesso às fotos para continuar.'); return; }
-    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], base64: true, quality: 1 });
+    // No base64: the picker's file is copied into the app's media folder by
+    // addRecord, instead of round-tripping megabytes through a JS string.
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
     if (picked.canceled || !picked.assets?.[0]) return;
     const asset = picked.assets[0];
-    const src = asset.base64 ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}` : asset.uri;
-    await commitCapture(src, { source: 'upload', label: asset.fileName || 'Imagem importada' });
+    try {
+      await commitCapture(asset.uri, { source: 'upload', label: asset.fileName || 'Imagem importada' });
+    } catch (error) {
+      notify(error.message || 'Não foi possível importar essa imagem.');
+    }
   }
 
   async function commitCapture(src, { source, label }) {
     const useLens = lensActive;
-    const documentMode = cameraMode === 'DOCUMENTOS';
+    const documentMode = cameraMode === 'DOCUMENTO';
     const nextPage = documentPage + 1;
     const sessionId = documentSessionId || `document-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const record = await addRecord({
@@ -139,18 +141,21 @@ export default function CameraScreen() {
     if (!cameraRef.current || !device) { await pickFromLibrary(); return; }
     setBusy(true);
     let photo;
+    const temporaryFiles = [];
     try {
-      photo = await photoOutput.capturePhoto({ flashMode: 'off' }, {});
+      photo = await photoOutput.capturePhoto({ flashMode: device.hasFlash ? flashMode : 'off' }, {});
       const tempPath = await photo.saveToTemporaryFileAsync();
-      const fileUri = `file://${tempPath}`;
+      const fileUri = tempPath.startsWith('file://') ? tempPath : `file://${tempPath}`;
+      temporaryFiles.push(fileUri);
       const { width, height } = await measureImage(fileUri);
       const crop = getAspectCrop(width, height, aspectRatio);
       const manipulated = await ImageManipulator.manipulateAsync(
         fileUri,
         [{ crop }],
-        { base64: true, format: ImageManipulator.SaveFormat.JPEG, compress: 0.95 },
+        { format: ImageManipulator.SaveFormat.JPEG, compress: 0.92 },
       );
-      await commitCapture(`data:image/jpeg;base64,${manipulated.base64}`, { source: 'camera', label: 'Captura da câmera' });
+      temporaryFiles.push(manipulated.uri);
+      await commitCapture(manipulated.uri, { source: 'camera', label: cameraMode === 'DOCUMENTO' ? 'Documento' : 'Captura da câmera' });
     } catch (error) {
       // Swallowing this made a real failure invisible on device; log it so
       // `adb logcat` shows why a capture was dropped.
@@ -159,6 +164,9 @@ export default function CameraScreen() {
     } finally {
       photo?.dispose();
       setBusy(false);
+      // addRecord copied the result into the media folder; the camera's raw
+      // file and the crop output would otherwise pile up in the cache.
+      temporaryFiles.forEach((uri) => FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {}));
     }
   }
 
@@ -173,9 +181,12 @@ export default function CameraScreen() {
         async (finishedPath) => {
           recorderRef.current = null;
           setRecording(false);
-          const record = await addRecord({ src: `file://${finishedPath}`, source: 'camera', label: 'Vídeo da câmera', aiAvailable: false, mediaType: 'video' });
-          setSelectedView('viewer');
-          setSelected(record);
+          try {
+            const record = await addRecord({ src: finishedPath.startsWith('file://') ? finishedPath : `file://${finishedPath}`, source: 'camera', label: 'Vídeo da câmera', aiAvailable: false, mediaType: 'video' });
+            if (record) { setSelectedView('viewer'); setSelected(record); }
+          } catch (error) {
+            notify(error.message || 'Não foi possível salvar o vídeo.');
+          }
         },
         () => { recorderRef.current = null; setRecording(false); notify('Não foi possível gravar o vídeo.'); },
       );
@@ -199,9 +210,19 @@ export default function CameraScreen() {
     await takePicture();
   }
 
-  async function toggleFlash() {
-    if (!device?.hasTorch) { notify('O flash não está disponível neste dispositivo.'); return; }
-    setFlashOn((current) => !current);
+  // Photo: a real flash (off → auto → on) fired at capture. Video: the torch,
+  // the only light a recording can use. It used to always toggle the torch
+  // and capture with the flash forced off.
+  function toggleFlash() {
+    if (cameraMode === 'VÍDEO') {
+      if (!device?.hasTorch) { notify('A lanterna não está disponível nesta câmera.'); return; }
+      setTorchOn((current) => !current);
+      return;
+    }
+    if (!device?.hasFlash) { notify('O flash não está disponível nesta câmera.'); return; }
+    const next = FLASH_CYCLE[flashMode];
+    setFlashMode(next);
+    notify(FLASH_LABEL[next]);
   }
 
   function toggleAspectRatio() {
@@ -216,15 +237,14 @@ export default function CameraScreen() {
 
   function chooseMode(nextMode) {
     if (recording && nextMode !== 'VÍDEO') { notify('Finalize o vídeo antes de trocar de modo.'); return; }
-    if (nextMode === 'MAIS') { setMoreOpen((current) => !current); return; }
-    setMoreOpen(false);
-    if (nextMode !== 'DOCUMENTOS') { setDocumentSessionId(null); setDocumentPage(0); }
+    if (nextMode !== 'DOCUMENTO') { setDocumentSessionId(null); setDocumentPage(0); }
+    if (nextMode !== 'VÍDEO') setTorchOn(false);
+    if (nextMode === 'VÍDEO' && !microphone.hasPermission && microphone.canRequestPermission) microphone.requestPermission();
     setCameraMode(nextMode);
   }
 
   function finishDocumentSession() {
     setCameraMode('FOTO');
-    setMoreOpen(false);
     setDocumentSessionId(null);
     setDocumentPage(0);
     notify('Documento concluído. As páginas ficaram na galeria.');
@@ -242,6 +262,7 @@ export default function CameraScreen() {
 
   return (
     <View className="flex-1 bg-black">
+      {isFocused ? <StatusBar style="light" /> : null}
       {/* The Pressable below is the full-bleed tap-to-focus surface over the
           preview. It is not a button: without a label a screen reader announced
           only "button" across the whole screen, and the focus gesture is exactly
@@ -261,7 +282,7 @@ export default function CameraScreen() {
             isActive={isFocused}
             outputs={[photoOutput, videoOutput]}
             zoom={zoomValue()}
-            torchMode={flashOn ? 'on' : 'off'}
+            torchMode={cameraMode === 'VÍDEO' && torchOn ? 'on' : 'off'}
           />
         </Pressable>
       ) : null}
@@ -271,7 +292,7 @@ export default function CameraScreen() {
           className="border border-white/40"
           style={{
             width: aspectRatio === '1:1' ? '82%' : aspectRatio === '16:9' ? '92%' : '86%',
-            aspectRatio: aspectRatio === '1:1' ? 1 : aspectRatio === '16:9' ? 9 / 16 : 3 / 4,
+            aspectRatio: framingAspect(aspectRatio),
           }}
         />
       </View>
@@ -307,7 +328,13 @@ export default function CameraScreen() {
       ) : null}
 
       <View className="absolute left-0 right-0 flex-row items-center justify-center gap-2 px-4" style={{ paddingTop: topInset }}>
-        <TopbarButton icon="flash" selected={flashOn} onPress={toggleFlash} label={flashOn ? 'Desligar flash' : 'Ligar flash'} />
+        <TopbarButton
+          icon="flash"
+          selected={cameraMode === 'VÍDEO' ? torchOn : flashMode !== 'off'}
+          text={cameraMode === 'VÍDEO' ? null : flashMode === 'auto' ? 'A' : null}
+          onPress={toggleFlash}
+          label={cameraMode === 'VÍDEO' ? (torchOn ? 'Desligar lanterna' : 'Ligar lanterna') : `${FLASH_LABEL[flashMode]}. Toque para alterar`}
+        />
         <TopbarButton label={`Alterar proporção, atual ${aspectRatio}`} onPress={toggleAspectRatio} text={aspectRatio} />
         <TopbarButton icon="sparkle" selected={lensActive} onPress={() => setLensActive((c) => !c)} label="Lens" text="Lens" />
         {/* "Mais configurações" was removed here: it only flashed its own name as a
@@ -316,28 +343,6 @@ export default function CameraScreen() {
         <TopbarButton icon="gallery" onPress={() => router.push('/(tabs)/gallery')} label="Abrir galeria" />
       </View>
 
-      {moreOpen ? (
-        <View className="absolute left-4 right-4 gap-2 rounded-2xl bg-black/80 p-3" style={{ top: overlayTop }} accessibilityRole="menu" accessibilityLabel="Mais modos de câmera">
-          <Text className="text-[11px] font-semibold text-slate-300">Mais modos</Text>
-          <View className="flex-row flex-wrap gap-2">
-            {MORE_MODES.map((mode) => {
-              const active = cameraMode === mode;
-              return (
-                <Pressable
-                  accessibilityRole="menuitem"
-                  accessibilityState={{ selected: active }}
-                  key={mode}
-                  onPress={() => chooseMode(mode)}
-                  className={`rounded-full px-3 py-1.5 ${active ? 'bg-indigo-600' : 'bg-white/10'}`}
-                >
-                  <Text className="text-[12px] font-medium text-white">{mode}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
-
       {lensActive ? (
         <View className="absolute left-4 right-4 flex-row items-center justify-center gap-1.5 self-center rounded-full bg-indigo-600/90 px-3 py-1.5" style={{ top: overlayTop }}>
           <Icon name="sparkle" size={14} color="#ffffff" />
@@ -345,7 +350,7 @@ export default function CameraScreen() {
         </View>
       ) : null}
 
-      {cameraMode === 'DOCUMENTOS' ? (
+      {cameraMode === 'DOCUMENTO' ? (
         <View className="absolute left-4 right-4 flex-row items-center justify-between gap-2 rounded-2xl bg-black/70 px-3 py-2.5" style={{ top: overlayTop }}>
           <View className="flex-row items-center gap-2">
             <Icon name="scan" size={16} color="#ffffff" />
@@ -382,7 +387,7 @@ export default function CameraScreen() {
 
         <View className="flex-row justify-center gap-4 px-4" accessibilityLabel="Modos da câmera">
           {CAMERA_MODES.map((mode) => {
-            const active = cameraMode === mode || (mode === 'MAIS' && MORE_MODES.includes(cameraMode));
+            const active = cameraMode === mode;
             return (
               <Pressable accessibilityRole="button" accessibilityState={{ selected: active }} key={mode} onPress={() => chooseMode(mode)}>
                 <Text className={`text-[12px] font-semibold ${active ? 'text-amber-400' : 'text-white/70'}`}>{mode}</Text>
@@ -403,7 +408,7 @@ export default function CameraScreen() {
           <Pressable
             onPress={capture}
             disabled={busy}
-            accessibilityLabel={recording ? 'Parar gravação' : lensActive ? 'Capturar e estudar com IA' : cameraMode === 'VÍDEO' ? 'Começar gravação' : cameraMode === 'DOCUMENTOS' ? 'Capturar página do documento' : 'Tirar foto'}
+            accessibilityLabel={recording ? 'Parar gravação' : lensActive ? 'Capturar e estudar com IA' : cameraMode === 'VÍDEO' ? 'Começar gravação' : cameraMode === 'DOCUMENTO' ? 'Capturar página do documento' : 'Tirar foto'}
             className={`h-20 w-20 items-center justify-center rounded-full border-4 ${recording ? 'border-red-500' : lensActive ? 'border-indigo-400' : 'border-white'}`}
           >
             <View className={`${recording ? 'h-7 w-7 rounded-md bg-red-500' : 'h-16 w-16 rounded-full bg-white'}`} />
@@ -439,5 +444,8 @@ function TopbarButton({ icon, text, selected, onPress, label }) {
 function ThumbImage({ uri, onError }) {
   // `uri` can be a seeded sample's /demo-assets path on a fresh install, so it
   // goes through the same resolver as every other image in the app.
-  return <Image source={imageSource(uri)} accessibilityIgnoresInvertColors onError={onError} className="h-full w-full" resizeMode="cover" />;
+  return <Image source={imageSource(uri)} accessibilityIgnoresInvertColors onError={onError} style={IMAGE_FILL} resizeMode="cover" resizeMethod="resize" />;
 }
+
+// A crash here stays inside this tab (the tab bar keeps working).
+export { default as ErrorBoundary } from '../../components/ErrorScreen.jsx';

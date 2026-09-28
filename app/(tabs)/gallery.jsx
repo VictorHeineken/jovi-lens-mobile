@@ -4,16 +4,21 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import Icon from '../../components/Icon.jsx';
 import NotesTimeline from '../../components/NotesTimeline.jsx';
-import SubjectNotes from '../../components/SubjectNotes.jsx';
-import SubjectStudio from '../../components/SubjectStudio.jsx';
 import SmartImageSheet from '../../components/SmartImageSheet.jsx';
 import { useTopInset } from '../../hooks/safeArea.js';
 import { useToast } from '../../shared/toast.js';
-import { imageSource } from '../../services/demoAssets.js';
+import { IMAGE_FILL, imageSource } from '../../services/demoAssets.js';
 import { useAppData } from '../../context/AppDataContext.jsx';
 
-const PAGE_TITLE = { photos: 'Fotos', albums: 'Álbuns', notes: 'Notas', history: 'Histórico' };
-const PAGE_KICKER = { photos: 'Galeria', albums: 'Álbum', notes: 'Memória da IA', history: 'Uso da IA' };
+const PAGE_TITLE = { photos: 'Fotos', albums: 'Álbuns', history: 'Histórico' };
+const PAGE_KICKER = { photos: 'Galeria', albums: 'Álbum', history: 'Uso da IA' };
+
+// A capture is a document when the scanner took it (page number) or the AI
+// read it as text-like content — not when its label happens to contain a word.
+const DOCUMENT_TYPES = /exerc|texto|página|pagina|document|livro|anota|slide|prova|lista/i;
+function isDocument(record) {
+  return Boolean(record.pageNumber || record.collectionId) || DOCUMENT_TYPES.test(record.analysis?.contentType || '');
+}
 
 function dayKey(date) {
   const value = new Date(date);
@@ -42,7 +47,7 @@ function groupRecords(records) {
 
 export default function GalleryScreen() {
   const router = useRouter();
-  const { records, notes, aiHistory, subjects, addRecord } = useAppData();
+  const { records, notes, aiHistory, addRecord } = useAppData();
   const topInset = useTopInset();
   const [selected, setSelected] = useState(null);
   const [selectedView, setSelectedView] = useState('viewer');
@@ -50,7 +55,6 @@ export default function GalleryScreen() {
   const [message, notify] = useToast();
   const [activeTab, setActiveTab] = useState('photos');
   const [activeAlbum, setActiveAlbum] = useState(null);
-  const [studioSubject, setStudioSubject] = useState(null);
 
   const orderedRecords = useMemo(() => [...records].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)), [records]);
   const recordGroups = useMemo(() => groupRecords(orderedRecords), [orderedRecords]);
@@ -58,14 +62,14 @@ export default function GalleryScreen() {
     // No fallbacks: an album with nothing that actually matches its own
     // criteria should show 0 items, not borrow unrelated photos to look full.
     const camera = orderedRecords.filter((record) => record.source === 'camera');
-    const documents = orderedRecords.filter((record) => /texto|livro|pesquisa|document/i.test(record.label || ''));
+    const documents = orderedRecords.filter(isDocument);
     const studiedRecordIds = new Set(notes.map((note) => note.recordId));
     const studied = orderedRecords.filter((record) => studiedRecordIds.has(record.id));
     return [
-      { id: 'all', title: 'Todas as fotos', subtitle: 'Seu arquivo completo', items: orderedRecords, icon: 'gallery' },
-      { id: 'camera', title: 'Câmera', subtitle: 'Capturas feitas neste aparelho', items: camera, icon: 'camera' },
-      { id: 'documents', title: 'Documentos', subtitle: 'Textos e páginas para consultar', items: documents, icon: 'note' },
-      { id: 'studied', title: 'Estudadas', subtitle: 'Fotos que já viraram aprendizado', items: studied, icon: 'sparkle' },
+      { id: 'all', title: 'Todas as fotos', subtitle: 'Seu arquivo completo', items: orderedRecords, icon: 'gallery', empty: 'Suas fotos aparecem aqui.' },
+      { id: 'camera', title: 'Câmera', subtitle: 'Capturas feitas neste aparelho', items: camera, icon: 'camera', empty: 'Fotos tiradas pela câmera do JOVI Lens aparecem aqui.' },
+      { id: 'documents', title: 'Documentos', subtitle: 'Páginas escaneadas e textos lidos pela IA', items: documents, icon: 'note', empty: 'Use o modo DOCUMENTO da câmera ou analise uma página com a IA.' },
+      { id: 'studied', title: 'Estudadas', subtitle: 'Fotos que já viraram aprendizado', items: studied, icon: 'sparkle', empty: 'Salve uma análise em Notas para ela aparecer aqui.' },
     ];
   }, [orderedRecords, notes]);
   const pageTitle = PAGE_TITLE[activeTab];
@@ -74,9 +78,9 @@ export default function GalleryScreen() {
   async function pickImages() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) { notify('Permita o acesso às fotos para importar.'); return; }
+    // No base64: addRecord copies each picked file into the app's media folder.
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      base64: true,
       allowsMultipleSelection: true,
       selectionLimit: 6,
       quality: 1,
@@ -85,9 +89,7 @@ export default function GalleryScreen() {
     setIsUploading(true);
     try {
       for (const asset of picked.assets) {
-        const mime = asset.mimeType || 'image/jpeg';
-        const src = asset.base64 ? `data:${mime};base64,${asset.base64}` : asset.uri;
-        await addRecord({ src, source: 'upload', label: asset.fileName || 'Imagem importada' });
+        await addRecord({ src: asset.uri, source: 'upload', label: asset.fileName || 'Imagem importada' });
       }
       notify(`${picked.assets.length} ${picked.assets.length === 1 ? 'imagem adicionada' : 'imagens adicionadas'}`);
     } catch (error) {
@@ -124,7 +126,7 @@ export default function GalleryScreen() {
             </View>
             <View className="flex-row gap-1.5">
               <HeaderIconButton icon="camera" label="Abrir câmera" onPress={() => router.push('/(tabs)/camera')} />
-              <HeaderIconButton icon="note" label="Abrir notas da IA" onPress={() => goTab('notes')} />
+              <HeaderIconButton icon="note" label="Abrir notas da IA" onPress={() => router.push('/(tabs)/notes')} />
               <HeaderIconButton icon="upload" label="Importar fotos" onPress={pickImages} />
               {/* "Mais opções" was removed here: it showed the toast "Organização
                   inteligente ativada" and did nothing at all. Announcing success for
@@ -150,9 +152,6 @@ export default function GalleryScreen() {
               <AlbumsView albums={albums} onOpen={openAlbum} />
             )
           ) : null}
-          {activeTab === 'notes' ? (
-            <SubjectNotes notes={notes} records={orderedRecords} onOpen={openRecord} onOpenStudio={(name) => setStudioSubject(subjects.find((subject) => subject.name === name) || null)} />
-          ) : null}
           {activeTab === 'history' ? (
             <NotesTimeline notes={notes} aiHistory={aiHistory} records={orderedRecords} onOpen={openRecord} />
           ) : null}
@@ -172,7 +171,6 @@ export default function GalleryScreen() {
           onClose={() => { setSelected(null); setSelectedView('viewer'); }}
         />
       ) : null}
-      {studioSubject ? <SubjectStudio subject={studioSubject} onClose={() => setStudioSubject(null)} /> : null}
     </View>
   );
 }
@@ -238,7 +236,7 @@ function PhotosView({ groups, isUploading, onImport, onOpen, onOpenCamera }) {
 
 function PhotoTile({ record, onOpen }) {
   return (
-    <Pressable onPress={() => onOpen(record)} accessibilityLabel={`Abrir ${record.label || 'foto'}`} className="relative h-28 w-[31%] overflow-hidden rounded-xl bg-slate-100">
+    <Pressable onPress={() => onOpen(record)} accessibilityRole="imagebutton" accessibilityLabel={`Abrir ${record.label || 'foto'}${record.analysis ? ', já estudada' : ''}`} className="relative h-28 w-[31%] overflow-hidden rounded-xl bg-slate-100">
       <MediaThumb record={record} />
       {record.pageNumber ? (
         <View className="absolute bottom-1 left-1 flex-row items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5">
@@ -264,7 +262,9 @@ function MediaThumb({ record }) {
       </View>
     );
   }
-  return <Image source={imageSource(record.src)} accessibilityIgnoresInvertColors onError={() => setFailed(true)} className="h-full w-full" resizeMode="cover" />;
+  // The saved thumbnail when there is one; resizeMethod="resize" makes Android
+  // decode at tile size instead of full resolution for anything older.
+  return <Image source={imageSource(record.thumb || record.src)} accessibilityIgnoresInvertColors onError={() => setFailed(true)} style={IMAGE_FILL} resizeMode="cover" resizeMethod="resize" />;
 }
 
 function AlbumsView({ albums, onOpen }) {
@@ -275,7 +275,6 @@ function AlbumsView({ albums, onOpen }) {
           <Text className="text-[15px] font-bold text-slate-900">Álbuns</Text>
           <Text className="text-[12px] text-slate-500">Organizados no seu JOVI</Text>
         </View>
-        <Pressable accessibilityLabel="Mais opções de álbuns"><Icon name="more" size={18} color="#94a3b8" /></Pressable>
       </View>
       <View className="gap-2">
         {albums.map((album) => (
@@ -291,14 +290,6 @@ function AlbumsView({ albums, onOpen }) {
           </Pressable>
         ))}
       </View>
-      <View className="flex-row items-center gap-3 rounded-2xl bg-indigo-50 p-4">
-        <Icon name="sparkle" size={18} color="#4f46e5" />
-        <View className="flex-1 gap-0.5">
-          <Text className="text-[13px] font-bold text-slate-900">Classificação inteligente</Text>
-          <Text className="text-[11px] text-slate-500">Documentos, estudos e referências organizados automaticamente.</Text>
-        </View>
-        <Icon name="chevron" size={16} color="#94a3b8" />
-      </View>
     </View>
   );
 }
@@ -306,8 +297,8 @@ function AlbumsView({ albums, onOpen }) {
 function AlbumDetail({ album, onBack, onOpen }) {
   return (
     <View className="gap-4">
-      <Pressable accessibilityRole="button" onPress={onBack} className="flex-row items-center gap-1 self-start">
-        <Icon name="chevron" size={17} color="#4f46e5" strokeWidth={2.4} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Voltar para álbuns" onPress={onBack} className="flex-row items-center gap-1 self-start">
+        <View style={{ transform: [{ rotate: '180deg' }] }}><Icon name="chevron" size={17} color="#4f46e5" strokeWidth={2.4} /></View>
         <Text className="text-[13px] font-medium text-indigo-600">Álbuns</Text>
       </Pressable>
       <View>
@@ -317,6 +308,15 @@ function AlbumDetail({ album, onBack, onOpen }) {
       <View className="flex-row flex-wrap gap-2">
         {album.items.map((record) => <PhotoTile key={record.id} record={record} onOpen={onOpen} />)}
       </View>
+      {!album.items.length ? (
+        <View className="items-center gap-2 rounded-2xl border border-dashed border-slate-300 px-6 py-10">
+          <Icon name={album.icon} size={20} color="#94a3b8" />
+          <Text className="text-center text-[13px] text-slate-500">{album.empty}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
+
+// A crash here stays inside this tab (the tab bar keeps working).
+export { default as ErrorBoundary } from '../../components/ErrorScreen.jsx';

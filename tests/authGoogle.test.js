@@ -8,16 +8,22 @@ import { BASE_ENV, makeReq, makeRes, withEnv } from './helpers/http.js';
 const ORIGINAL_FETCH = globalThis.fetch;
 const CLIENT_ID = 'web-client.apps.googleusercontent.com';
 
-// Mocked tokeninfo: the credential string is "cred-<sub>".
+// Mocked tokeninfo: the credential string is "cred-<sub>[-n<nonce>]-t<n>-xxx…".
+// Each distinct credential string is a distinct token (its own iat), as with
+// real Google tokens; presenting the same string twice is a replay.
 function mockTokeninfo() {
+  const issued = new Map();
   globalThis.fetch = async (url) => {
     const token = decodeURIComponent(String(url).split('id_token=')[1]);
-    const sub = token.replace('cred-', '').replace(/-x+$/, '');
+    const [, sub, nonce] = token.match(/^cred-([^-]+)(?:-n([a-z0-9]+))?-t\d+-x+$/);
+    if (!issued.has(token)) issued.set(token, String(1_700_000_000 + issued.size));
     return new Response(JSON.stringify({
       aud: CLIENT_ID,
       iss: 'https://accounts.google.com',
       email_verified: 'true',
+      iat: issued.get(token),
       exp: String(Math.floor(Date.now() / 1000) + 3600),
+      ...(nonce ? { nonce } : {}),
       sub,
       email: `${sub}@gmail.com`,
       name: `User ${sub}`,
@@ -26,9 +32,15 @@ function mockTokeninfo() {
   };
 }
 
-async function signIn(sub, ip = '10.1.1.1') {
+let signInCount = 0;
+
+// A fresh credential per call unless `credential` is given (to replay one).
+async function signIn(sub, ip = '10.1.1.1', { credential, nonce, tokenNonce = nonce } = {}) {
+  signInCount += 1;
   const res = makeRes();
-  await authGoogle(makeReq({ url: '/api/auth/google', ip, body: { credential: `cred-${sub}-xxxxxxxxxxxxxxxxxxxx` } }), res);
+  const fresh = `cred-${sub}${tokenNonce ? `-n${tokenNonce}` : ''}-t${signInCount}-xxxxxxxxxxxxxxxxxxxx`;
+  const body = { credential: credential || fresh, ...(nonce ? { nonce } : {}) };
+  await authGoogle(makeReq({ url: '/api/auth/google', ip, body }), res);
   return res;
 }
 
@@ -77,3 +89,18 @@ authTest('a token for another client id is rejected', async () => {
   assert.equal(res.statusCode, 401);
   assert.equal(res.body.code, 'GOOGLE_TOKEN_INVALID');
 }, { GOOGLE_CLIENT_ID: 'other-client.apps.googleusercontent.com' });
+
+authTest('the same Google credential cannot be exchanged twice (replay)', async () => {
+  const credential = 'cred-replayer-t0-xxxxxxxxxxxxxxxxxxxx';
+  assert.equal((await signIn('replayer', '10.1.1.1', { credential })).statusCode, 200);
+  const replay = await signIn('replayer', '10.1.1.1', { credential });
+  assert.equal(replay.statusCode, 401);
+  assert.equal(replay.body.code, 'GOOGLE_TOKEN_REUSED');
+});
+
+authTest('a nonce that does not match the token is rejected', async () => {
+  assert.equal((await signIn('nonceok', '10.1.1.1', { nonce: 'abc123' })).statusCode, 200);
+  const injected = await signIn('noncebad', '10.1.1.1', { nonce: 'abc123', tokenNonce: 'zzz999' });
+  assert.equal(injected.statusCode, 401);
+  assert.equal(injected.body.code, 'GOOGLE_TOKEN_INVALID');
+});

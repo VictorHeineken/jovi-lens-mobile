@@ -19,17 +19,8 @@ function safeInput(body) {
     subtheme: typeof note?.subtheme === 'string' ? note.subtheme.slice(0, 80) : '',
     topicPath: Array.isArray(note?.topicPath) ? note.topicPath.filter((topic) => typeof topic === 'string').slice(0, 3) : [],
   }));
-  const preferences = body?.preferences && typeof body.preferences === 'object' ? {
-    studyGoal: typeof body.preferences.studyGoal === 'string' ? body.preferences.studyGoal : 'vestibular',
-    studyContext: typeof body.preferences.studyContext === 'string' ? body.preferences.studyContext : 'classes',
-    weeklyPace: typeof body.preferences.weeklyPace === 'string' ? body.preferences.weeklyPace : 'regular',
-    practiceMode: typeof body.preferences.practiceMode === 'string' ? body.preferences.practiceMode : 'mixed',
-    reviewMethod: typeof body.preferences.reviewMethod === 'string' ? body.preferences.reviewMethod : 'spaced',
-    videoStyle: typeof body.preferences.videoStyle === 'string' ? body.preferences.videoStyle : 'balanced',
-    duration: typeof body.preferences.duration === 'string' ? body.preferences.duration : 'standard',
-    level: typeof body.preferences.level === 'string' ? body.preferences.level : 'intermediate',
-    sort: typeof body.preferences.sort === 'string' ? body.preferences.sort : 'relevance',
-  } : {};
+  // Preferences go through service.normalizeLearningPreferences — the one allowlist.
+  const preferences = body?.preferences;
 
   const weakTopics = Array.isArray(subject.weakTopics) ? subject.weakTopics.filter((topic) => typeof topic === 'string').slice(0, 5).map((topic) => topic.slice(0, 80)) : [];
 

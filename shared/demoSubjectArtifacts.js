@@ -446,6 +446,17 @@ function isSeededDemoArtifact(artifact) {
   return data.mode === 'demo' || data.provider === 'demo' || data.provider === 'seeded-demo' || data.model === 'seeded-demo';
 }
 
+// What the student DID (scores, checked tasks) versus example CONTENT. Content
+// is preloaded so the Estúdio is never empty; student state never is — a
+// seeded 86% stored as the student's own result is a claim about them that
+// they never earned. Presentation mode supplies the staged score separately
+// (getPresentationExamResult).
+const STUDENT_STATE_KEYS = new Set(['examResult', 'examHistory', 'planProgress']);
+
+function isSeededStudentState(artifact) {
+  return artifact?.savedAt === SAVED_AT || LEGACY_DEMO_SAVED_AT.has(artifact?.savedAt);
+}
+
 export function mergeDemoSubjectArtifacts(stored = {}) {
   const next = { ...stored };
   let changed = false;
@@ -454,6 +465,13 @@ export function mergeDemoSubjectArtifacts(stored = {}) {
     const current = next[subject] || {};
     const mergedSubject = { ...current };
     Object.entries(artifacts).forEach(([key, artifact]) => {
+      if (STUDENT_STATE_KEYS.has(key)) {
+        if (mergedSubject[key] && isSeededStudentState(mergedSubject[key])) {
+          delete mergedSubject[key];
+          changed = true;
+        }
+        return;
+      }
       if (!mergedSubject[key] || isSeededDemoArtifact(mergedSubject[key])) {
         mergedSubject[key] = artifact;
         changed = true;
@@ -465,8 +483,12 @@ export function mergeDemoSubjectArtifacts(stored = {}) {
   return { artifacts: next, changed };
 }
 
-export function getPresentationExamResult(subject, result) {
-  if (subject?.name !== 'História') return result;
+// Presentation mode only: stands in the seeded História result for an empty or
+// partial local attempt so the demo never shows 0%. Outside presentation mode
+// the student's own result is always what they see — replacing a real 40%
+// with a seeded 86% is exactly the kind of number a student must be able to trust.
+export function getPresentationExamResult(subject, result, { presentation = false } = {}) {
+  if (!presentation || subject?.name !== 'História') return result;
   const baseline = DEMO_SUBJECT_ARTIFACTS.História?.examResult?.data || null;
   if (!baseline) return result;
   if (!result) return baseline;

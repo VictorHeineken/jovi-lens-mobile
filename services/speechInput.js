@@ -88,6 +88,8 @@ async function startServerRecording({ onFinal, onError, onEnd, onState }) {
     finished = true;
     clearTimeout(autoStop);
     await recorder.stop();
+    // Leaving the session in recording mode routes iOS playback to the earpiece.
+    setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
     onState?.('transcribing');
     try {
       if (!recorder.uri) throw new Error('Gravação vazia.');

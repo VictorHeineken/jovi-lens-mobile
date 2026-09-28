@@ -132,6 +132,14 @@ localmente e testá-lo em um aparelho, veja o [guia de build e teste no Android]
   Production com `JOVI_REQUIRE_INTEGRITY=false` temporariamente, nunca abra o Preview.
 - **Política de privacidade:** `https://<domínio>/privacy.html` (arquivo `public/privacy.html`).
 
+## Dados honestos e variante de apresentação
+
+Fora da variante `presentation`, o app mostra só dados do próprio aluno: sequência de estudo calculada pelas
+datas reais de atividade, "antes e depois" a partir do histórico de simulados e nenhuma nota atribuída sem
+prova feita. Os números encenados para o pitch (resultado de História de 86%, sequência e evolução
+sintéticas, correção por foto simulada, "gerando simulado" com atraso) só existem no build `presentation`
+(`EXPO_PUBLIC_JOVI_LENS_DEMO_MODE=true`).
+
 ## Testes
 
 ```bash
@@ -140,9 +148,10 @@ cd web && npm test   # web/tests/ — só o que é específico do app web
 ```
 
 A suíte da raiz cobre `shared/` (a lógica que os clientes e o backend usam), o pipeline de rotas
-(`guard`, créditos, idempotência, login, integridade, redação de chaves BYOK) e os adaptadores de IA, sempre
-com o store em memória e `fetch` simulado — sem segredos. O CI (`.github/workflows/check.yml`) roda
-`npm run check` e os testes do web a cada push. Em `web/tests/` fica apenas o que é genuinamente específico do app web, como
+(`guard`, créditos, idempotência, login e replay do token Google, integridade, redação de chaves BYOK), os
+adaptadores de IA e o servidor HTTP de `server/app.js` (Content-Type, Host, 405/413), sempre com o store em
+memória e `fetch` simulado — sem segredos. A CI (`.github/workflows/ci.yml`) roda lint + testes da raiz, o
+check do `web/` e um bundle Android via `expo export` a cada push e PR. Em `web/tests/` fica apenas o que é genuinamente específico do app web, como
 `dataTransfer` — a contraparte nativa usa o sistema de arquivos em vez de `Blob`.
 
 ## Lint

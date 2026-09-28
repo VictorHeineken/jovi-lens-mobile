@@ -3,6 +3,7 @@
 // Rate limiting lives in api/_lib/guard.js on top of api/_lib/store.js.
 
 import { timingSafeEqual } from 'node:crypto';
+import { isIPv6 } from 'node:net';
 import { verifySession } from './session.js';
 
 // Static shared-secret gate. A speed bump, not real authentication: the key
@@ -26,6 +27,26 @@ export function sessionUser(req) {
   const header = String(req.headers['authorization'] || '');
   if (!header.startsWith('Bearer ')) return { provided: false, user: null };
   return { provided: true, user: verifySession(header.slice(7)) };
+}
+
+// Exact MIME essence: "text/plain;application/json" contains the substring but
+// is a CORS-safelisted type a browser sends cross-site without a preflight.
+export function isJsonContentType(value) {
+  return String(value || '').split(';')[0].trim().toLowerCase() === 'application/json';
+}
+
+// IPv6 clients control a whole /64; keying on the full /128 let one client
+// rotate addresses to get fresh buckets. The address is expanded to its 8
+// groups first — the compressed text form places "::" differently for
+// addresses of the same /64. IPv4 (and IPv4-mapped) stay exact.
+export function ipKey(ip) {
+  const value = String(ip).slice(0, 80).split('%')[0];
+  if (!isIPv6(value) || value.toLowerCase().startsWith('::ffff:')) return value;
+  const [head, tail = ''] = value.toLowerCase().split('::');
+  const left = head ? head.split(':') : [];
+  const right = value.includes('::') && tail ? tail.split(':') : [];
+  const groups = value.includes('::') ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right] : left;
+  return `${groups.slice(0, 4).map((group) => group.replace(/^0+(?=.)/, '')).join(':')}::/64`;
 }
 
 export function hasKnownImageSignature(base64, mimeType) {
@@ -73,6 +94,7 @@ export const ERRORS = {
   SIGN_IN_REQUIRED: { status: 401, message: 'Entre com sua conta Google para usar a IA.' },
   SESSION_INVALID: { status: 401, message: 'Sua sessão expirou. Entre novamente.' },
   GOOGLE_TOKEN_INVALID: { status: 401, message: 'Token Google inválido para este aplicativo.' },
+  GOOGLE_TOKEN_REUSED: { status: 401, message: 'Esta credencial Google já foi usada. Entre novamente.' },
   CREDITS_EXHAUSTED: { status: 402, message: 'Você usou suas 3 análises gratuitas. Adicione sua própria chave de IA para continuar.' },
   INTEGRITY_FAILED: { status: 403, message: 'Não foi possível verificar este aparelho. Use o app oficial em um aparelho sem modificações.' },
   BYOK_REQUIRED: { status: 403, message: 'Vozes e transcrição da IA exigem sua própria chave. Usando a voz do aparelho.' },

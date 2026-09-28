@@ -17,7 +17,7 @@ const KEY = 'sk-TESTKEY-DO-NOT-LOG-1234567890';
 const ORIGINAL_FETCH = globalThis.fetch;
 
 const ROUTES = [
-  { name: 'analyze-image', handler: analyzeImage, body: { action: 'ask', question: 'O que é isso?' }, invalid: {} },
+  { name: 'analyze-image', handler: analyzeImage, body: { action: 'ask', question: 'O que é isso?', context: { title: 'Exemplo' } }, invalid: {} },
   { name: 'subject-ai', handler: subjectAI, body: { action: 'questions', subject: { name: 'História', notes: [{ title: 'Revolução Francesa' }] } }, invalid: {} },
   { name: 'video-recommendations', handler: videoRecommendations, body: { subject: { name: 'Física' } }, invalid: {} },
   { name: 'tts', handler: tts, body: { text: 'Olá, turma.' }, invalid: { text: '' } },

@@ -139,6 +139,16 @@ Gere de 8 a 14 segmentos. Contexto:\n${ctx.text}`;
 Gere de 10 a 18 segmentos alternando A e B. Contexto:\n${ctx.text}`;
 }
 
+export function buildGradeAnswerPrompt(subject, grading = {}, preferences = {}) {
+  const ctx = buildSubjectContext(subject);
+  return `${SUBJECT_PERSONA} Corrija a resposta escrita de um estudante de "${ctx.name}". Compare com a resposta-modelo e com o conteúdo da matéria; avalie se as ideias centrais estão presentes e corretas, não o estilo. Seja justo e encorajador, e aponte com precisão o que faltou. ${learningPreferenceContext(preferences)} Formato exato:
+{"score":0,"level":"Resposta completa|Boa base, faltam conceitos|Precisa desenvolver","feedback":"1-2 frases dirigidas ao aluno","strengths":["o que a resposta acertou"],"missing":["conceito ou relação que faltou"]}
+score vai de 0 a 10. Pergunta: ${grading.question}
+Resposta-modelo: ${grading.modelAnswer || '(não informada)'}
+Resposta do aluno: ${grading.answer}
+Conteúdo da matéria:\n${ctx.text.slice(0, 4000)}`;
+}
+
 export function buildLessonScriptPrompt(subject, preferences = {}) {
   const ctx = buildSubjectContext(subject);
   return `${SUBJECT_PERSONA} Escreva o roteiro de uma vídeo aula personalizada sobre a matéria "${ctx.name}", em formato de slides narrados. Cada slide tem um título, de 2 a 4 tópicos curtos e uma narração natural (2-4 frases) que será convertida em voz. ${learningPreferenceContext(preferences)} Formato exato:

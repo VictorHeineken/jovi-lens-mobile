@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import Icon from './Icon.jsx';
 import AiErrorActions from './AiErrorActions.jsx';
 import { requireAI } from '../services/aiAccess.js';
@@ -10,11 +10,12 @@ import StudyPlan from './StudyPlan.jsx';
 import PodcastPlayer from './PodcastPlayer.jsx';
 import LessonPlayer from './LessonPlayer.jsx';
 import VideoRecommendations from './VideoRecommendations.jsx';
-import { generateSubjectContent } from '../services/subjectStudy.js';
+import { generateSubjectContent, gradeAnswer } from '../services/subjectStudy.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { buildSubjectInsights } from '../shared/subjectInsights.js';
 import { getPresentationExamResult } from '../shared/demoSubjectArtifacts.js';
 import { isDemoMode } from '../services/env.js';
+import { gradeCard, cardIdFor, isDue, reviewQueue, reviewSummary } from '../shared/spacedReview.js';
 
 const TABS = [
   { id: 'overview', label: 'Visão', icon: 'layers' },
@@ -25,16 +26,28 @@ const TABS = [
   { id: 'plan', label: 'Plano', icon: 'route' },
 ];
 
-export default function SubjectStudio({ subject, onClose }) {
+export default function SubjectStudio({ subject, onClose, initialTab = 'overview' }) {
   const { saveSubjectArtifact, getSubjectArtifact } = useAppData();
-  const [tab, setTab] = useState('overview');
+  // Staged pitch numbers only in the presentation build.
+  const presentation = isDemoMode();
+  const [tab, setTab] = useState(TABS.some((item) => item.id === initialTab) ? initialTab : 'overview');
   const topInset = useTopInset();
   const bottomInset = useBottomInset(16);
 
   if (!subject) return null;
 
   const rawExamResult = getSubjectArtifact(subject.name, 'examResult')?.data || null;
-  const examResult = isDemoMode() ? getPresentationExamResult(subject, rawExamResult) : rawExamResult;
+  const examResult = getPresentationExamResult(subject, rawExamResult, { presentation });
+  const examHistory = getSubjectArtifact(subject.name, 'examHistory')?.data || [];
+
+  // A full attempt becomes the subject's diagnosis and joins the history that
+  // feeds the real before/after. A "só as que errei" round is practice: it
+  // must not overwrite the full diagnosis with a 2-question score.
+  function recordExamResult(summary) {
+    if (summary.retry) return;
+    saveSubjectArtifact(subject.name, 'examResult', summary);
+    saveSubjectArtifact(subject.name, 'examHistory', [...examHistory, { percent: summary.percent, score: summary.score, total: summary.total, takenAt: summary.takenAt }].slice(-20));
+  }
   const savedExam = getSubjectArtifact(subject.name, 'exam')?.data || null;
   const savedPlan = getSubjectArtifact(subject.name, 'plan')?.data || null;
   const savedPlanProgress = getSubjectArtifact(subject.name, 'planProgress')?.data || {};
@@ -115,8 +128,17 @@ export default function SubjectStudio({ subject, onClose }) {
 
         <ScrollView className="flex-1 border-t border-slate-100" contentContainerClassName="px-4 pt-4" contentContainerStyle={{ paddingBottom: bottomInset }}>
           {tab === 'overview' ? <SubjectOverview subject={subject} insights={insights} /> : null}
-          {tab === 'questions' ? <SubjectQuestions subject={subject} saved={savedQuestions} onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)} onLeave={onClose} /> : null}
-          {tab === 'exam' ? <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} onResult={(data) => saveSubjectArtifact(subject.name, 'examResult', data)} onLeave={onClose} /> : null}
+          {tab === 'questions' ? (
+            <SubjectQuestions
+              subject={subject}
+              saved={savedQuestions}
+              reviewCards={getSubjectArtifact(subject.name, 'review')?.data?.cards || {}}
+              onSave={(data) => saveSubjectArtifact(subject.name, 'questions', data)}
+              onReview={(cards) => saveSubjectArtifact(subject.name, 'review', { cards })}
+              onLeave={onClose}
+            />
+          ) : null}
+          {tab === 'exam' ? <SubjectExam subject={subject} savedExam={savedExam} savedResult={examResult} presentation={presentation} onResult={recordExamResult} onLeave={onClose} /> : null}
           {tab === 'podcast' ? (
             <PodcastPlayer
               subject={subject}
@@ -125,7 +147,12 @@ export default function SubjectStudio({ subject, onClose }) {
               onLeave={onClose}
               onSave={(data) => {
                 saveSubjectArtifact(subject.name, 'podcast', data);
-                if (savedPodcasts?.formats) saveSubjectArtifact(subject.name, 'podcasts', { ...savedPodcasts, formats: { ...savedPodcasts.formats, [data.format || 'dialogue']: data } });
+                // Every generated format is kept, so switching back to it replays
+                // instead of paying for the same episode again.
+                // Only `formats` is written: spreading the seeded object copied its
+                // demo markers, and the next launch swapped the student's episode
+                // back for the seeded one.
+                saveSubjectArtifact(subject.name, 'podcasts', { formats: { ...(savedPodcasts?.formats || {}), [data.format || 'dialogue']: data } });
               }}
             />
           ) : null}
@@ -254,11 +281,29 @@ function InsightBlock({ icon, title, children }) {
   );
 }
 
-function SubjectQuestions({ subject, saved, onSave, onLeave }) {
+function dueLabel(card, now) {
+  if (!card) return { text: 'Nova', tone: 'bg-slate-100 text-slate-500' };
+  if (isDue(card, now)) return { text: 'Revisar hoje', tone: 'bg-amber-100 text-amber-700' };
+  const days = Math.max(1, Math.round((new Date(card.due) - now) / 86_400_000));
+  return { text: `Volta em ${days} ${days === 1 ? 'dia' : 'dias'}`, tone: 'bg-emerald-50 text-emerald-700' };
+}
+
+// Retrieval practice with spaced review: answer from memory, reveal the model
+// answer, then mark it. The list opens with what is due today; each mark
+// schedules the question's next appearance (shared/spacedReview.js).
+function SubjectQuestions({ subject, saved, reviewCards = {}, onSave, onReview, onLeave }) {
   const [items, setItems] = useState(saved?.questions || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState({});
+  const [cards, setCards] = useState(reviewCards);
+  // Written answers and corrections, keyed by question (cardIdFor) so a new
+  // question set never shows the previous set's answer or score.
+  const [written, setWritten] = useState({});
+  const [grading, setGrading] = useState({});
+  // Frozen per question set so a card graded now does not jump under the finger.
+  const [order, setOrder] = useState(() => reviewQueue(saved?.questions || [], reviewCards).map((entry) => entry.index));
+  const now = new Date();
 
   async function generate() {
     if (!requireAI()) return;
@@ -268,13 +313,37 @@ function SubjectQuestions({ subject, saved, onSave, onLeave }) {
       const result = await generateSubjectContent(subject, { action: 'questions' });
       if (!result.questions?.length) throw new Error('Não foi possível gerar as perguntas agora.');
       setItems(result.questions);
+      setOrder(reviewQueue(result.questions, cards).map((entry) => entry.index));
       setOpen({});
+      setWritten({});
+      setGrading({});
       onSave?.(result);
     } catch (err) {
       setError(asAiError(err, 'Falha ao gerar as perguntas.'));
     } finally {
       setLoading(false);
     }
+  }
+
+  async function correct(item) {
+    const id = cardIdFor(item.question);
+    const answer = String(written[id] || '').trim();
+    if (!answer || !requireAI()) return;
+    setGrading((g) => ({ ...g, [id]: { loading: true } }));
+    try {
+      const result = await gradeAnswer(subject, { question: item.question, modelAnswer: item.answer, answer });
+      setGrading((g) => ({ ...g, [id]: { result } }));
+    } catch (err) {
+      setGrading((g) => ({ ...g, [id]: { error: asAiError(err, 'Não foi possível corrigir agora.') } }));
+    }
+  }
+
+  function grade(item, correct, index) {
+    const id = cardIdFor(item.question);
+    const next = { ...cards, [id]: gradeCard(cards[id], correct, new Date()) };
+    setCards(next);
+    onReview?.(next);
+    setOpen((o) => ({ ...o, [index]: false }));
   }
 
   if (loading) {
@@ -294,7 +363,7 @@ function SubjectQuestions({ subject, saved, onSave, onLeave }) {
             <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Perguntas da matéria</Text>
           </View>
           <Text className="text-[16px] font-bold text-slate-900">Perguntas sobre {subject.name} inteira</Text>
-          <Text className="text-[13px] text-slate-600">Geramos perguntas de estudo que cruzam todos os subtemas — não apenas uma imagem — com respostas-modelo para você conferir.</Text>
+          <Text className="text-[13px] text-slate-600">Perguntas que cruzam todos os subtemas, com resposta-modelo. Responda de cabeça, confira e marque se acertou: o app agenda a próxima revisão de cada uma.</Text>
         </View>
         {error ? (
           <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert">
@@ -310,24 +379,54 @@ function SubjectQuestions({ subject, saved, onSave, onLeave }) {
     );
   }
 
+  const summary = reviewSummary(items, cards, now);
+  const ordered = order.length === items.length && order.every((index) => items[index]) ? order.map((index) => items[index]) : items;
+
   return (
     <View className="gap-3">
+      <View className="flex-row gap-2" accessibilityLabel={`${summary.due} para revisar hoje, ${summary.fresh} novas, ${summary.mastered} dominadas`}>
+        <ReviewStat value={summary.due} label="para hoje" tone="text-amber-600" />
+        <ReviewStat value={summary.fresh} label="novas" tone="text-indigo-600" />
+        <ReviewStat value={summary.mastered} label="dominadas" tone="text-emerald-600" />
+      </View>
       <View className="gap-2">
-        {items.map((item, index) => {
+        {ordered.map((item, index) => {
           const isOpen = Boolean(open[index]);
+          const card = cards[cardIdFor(item.question)];
+          const badge = dueLabel(card, now);
           return (
-            <View key={index} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <Pressable accessibilityRole="button" onPress={() => setOpen((o) => ({ ...o, [index]: !o[index] }))} accessibilityState={{ expanded: isOpen }} className="flex-row items-center gap-3 px-3 py-3">
+            <View key={`${index}-${item.question.slice(0, 24)}`} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <Pressable accessibilityRole="button" onPress={() => setOpen((o) => ({ ...o, [index]: !o[index] }))} accessibilityState={{ expanded: isOpen }} accessibilityHint="Mostra a resposta-modelo" className="flex-row items-center gap-3 px-3 py-3">
                 <View className="flex-1 gap-1">
-                  <Text className="text-[11px] text-indigo-500">{item.topic}{item.difficulty ? ` · ${item.difficulty}` : ''}</Text>
+                  <View className="flex-row flex-wrap items-center gap-1.5">
+                    <Text className="text-[11px] text-indigo-500">{item.topic}{item.difficulty ? ` · ${item.difficulty}` : ''}</Text>
+                    <View className={`rounded-full px-2 py-0.5 ${badge.tone.split(' ')[0]}`}><Text className={`text-[10px] font-semibold ${badge.tone.split(' ')[1]}`}>{badge.text}</Text></View>
+                  </View>
                   <Text className="text-[14px] font-semibold text-slate-900">{item.question}</Text>
                 </View>
                 <Icon name="chevron" size={15} color="#94a3b8" strokeWidth={isOpen ? 2.4 : 1.9} />
               </Pressable>
               {isOpen ? (
-                <View className="gap-1 border-t border-slate-100 px-3 py-3">
+                <View className="gap-2 border-t border-slate-100 px-3 py-3">
+                  <WrittenAnswer
+                    value={written[cardIdFor(item.question)] || ''}
+                    onChange={(text) => setWritten((w) => ({ ...w, [cardIdFor(item.question)]: text }))}
+                    state={grading[cardIdFor(item.question)]}
+                    onCorrect={() => correct(item)}
+                    onLeave={onLeave}
+                  />
                   <Text className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Resposta-modelo</Text>
                   <Text className="text-[13px] leading-5 text-slate-700">{item.answer}</Text>
+                  <View className="flex-row gap-2 pt-1">
+                    <Pressable accessibilityRole="button" accessibilityLabel="Errei: revisar amanhã" onPress={() => grade(item, false, index)} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-lg border py-2 ${grading[cardIdFor(item.question)]?.result?.score < 7 ? 'border-red-400 bg-red-100' : 'border-red-200 bg-red-50'}`}>
+                      <Icon name="rotate" size={14} color="#dc2626" />
+                      <Text className="text-[13px] font-semibold text-red-700">Errei</Text>
+                    </Pressable>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Acertei: espaçar a próxima revisão" onPress={() => grade(item, true, index)} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-lg border py-2 ${grading[cardIdFor(item.question)]?.result?.score >= 7 ? 'border-emerald-400 bg-emerald-100' : 'border-emerald-200 bg-emerald-50'}`}>
+                      <Icon name="check" size={14} color="#16a34a" />
+                      <Text className="text-[13px] font-semibold text-emerald-700">Acertei</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ) : null}
             </View>
@@ -338,6 +437,57 @@ function SubjectQuestions({ subject, saved, onSave, onLeave }) {
         <Icon name="rotate" size={14} color="#475569" />
         <Text className="text-[13px] font-medium text-slate-600">Gerar novas perguntas</Text>
       </Pressable>
+    </View>
+  );
+}
+
+function ReviewStat({ value, label, tone }) {
+  return (
+    <View className="flex-1 items-center rounded-xl bg-slate-50 py-2">
+      <Text className={`text-[18px] font-black ${tone}`}>{value}</Text>
+      <Text className="text-[11px] text-slate-500">{label}</Text>
+    </View>
+  );
+}
+
+// Optional written answer, corrected against the model answer (live AI or,
+// in Demo Mode, concept overlap). The result suggests — but does not make —
+// the "Acertei"/"Errei" call: the student still decides.
+function WrittenAnswer({ value, onChange, state, onCorrect, onLeave }) {
+  const result = state?.result;
+  return (
+    <View className="gap-2">
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        multiline
+        maxLength={1500}
+        placeholder="Escreva sua resposta antes de conferir (opcional)"
+        placeholderTextColor="#94a3b8"
+        accessibilityLabel="Sua resposta"
+        className="min-h-20 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-900"
+        textAlignVertical="top"
+      />
+      {value.trim() ? (
+        <Pressable accessibilityRole="button" onPress={onCorrect} disabled={state?.loading} className="flex-row items-center justify-center gap-1.5 self-start rounded-full bg-indigo-600 px-3 py-1.5">
+          {state?.loading ? <ActivityIndicator size="small" color="#ffffff" /> : <Icon name="sparkle" size={13} color="#ffffff" />}
+          <Text className="text-[12px] font-semibold text-white">{state?.loading ? 'Corrigindo...' : 'Corrigir minha resposta'}</Text>
+        </Pressable>
+      ) : null}
+      {state?.error ? (
+        <View accessibilityRole="alert">
+          <Text className="text-[12px] text-red-600">{state.error.message}</Text>
+          <AiErrorActions error={state.error} onRetry={onCorrect} onNavigateAway={onLeave} />
+        </View>
+      ) : null}
+      {result ? (
+        <View className={`gap-1 rounded-xl px-3 py-2.5 ${result.score >= 7 ? 'bg-emerald-50' : result.score >= 5 ? 'bg-amber-50' : 'bg-red-50'}`} accessibilityLiveRegion="polite">
+          <Text className="text-[13px] font-bold text-slate-900">{result.score}/10 · {result.level}</Text>
+          {result.feedback ? <Text className="text-[12px] leading-5 text-slate-700">{result.feedback}</Text> : null}
+          {result.missing?.length ? <Text className="text-[12px] text-slate-600">Faltou: {result.missing.join('; ')}.</Text> : null}
+          {result.mode === 'demo' ? <Text className="text-[11px] text-slate-400">Estimativa offline pelos termos da resposta-modelo. Com a IA ao vivo, a correção avalia o sentido.</Text> : null}
+        </View>
+      ) : null}
     </View>
   );
 }

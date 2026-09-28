@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
-import * as Linking from 'expo-linking';
 import Icon from './Icon.jsx';
 import AiErrorActions from './AiErrorActions.jsx';
+import { useAppData } from '../context/AppDataContext.jsx';
 import { requireAI } from '../services/aiAccess.js';
 import { asAiError } from '../services/apiErrors.js';
+import { isDemoMode } from '../services/env.js';
+import { openExternalUrl } from '../services/links.js';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { daysUntilEvent, formatEventDate } from '../shared/studyCalendar.js';
 
 export default function StudyPlan({ subject, savedPlan, savedProgress = {}, savedLessons = [], onSave, onProgressSave, onLeave }) {
+  const { studyCalendar } = useAppData();
   const [plan, setPlan] = useState(savedPlan || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -85,7 +88,9 @@ export default function StudyPlan({ subject, savedPlan, savedProgress = {}, save
           <Text className="flex-1 text-[13px] text-slate-600">{plan.overview}</Text>
         </View>
       ) : null}
-      {plan.calendarEvent ? <CalendarDeadline event={plan.calendarEvent} /> : null}
+      {/* A plan only claims a detected exam while a calendar is actually
+          connected (or in the pitch) — the preloaded example plan carries one. */}
+      {plan.calendarEvent && (studyCalendar?.connected || isDemoMode()) ? <CalendarDeadline event={plan.calendarEvent} /> : null}
       <View className="gap-1.5">
         <Text className="text-[12px] text-slate-500">{doneCount}/{totalTasks} tarefas</Text>
         <View className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -176,7 +181,7 @@ function SavedLessons({ lessons = [] }) {
         <Text className="text-[12px] font-semibold text-slate-500">Buscas de aula salvas</Text>
       </View>
       {lessons.map((lesson) => (
-        <Pressable accessibilityRole="button" key={lesson.id} onPress={() => Linking.openURL(lesson.url)} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+        <Pressable accessibilityRole="button" key={lesson.id} onPress={() => openExternalUrl(lesson.url)} className="flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
           <View className="flex-1 gap-0.5">
             <View className="flex-row items-center gap-1.5">
               <Icon name="search" size={12} color="#4f46e5" />

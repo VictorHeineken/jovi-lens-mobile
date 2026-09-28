@@ -28,10 +28,10 @@ const historySubject = {
 
 test('buildStudentDashboard prioritizes the next Outlook exam', () => {
   const dashboard = buildStudentDashboard({
-    presentation: true,
     subjects: [historySubject, { name: 'Geografia', count: 1, subthemes: ['Cartografia'], notes: [] }],
     subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
     studyCalendar: createDemoOutlookCalendar(now),
+    presentation: true,
     now,
   });
 
@@ -66,7 +66,6 @@ test('buildStudentDashboard prioritizes the next Outlook exam', () => {
 
 test('buildStudentDashboard prefers subjects with saved study signals before empty subjects', () => {
   const dashboard = buildStudentDashboard({
-    presentation: true,
     subjects: [{ name: 'Artes', count: 1, subthemes: ['Cor'], notes: [] }, historySubject],
     subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
     studyCalendar: {},
@@ -132,9 +131,9 @@ test('dashboard flashcards and comparison use presentation result for História'
     },
   };
   const dashboard = buildStudentDashboard({
-    presentation: true,
     subjects: [historySubject],
     subjectArtifacts: { História: { examResult: { data: weakLocalResult } } },
+    presentation: true,
     now,
   });
 
@@ -149,7 +148,6 @@ test('dashboard flashcards and comparison use presentation result for História'
 
 test('dashboard final report summarizes strengths, gaps and next plan', () => {
   const dashboard = buildStudentDashboard({
-    presentation: true,
     subjects: [historySubject],
     subjectArtifacts: DEMO_SUBJECT_ARTIFACTS,
     studyCalendar: createDemoOutlookCalendar(now),
@@ -183,29 +181,48 @@ test('dashboard smart notifications include exam, daily review and drive audio',
   assert.ok(dashboard.notifications[2].title.includes('Podcast'));
 });
 
-test('real builds: no subjects → { empty: true }', () => {
-  assert.deepEqual(buildStudentDashboard({ subjects: [], subjectArtifacts: DEMO_SUBJECT_ARTIFACTS, studyCalendar: {}, now }), { empty: true });
-});
-
-test('real builds: no História baseline override and no demo exam results', () => {
+test('outside presentation mode the dashboard shows only real numbers', () => {
   const weakLocalResult = {
     ...DEMO_SUBJECT_ARTIFACTS.História.examResult.data,
     score: 1,
     total: 7,
     percent: 14,
-    byTopic: { 'Indústria e fábricas': { correct: 1, total: 7 } },
   };
   const dashboard = buildStudentDashboard({
     subjects: [historySubject],
     subjectArtifacts: { História: { examResult: { data: weakLocalResult } } },
     now,
   });
-  assert.equal(dashboard.empty, undefined);
   assert.equal(dashboard.urgentSubject.progress, 14);
+  assert.equal(dashboard.streak.days, 0, 'no activity means no streak');
+  assert.equal(dashboard.comparison.available, false, 'one attempt is not a before/after');
+  assert.equal(dashboard.handwrittenCorrection, null, 'simulated OCR correction is pitch-only');
+});
 
-  const noResult = buildStudentDashboard({ subjects: [historySubject], subjectArtifacts: {}, now });
-  assert.equal(noResult.urgentSubject.progress, 0);
-  assert.equal(noResult.urgentSubject.status, 'Sem simulado');
+test('the streak counts consecutive active days and survives until a day passes empty', () => {
+  const day = (offset) => new Date(now.getTime() - offset * 86_400_000).toISOString();
+  const three = buildStudentDashboard({ subjects: [historySubject], activity: [day(0), day(1), day(1), day(2), day(5)], now });
+  assert.equal(three.streak.days, 3);
+  const fromYesterday = buildStudentDashboard({ subjects: [historySubject], activity: [day(1), day(2)], now });
+  assert.equal(fromYesterday.streak.days, 2);
+  const broken = buildStudentDashboard({ subjects: [historySubject], activity: [day(2), day(3)], now });
+  assert.equal(broken.streak.days, 0);
+});
+
+test('before/after compares the first and latest real exam attempts', () => {
+  const dashboard = buildStudentDashboard({
+    subjects: [historySubject],
+    subjectArtifacts: { História: { examHistory: { data: [{ percent: 40, takenAt: '2026-09-10' }, { percent: 55 }, { percent: 71 }] } } },
+    now,
+  });
+  assert.equal(dashboard.comparison.available, true);
+  assert.equal(dashboard.comparison.before, 40);
+  assert.equal(dashboard.comparison.after, 71);
+  assert.equal(dashboard.comparison.delta, 31);
+});
+
+test('real builds: no subjects → { empty: true }', () => {
+  assert.deepEqual(buildStudentDashboard({ subjects: [], subjectArtifacts: DEMO_SUBJECT_ARTIFACTS, studyCalendar: {}, now }), { empty: true });
 });
 
 test('real builds: notifications drop the static drive-audio card', () => {

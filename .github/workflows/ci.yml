@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, prod_app]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      # Root = the Expo app, shared/ and the backend: lint + node:test suite.
+      - run: npm ci
+      - run: npm run check
+
+      # web/ imports ../shared, so it must build from this same checkout.
+      - run: npm ci
+        working-directory: web
+      - run: npm run check
+        working-directory: web
+
+      # Bundles the native app for Android the way Metro does on a build —
+      # catches broken imports on the native path that the tests never load.
+      - run: npx expo export --platform android --output-dir /tmp/android-export
+        env:
+          EXPO_PUBLIC_JOVI_LENS_DEMO_MODE: 'true'

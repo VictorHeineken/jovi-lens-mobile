@@ -6,6 +6,15 @@ import { requireAI } from '../services/aiAccess.js';
 import { ApiError, asAiError } from '../services/apiErrors.js';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { narration } from '../services/audio.js';
+import { isDemoMode } from '../services/env.js';
+
+// Spoken Portuguese runs ~150 words a minute; the estimate is what a student
+// sees, so it has to match the audio (the seeded pitch episode claims 10 min
+// for ~1 min of speech, which is kept only in presentation mode).
+function estimateMinutes(segments = []) {
+  const words = segments.reduce((sum, segment) => sum + String(segment.text || '').split(/\s+/).filter(Boolean).length, 0);
+  return Math.max(1, Math.round(words / 150));
+}
 
 const SPEAKER_LABEL = { A: 'Ana', B: 'Especialista', narrator: 'Narrador', coach: 'IA', feedback: 'Feedback' };
 const FORMAT_LABEL = {
@@ -20,7 +29,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
   const [script, setScript] = useState(savedVariants?.[initialFormat] || saved || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [playback, setPlayback] = useState({ index: -1, state: 'idle', mode: null });
+  const [playback, setPlayback] = useState({ index: -1, state: 'idle', mode: null, waiting: false });
   const [coachAnswers, setCoachAnswers] = useState({});
 
   useEffect(() => () => narration.stop(), []);
@@ -30,10 +39,12 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
     setLoading(true);
     setError(null);
     narration.stop();
-    setPlayback({ index: -1, state: 'idle', mode: null });
+    setPlayback({ index: -1, state: 'idle', mode: null, waiting: false });
     try {
-      const result = await generateSubjectContent(subject, { action: 'podcast-script', format: nextFormat });
-      if (!result.segments?.length) throw new Error('Não foi possível gerar o roteiro agora.');
+      const generated = await generateSubjectContent(subject, { action: 'podcast-script', format: nextFormat });
+      if (!generated.segments?.length) throw new Error('Não foi possível gerar o roteiro agora.');
+      // Cached under the format that was asked for, whatever the model claims.
+      const result = { ...generated, format: nextFormat };
       setScript(result);
       setCoachAnswers({});
       onSave?.(result);
@@ -44,19 +55,17 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
     }
   }
 
+  // Switching format shows that format's saved episode, or the "Gerar" screen
+  // for it — it used to start a paid generation on its own, and overwrite the
+  // episode of the other format.
   function chooseFormat(next) {
     if (next === format) return;
+    narration.stop();
+    setPlayback({ index: -1, state: 'idle', mode: null, waiting: false });
     setFormat(next);
-    const savedScript = savedVariants?.[next];
-    if (savedScript) {
-      narration.stop();
-      setPlayback({ index: -1, state: 'idle', mode: null });
-      setScript(savedScript);
-      setCoachAnswers({});
-      setError(null);
-      return;
-    }
-    if (script) generate(next);
+    setScript(savedVariants?.[next] || ((saved?.format || 'dialogue') === next ? saved : null));
+    setCoachAnswers({});
+    setError(null);
   }
 
   function playFrom(index = 0) {
@@ -64,10 +73,10 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
     setError(null);
     narration.start(script.segments, {
       onUpdate: (u) => {
-        setPlayback({ index: u.index, state: u.state, mode: u.mode });
+        setPlayback({ index: u.index, state: u.state, mode: u.mode, waiting: Boolean(u.waiting) });
         if (u.error) setError(new ApiError({ code: u.errorCode, message: u.error }));
       },
-      onEnd: () => setPlayback({ index: -1, state: 'idle', mode: null }),
+      onEnd: () => setPlayback({ index: -1, state: 'idle', mode: null, waiting: false }),
     }, index);
   }
 
@@ -120,7 +129,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
         <View className="flex-1 gap-0.5">
           <Text className="text-[11px] text-indigo-500">{FORMAT_LABEL[script.format || format] || FORMAT_LABEL.dialogue}</Text>
           <Text className="text-[15px] font-bold text-slate-900" numberOfLines={2}>{script.title}</Text>
-          {script.durationMinutes ? <Text className="text-[11px] text-slate-500">Aprox. {script.durationMinutes} min</Text> : null}
+          <Text className="text-[11px] text-slate-500">Aprox. {isDemoMode() && script.durationMinutes ? script.durationMinutes : estimateMinutes(script.segments)} min</Text>
         </View>
       </View>
 
@@ -139,6 +148,12 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
           </View>
           <Text className="text-[13px] leading-5 text-slate-700">A IA conversa com você, faz perguntas da matéria e dá feedback para a resposta escolhida.</Text>
           {currentLabel ? <Text className="text-[12px] text-slate-500">{currentLabel}</Text> : null}
+          {playback.waiting ? (
+            <View className="flex-row items-center gap-1.5 rounded-lg bg-white px-2.5 py-1.5" accessibilityLiveRegion="polite">
+              <Icon name="mic" size={13} color="#4f46e5" />
+              <Text className="text-[12px] font-semibold text-indigo-700">Sua vez: responda em voz alta</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -158,7 +173,7 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
         )}
         {isPlaying || isPaused ? (
           <Pressable
-            onPress={() => { narration.stop(); setPlayback({ index: -1, state: 'idle', mode: null }); }}
+            onPress={() => { narration.stop(); setPlayback({ index: -1, state: 'idle', mode: null, waiting: false }); }}
             accessibilityLabel="Parar"
             className="h-12 w-12 items-center justify-center rounded-xl border border-slate-200"
           >
@@ -177,7 +192,9 @@ export default function PodcastPlayer({ subject, saved, savedVariants = null, on
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            onPress={() => playFrom(Math.min(script.segments.length - 1, currentIndex + 1))}
+            // During "Sua vez" the index already points at the feedback that
+            // follows the question — "next" must not skip it.
+            onPress={() => playFrom(Math.min(script.segments.length - 1, playback.waiting ? currentIndex : currentIndex + 1))}
             className="flex-1 items-center rounded-xl border border-slate-200 py-2.5"
           >
             <Text className="text-[12px] font-medium text-slate-600">Próximo trecho</Text>
@@ -251,7 +268,7 @@ function DriveCoach({ script, answers, onAnswer }) {
           <Icon name="sparkle" size={13} color="#bef264" />
           <Text className="text-[12px] font-semibold text-lime-200">Bate-papo com IA</Text>
         </View>
-        <Text className="text-[12px] leading-4 text-slate-300">Responda em voz alta e toque na opção para ver o feedback.</Text>
+        <Text className="text-[12px] leading-4 text-slate-300">Para quando o carro estiver parado: toque na opção para ver o feedback. Dirigindo, use só o áudio.</Text>
       </View>
       {interactions.map((item, index) => {
         const selectedId = answers[item.id];

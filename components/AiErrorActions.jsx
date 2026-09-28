@@ -8,7 +8,7 @@ const KEY_CODES = new Set(['CREDITS_EXHAUSTED', 'BYOK_REJECTED', 'BYOK_INVALID_F
 
 // The follow-up button shown under an AI error (prod-implementation-spec.md
 // §6.7). `onNavigateAway` lets a screen shown inside a Modal close itself
-// before navigating to the Copilot tab, which would otherwise open behind it.
+// before navigating to Perfil (where the key is added), which would otherwise open behind it.
 export default function AiErrorActions({ error, onRetry, onNavigateAway }) {
   const router = useRouter();
   if (!error) return null;
@@ -20,7 +20,7 @@ export default function AiErrorActions({ error, onRetry, onNavigateAway }) {
         label="Adicionar minha chave"
         onPress={() => {
           onNavigateAway?.();
-          router.push('/(tabs)/copilot');
+          router.push('/(tabs)/profile');
         }}
       />
     );

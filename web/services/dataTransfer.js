@@ -1,5 +1,9 @@
+import { getDismissedSeedNotes } from './storage.js';
+
 const BACKUP_VERSION = 1;
-const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
+// Same ceiling as the native app, whose backups embed photos — a phone backup
+// has to be importable here too.
+const MAX_IMPORT_BYTES = 120 * 1024 * 1024;
 
 export function createBackup({ records = [], notes = [], aiHistory = [], plan = { type: 'free' }, user = null, subjectArtifacts = {}, learningPreferences = {}, studyCalendar = null } = {}) {
   return {
@@ -8,6 +12,8 @@ export function createBackup({ records = [], notes = [], aiHistory = [], plan = 
     exportedAt: new Date().toISOString(),
     records: records.filter((record) => record?.source !== 'sample'),
     notes,
+    // Examples the student deleted — without it a restore brought them all back.
+    dismissedSeedNotes: getDismissedSeedNotes(),
     aiHistory,
     plan,
     user,
@@ -43,8 +49,9 @@ export async function readBackupFile(file) {
   }
   if (data?.app !== 'jovi-lens' || data?.version !== BACKUP_VERSION) throw new Error('Backup incompatível com esta versão do JOVI Lens.');
   return {
-    records: listOrEmpty(data.records).filter((record) => record && typeof record.id === 'string' && typeof record.src === 'string'),
-    notes: listOrEmpty(data.notes),
+    records: listOrEmpty(data.records).filter((record) => record && typeof record.id === 'string' && /^[\w-]{1,80}$/.test(record.id) && typeof record.src === 'string' && (record.src.startsWith('data:') || record.src.startsWith('/demo-assets/'))),
+    notes: listOrEmpty(data.notes).filter((note) => note && typeof note.id === 'string' && typeof note.title === 'string'),
+    dismissedSeedNotes: listOrEmpty(data.dismissedSeedNotes).filter((id) => typeof id === 'string'),
     aiHistory: listOrEmpty(data.aiHistory),
     plan: data.plan && typeof data.plan === 'object' ? data.plan : { type: 'free' },
     user: data.user && typeof data.user === 'object' ? data.user : null,

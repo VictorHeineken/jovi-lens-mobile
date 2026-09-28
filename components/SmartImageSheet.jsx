@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import Icon from './Icon.jsx';
 import { useBottomInset, useTopInset } from '../hooks/safeArea.js';
 import { useToast } from '../shared/toast.js';
 import StudyModeContent from './StudyModeContent.jsx';
 import { analyzeImage, copyText, extractText, googleSearch, requestStudyAction } from '../services/imageAnalysis.js';
-import { imageSource } from '../services/demoAssets.js';
+import { IMAGE_FILL, imageSource } from '../services/demoAssets.js';
 import { startVoiceInput, voiceInputAvailable } from '../services/speechInput.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import AiErrorActions from './AiErrorActions.jsx';
@@ -14,14 +15,22 @@ import { ensureSignedIn, requireAI } from '../services/aiAccess.js';
 import { ApiError, asAiError } from '../services/apiErrors.js';
 import { isDemoMode } from '../services/env.js';
 import { getUser } from '../services/storage.js';
+import { confirmAction } from '../services/confirm.js';
 
+// One selector for the whole study flow. The first three carry the product's
+// Entender → Resolver → Praticar order as step numbers; this replaced a second
+// "Trilha de aprendizagem" control that drove the exact same state.
 const MODES = [
-  { id: 'understand', label: 'Explicar', icon: 'sparkle' },
-  { id: 'solve', label: 'Resolver', icon: 'check' },
-  { id: 'practice', label: 'Quiz', icon: 'question' },
+  { id: 'understand', label: 'Entender', step: 1, icon: 'sparkle' },
+  { id: 'solve', label: 'Resolver', step: 2, icon: 'check' },
+  { id: 'practice', label: 'Praticar', step: 3, icon: 'question' },
   { id: 'flashcards', label: 'Cards', icon: 'cards' },
   { id: 'ask', label: 'Perguntar', icon: 'send' },
 ];
+
+// Shown in turn while a live analysis runs (~10 s on a real provider), so the
+// wait reads as progress instead of a frozen skeleton.
+const ANALYSIS_STAGES = ['Lendo o texto da imagem...', 'Identificando o conteúdo...', 'Preparando a explicação...', 'Montando a prática...'];
 
 const MODE_LABELS = Object.fromEntries(MODES.map((item) => [item.id, item.label]));
 
@@ -48,7 +57,10 @@ function buildStudyHistoryEntry(record, analysis, action) {
 }
 
 export default function SmartImageSheet({ record, initialView = 'viewer', onClose }) {
-  const { updateRecord, saveNote, addHistoryEntry } = useAppData();
+  const { records, updateRecord, removeRecord, saveNote, addHistoryEntry } = useAppData();
+  // Notes/history can open a stand-in built from a note whose photo is gone;
+  // only a real, own record can be deleted from here.
+  const deletable = records.some((item) => item.id === record?.id && item.source !== 'sample');
   const topInset = useTopInset();
   const [view, setView] = useState('viewer');
   const [analysis, setAnalysis] = useState(record?.analysis || null);
@@ -64,11 +76,17 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   const [message, flash] = useToast(1800);
   const [mode, setMode] = useState('understand');
   const [question, setQuestion] = useState('');
-  const [conversation, setConversation] = useState([]);
+  const [conversation, setConversation] = useState(() => record?.conversation || []);
+  const [stage, setStage] = useState(0);
   const [quizSelection, setQuizSelection] = useState(null);
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [flippedCard, setFlippedCard] = useState(null);
   const requestAbortRef = useRef(null);
+  // Synchronous re-entry guard for "Perguntar": the keyboard's submit and a
+  // tap on send can land in the same tick, before `actionLoading` re-renders,
+  // and the second turn would overwrite the first in the saved conversation.
+  const askingRef = useRef(false);
+  const conversationRef = useRef(record?.conversation || []);
 
   function cancelActiveRequest() {
     requestAbortRef.current?.abort();
@@ -103,7 +121,8 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
     setActionError(null);
     setMode('understand');
     setQuestion('');
-    setConversation([]);
+    setConversation(record?.conversation || []);
+    conversationRef.current = record?.conversation || [];
     setQuizSelection(null);
     setQuizSubmitted(false);
     setFlippedCard(null);
@@ -111,6 +130,12 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   }, [record?.id, initialView]);
 
   useEffect(() => () => cancelActiveRequest(), []);
+
+  useEffect(() => {
+    if (!loading) { setStage(0); return undefined; }
+    const timer = setInterval(() => setStage((current) => Math.min(current + 1, ANALYSIS_STAGES.length - 1)), 2600);
+    return () => clearInterval(timer);
+  }, [loading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,11 +239,10 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
     setFlippedCard(null);
     if (nextMode === 'ask' || !analysis) return;
 
+    // Switching back to a mode that already has content is navigation, not a
+    // new study action — logging it flooded Histórico with duplicates.
     const hasContent = nextMode === 'understand' ? analysis.learning?.understand : nextMode === 'solve' ? analysis.learning?.solve : nextMode === 'practice' ? analysis.learning?.practice : analysis.learning?.flashcards?.length;
-    if (hasContent) {
-      addHistoryEntry(buildStudyHistoryEntry(record, analysis, nextMode));
-      return;
-    }
+    if (hasContent) return;
 
     if (!requireAI()) return;
     setActionLoading(true);
@@ -226,8 +250,12 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
     const controller = startRequest();
     try {
       const result = await requestStudyAction(record.src, { action: nextMode === 'practice' ? 'quiz' : nextMode, context: analysis, signal: controller.signal });
-      if (result.learning) setAnalysis((current) => ({ ...current, learning: { ...current.learning, ...result.learning } }));
-      addHistoryEntry(buildStudyHistoryEntry(record, analysis, nextMode));
+      if (result.learning) {
+        const merged = { ...analysis, learning: { ...analysis.learning, ...result.learning } };
+        setAnalysis(merged);
+        updateRecord(record.id, { analysis: merged });
+        addHistoryEntry(buildStudyHistoryEntry(record, merged, nextMode));
+      }
     } catch (err) {
       if (!isAbortError(err)) setActionError({ error: asAiError(err, 'Não foi possível preparar esse modo.'), retry: () => handleMode(nextMode) });
     } finally {
@@ -238,19 +266,25 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
 
   async function handleAskSubmit(suggestedQuestion = question) {
     const text = String(suggestedQuestion || '').trim();
-    if (!text || actionLoading || !analysis) return;
+    if (!text || askingRef.current || !analysis) return;
     if (!requireAI()) return;
+    askingRef.current = true;
     setQuestion('');
     setActionLoading(true);
     setActionError(null);
     const controller = startRequest();
     try {
       const result = await requestStudyAction(record.src, { action: 'ask', question: text, context: analysis, signal: controller.signal });
-      setConversation((current) => [...current, { question: text, reply: result.reply || 'Não consegui formular uma resposta agora.' }]);
+      const next = [...conversationRef.current, { question: text, reply: result.reply || 'Não consegui formular uma resposta agora.' }].slice(-20);
+      conversationRef.current = next;
+      setConversation(next);
+      // Kept on the record so reopening the photo shows the conversation again.
+      updateRecord(record.id, { conversation: next });
       addHistoryEntry({ recordId: record.id, image: record.src, title: analysis.title || record.label || 'Conversa sobre a imagem', type: 'Pergunta à IA', action: 'ask', prompt: text, contentText: analysis.text || '', text: result.reply || '', response: result.reply || '', category: analysis.category || 'Estudos', subcategory: analysis.subcategory || analysis.subject || analysis.contentType || 'Conversa contextual' });
     } catch (err) {
       if (!isAbortError(err)) setActionError({ error: asAiError(err, 'Não foi possível enviar a pergunta.'), retry: () => handleAskSubmit(text) });
     } finally {
+      askingRef.current = false;
       setActionLoading(false);
       if (requestAbortRef.current === controller) requestAbortRef.current = null;
     }
@@ -266,15 +300,33 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   }
 
   function handleSave() {
+    if (!analysis) { flash('Aguarde a análise'); return; }
     const saved = saveNote(effectiveRecord);
-    flash(saved ? 'Salvo nas notas' : 'Aguarde a análise');
+    if (!saved) flash('Não foi possível salvar agora');
+    else flash(saved.created ? 'Salvo nas notas' : 'Já está nas suas notas');
+  }
+
+  async function handleDelete() {
+    const confirmed = await confirmAction({
+      title: 'Excluir esta foto?',
+      message: 'A foto sai da galeria deste aparelho. Notas criadas a partir dela continuam, sem a imagem.',
+      confirmLabel: 'Excluir',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    cancelActiveRequest();
+    if (await removeRecord(record)) onClose();
+    else flash('Não foi possível excluir');
   }
 
   const canAnalyze = record.aiAvailable !== false;
 
   return (
-    <Modal visible animationType="slide" onRequestClose={onClose} accessibilityViewIsModal>
-      <View className="flex-1 bg-white">
+    <Modal visible animationType="slide" onRequestClose={onClose} accessibilityViewIsModal statusBarTranslucent>
+      {/* The root layout sets a dark status bar for the light screens; over
+          the black viewer the icons must be light. */}
+      <StatusBar style={view === 'viewer' ? 'light' : 'dark'} />
+      <View className={`flex-1 ${view === 'viewer' ? 'bg-black' : 'bg-white'}`}>
         <Pressable
           onPress={onClose}
           accessibilityLabel={view === 'viewer' ? 'Fechar imagem' : 'Fechar sessão de estudo'}
@@ -297,22 +349,29 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
             onCopy={handleCopyText}
             onSearch={handleSearchText}
             onStartAI={startAI}
+            onDelete={deletable ? handleDelete : null}
           />
         ) : (
           <SheetShell record={record} loading={loading} hasAnalysis={Boolean(analysis)} message={message}>
             {analysis ? (
-              <View className="flex-row flex-wrap gap-2 px-4 pt-3" accessibilityLabel="Ações de estudo">
+              <View className="flex-row flex-wrap gap-2 px-4 pt-3" accessibilityRole="tablist" accessibilityLabel="Trilha de estudo: entender, resolver, praticar">
                 {MODES.map((item) => {
                   const active = mode === item.id;
                   return (
                     <Pressable
-                      accessibilityRole="button"
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: active, disabled: loading || actionLoading }}
+                      accessibilityLabel={item.step ? `Passo ${item.step}: ${item.label}` : item.label}
                       key={item.id}
                       onPress={() => handleMode(item.id)}
                       disabled={loading || actionLoading}
                       className={`flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 ${active ? 'border-indigo-600 bg-indigo-600' : 'border-slate-200 bg-white'}`}
                     >
-                      <Icon name={item.icon} size={14} color={active ? '#ffffff' : '#475569'} />
+                      {item.step ? (
+                        <Text className={`text-[11px] font-bold ${active ? 'text-indigo-100' : 'text-indigo-500'}`}>{item.step}</Text>
+                      ) : (
+                        <Icon name={item.icon} size={14} color={active ? '#ffffff' : '#475569'} />
+                      )}
                       <Text className={`text-[13px] font-medium ${active ? 'text-white' : 'text-slate-600'}`}>{item.label}</Text>
                     </Pressable>
                   );
@@ -322,7 +381,8 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
 
             <View className="gap-4 px-4 py-4">
               {loading ? (
-                <View className="gap-2" accessibilityLabel="Analisando conteúdo">
+                <View className="gap-2" accessibilityLabel="Analisando conteúdo" accessibilityLiveRegion="polite">
+                  <Text className="text-[13px] font-medium text-indigo-600">{ANALYSIS_STAGES[stage]}</Text>
                   <View className="h-4 rounded-full bg-slate-100" />
                   <View className="h-4 w-4/5 rounded-full bg-slate-100" />
                   <View className="h-4 w-3/5 rounded-full bg-slate-100" />
@@ -345,8 +405,15 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
                       </View>
                       <Text className="text-[19px] font-bold text-slate-900">{analysis.title || 'Conteúdo identificado'}</Text>
                     </View>
-                    <View className="rounded-full bg-slate-100 px-3 py-1">
-                      <Text className="text-[11px] font-medium text-slate-500">{analysis.contentType || 'Conteúdo visual'}</Text>
+                    <View className="items-end gap-1">
+                      <View className="rounded-full bg-slate-100 px-3 py-1">
+                        <Text className="text-[11px] font-medium text-slate-500">{analysis.contentType || 'Conteúdo visual'}</Text>
+                      </View>
+                      {analysis.mode === 'demo' && !analysis.sourceNoteId ? (
+                        <View className="rounded-full bg-amber-100 px-2.5 py-1" accessibilityLabel="Resultado de demonstração: a IA ao vivo não analisou esta foto">
+                          <Text className="text-[10px] font-bold text-amber-700">EXEMPLO · DEMO</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                   <Text className="text-[14px] leading-5 text-slate-700">{analysis.summary}</Text>
@@ -360,26 +427,6 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
                       ))}
                     </View>
                   ) : null}
-
-                  <View className="gap-2" accessibilityLabel="Etapas de aprendizagem">
-                    <Text className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Trilha de aprendizagem</Text>
-                    <View className="flex-row gap-2">
-                      {[['understand', 'Entender'], ['solve', 'Resolver'], ['practice', 'Praticar']].map(([id, label], index) => {
-                        const active = mode === id || (id === 'practice' && mode === 'flashcards');
-                        return (
-                          <Pressable
-                            accessibilityRole="button"
-                            key={id}
-                            onPress={() => handleMode(id)}
-                            className={`flex-1 items-center gap-1 rounded-xl border px-2 py-2.5 ${active ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white'}`}
-                          >
-                            <Text className={`text-[12px] font-bold ${active ? 'text-indigo-600' : 'text-slate-400'}`}>{String(index + 1).padStart(2, '0')}</Text>
-                            <Text className={`text-[13px] font-medium ${active ? 'text-indigo-700' : 'text-slate-600'}`}>{label}</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
 
                   {actionLoading ? (
                     <Text className="text-[13px] text-slate-500">Preparando seu próximo passo...</Text>
@@ -427,43 +474,47 @@ export default function SmartImageSheet({ record, initialView = 'viewer', onClos
   );
 }
 
-function ImageViewer({ record, isVideo, textLoading, textError, textAiError, onNavigateAway, textReady, canAnalyze, message, onCopy, onSearch, onStartAI }) {
+// Photo-app viewer: black canvas, the image as large as the screen allows,
+// actions on the dark bar below it. It used to be a white screen with a
+// 256dp-tall image and white-on-white secondary buttons (contrast ~1:1).
+function ImageViewer({ record, isVideo, textLoading, textError, textAiError, onNavigateAway, textReady, canAnalyze, message, onCopy, onSearch, onStartAI, onDelete }) {
   const topInset = useTopInset();
   // The action row holds the primary "Usar IA" CTA, and this is a Modal — it
-  // draws under the Android gesture bar, so the old flat py-4 put the button
-  // partly under it.
+  // draws under the Android gesture bar without the inset.
   const bottomInset = useBottomInset(16);
   return (
-    <View className="flex-1">
-      <View className="flex-row items-center justify-between px-4 pb-3" style={{ paddingTop: topInset }}>
-        <View className="flex-row items-center gap-2">
-          <View className="h-2 w-2 rounded-full bg-emerald-500" />
-          <Text className="text-[12px] font-medium text-slate-500">Visualização</Text>
-        </View>
-        <Text className="text-[14px] font-semibold text-slate-900" numberOfLines={1}>{record.label || 'Imagem capturada'}</Text>
+    <View className="flex-1 bg-black">
+      <View className="flex-row items-center gap-2 px-4 pb-3 pr-16" style={{ paddingTop: topInset }}>
+        <View className="h-2 w-2 rounded-full bg-emerald-400" />
+        <Text className="flex-1 text-[14px] font-semibold text-white" numberOfLines={1}>{record.label || 'Imagem capturada'}</Text>
+        {onDelete ? (
+          <Pressable onPress={onDelete} accessibilityRole="button" accessibilityLabel="Excluir foto" hitSlop={8} className="h-9 w-9 items-center justify-center rounded-full bg-white/10">
+            <Icon name="trash" size={18} color="#ffffff" />
+          </Pressable>
+        ) : null}
       </View>
-      <View className="flex-1 items-center justify-center bg-black">
-        {isVideo ? <VideoField uri={record.src} /> : <ImageWithFallback src={record.src} alt={record.label || 'Imagem capturada'} />}
+      <View className="flex-1 items-center justify-center">
+        {isVideo ? <VideoField uri={record.src} /> : <ImageWithFallback src={record.src} alt={record.label || 'Imagem capturada'} fill />}
       </View>
       <View className="gap-3 px-4 pt-4" style={{ paddingBottom: bottomInset }}>
         <View className="flex-row gap-2" accessibilityLabel="Ações da imagem">
           <ViewerActionButton icon="copy" label={textLoading ? 'Lendo texto...' : 'Copiar texto'} onPress={onCopy} disabled={isVideo || textLoading} />
-          <ViewerActionButton icon="search" label="Pesquisar no Google" onPress={onSearch} disabled={isVideo || textLoading} />
+          <ViewerActionButton icon="search" label="Pesquisar" onPress={onSearch} disabled={isVideo || textLoading} />
           {canAnalyze ? (
             <ViewerActionButton icon="sparkle" label="Usar IA" onPress={onStartAI} primary />
           ) : (
             <ViewerActionButton icon="bookmark" label="Só galeria" disabled />
           )}
         </View>
-        <Text className="text-[12px] text-slate-500" accessibilityRole={textError ? 'alert' : undefined}>
+        <Text className="text-[12px] text-slate-400" accessibilityRole={textError ? 'alert' : undefined}>
           {isVideo ? 'Vídeo salvo na galeria.' : textError || (textReady ? 'Texto disponível para copiar ou pesquisar.' : 'Escolha uma ação para esta captura.')}
         </Text>
         {!isVideo && textAiError ? <AiErrorActions error={textAiError.error} onRetry={textAiError.retry} onNavigateAway={onNavigateAway} /> : null}
       </View>
       {message ? (
-        <View className="absolute bottom-24 left-4 right-4 flex-row items-center justify-center gap-2 rounded-full bg-slate-900/90 px-4 py-2.5">
-          <Icon name="check" size={15} color="#ffffff" />
-          <Text className="text-[13px] font-medium text-white">{message}</Text>
+        <View className="absolute bottom-32 left-4 right-4 flex-row items-center justify-center gap-2 rounded-full bg-white/95 px-4 py-2.5" accessibilityLiveRegion="polite">
+          <Icon name="check" size={15} color="#0f172a" />
+          <Text className="text-[13px] font-medium text-slate-900">{message}</Text>
         </View>
       ) : null}
     </View>
@@ -474,12 +525,13 @@ function ViewerActionButton({ icon, label, onPress, disabled, primary }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
       onPress={onPress}
       disabled={disabled}
-      className={`flex-1 items-center gap-1 rounded-2xl px-2 py-3 ${primary ? 'bg-indigo-600' : 'bg-white/10'} ${disabled ? 'opacity-40' : ''}`}
+      className={`flex-1 items-center gap-1 rounded-2xl px-2 py-3 ${primary ? 'bg-indigo-600' : 'bg-white/15'} ${disabled ? 'opacity-40' : ''}`}
     >
       <Icon name={icon} size={20} color="#ffffff" />
-      <Text className="text-center text-[11px] font-medium text-white" numberOfLines={1}>{label}</Text>
+      <Text className="text-center text-[12px] font-medium text-white" numberOfLines={1}>{label}</Text>
     </Pressable>
   );
 }
@@ -528,17 +580,31 @@ function VideoField({ uri }) {
   return <VideoView player={player} style={{ width: '100%', height: 260 }} nativeControls allowsFullscreen contentFit="contain" />;
 }
 
-function ImageWithFallback({ src, alt }) {
+function ImageWithFallback({ src, alt, fill = false }) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return (
-      <View className="h-64 items-center justify-center gap-2" accessibilityLabel={`${alt} indisponível`}>
+      <View className={`${fill ? 'flex-1 self-stretch' : 'h-64'} items-center justify-center gap-2`} accessibilityLabel={`${alt} indisponível`}>
         <Icon name="image" size={30} color="#94a3b8" />
         <Text className="text-[12px] text-slate-400">Imagem indisponível</Text>
       </View>
     );
   }
-  return <Image source={imageSource(src)} accessibilityIgnoresInvertColors accessibilityLabel={alt} onError={() => setFailed(true)} className="h-64 w-full" resizeMode="contain" />;
+  if (fill) {
+    // A sized box with the image absolutely filling it: `contain` then fits the
+    // whole photo on both native and react-native-web (a flex-sized <Image>
+    // rendered at intrinsic size on web).
+    return (
+      <View className="flex-1 self-stretch">
+        <Image source={imageSource(src)} accessibilityIgnoresInvertColors accessibilityLabel={alt} onError={() => setFailed(true)} style={IMAGE_FILL} resizeMode="contain" />
+      </View>
+    );
+  }
+  return (
+    <View className="h-64 w-full">
+      <Image source={imageSource(src)} accessibilityIgnoresInvertColors accessibilityLabel={alt} onError={() => setFailed(true)} style={IMAGE_FILL} resizeMode="contain" />
+    </View>
+  );
 }
 
 function SourceActionButton({ icon, label, onPress, disabled, primary }) {

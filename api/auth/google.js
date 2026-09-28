@@ -1,4 +1,4 @@
-import { defineRoute, freeCredits } from '../_lib/guard.js';
+import { defineRoute, freeCredits, sha256hex } from '../_lib/guard.js';
 import { issueSession } from '../_lib/session.js';
 import { getStore } from '../_lib/store.js';
 
@@ -18,10 +18,29 @@ function safeInput(body) {
   if (typeof credential !== 'string' || credential.length < 20 || credential.length > 6000) {
     return { error: { status: 400, code: 'INVALID_INPUT', message: 'Credencial Google inválida.' } };
   }
-  return { input: { credential } };
+  // The native client sends the nonce it asked Google to embed; a mismatch means
+  // the token was minted for a different sign-in (an injected token). This is
+  // not replay protection — see claimOnce() below. Optional so the local web
+  // (GIS) flow, which does not send one, keeps working.
+  const nonce = typeof body?.nonce === 'string' ? body.nonce.slice(0, 200) : '';
+  return { input: { credential, nonce } };
 }
 
-async function verifyGoogleCredential(credential) {
+// Each Google id_token is exchanged for a session at most once. The nonce
+// alone cannot stop a replay: it travels inside the token's readable payload,
+// so whoever holds the token can present it too. Keyed on the token's own
+// claims (not its raw text, which could be re-encoded) and kept in the shared
+// store until the token expires, so it holds across Vercel instances.
+function replayKey(profile) {
+  return `gtoken:${sha256hex(`${profile.sub}|${profile.iat}|${profile.exp}|${profile.nonce || ''}`)}`;
+}
+
+async function claimOnce(store, key, profile) {
+  const ttlSec = Math.max(1, Math.ceil(Number(profile.exp) - Date.now() / 1000));
+  return store.setNX(key, '1', ttlSec);
+}
+
+async function verifyGoogleCredential(credential, nonce) {
   // Comma-separated on purpose: the Android app and the local web app may be
   // registered as separate OAuth clients, so a token's `aud` can differ.
   const allowedClientIds = String(process.env.GOOGLE_CLIENT_ID || '').split(',').map((id) => id.trim()).filter(Boolean);
@@ -43,6 +62,7 @@ async function verifyGoogleCredential(credential) {
     && ['accounts.google.com', 'https://accounts.google.com'].includes(profile.iss)
     && profile.email_verified === 'true'
     && Number(profile.exp || 0) * 1000 > Date.now()
+    && (!nonce || profile.nonce === nonce)
     && profile.sub;
   if (!valid) throw routeError('GOOGLE_TOKEN_INVALID');
   return profile;
@@ -59,6 +79,30 @@ function createSession(profile) {
   }
 }
 
+// Credits for a first sign-in, the per-network signup cap, and the session.
+async function signInWith(profile, store, initial, ctx) {
+  const isNew = await store.initCredits(profile.sub, initial);
+  if (isNew) {
+    const utcDate = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+    const signups = await store.hit(`signup:${ctx.ip}:${utcDate}`, 86400);
+    if (signups > signupLimit()) {
+      await store.del(`credits:${profile.sub}`);
+      throw routeError('SIGNUP_LIMITED');
+    }
+  }
+
+  return {
+    user: {
+      id: profile.sub,
+      name: profile.name || profile.given_name || 'Usuário Google',
+      email: profile.email,
+      picture: profile.picture || '',
+    },
+    session: createSession(profile),
+    creditsRemaining: await store.getCredits(profile.sub, initial),
+  };
+}
+
 export default defineRoute({
   method: 'POST',
   scope: 'auth',
@@ -68,30 +112,20 @@ export default defineRoute({
   cost: 0,
   byok: 'forbidden',
   validate: safeInput,
-  run: async ({ credential }, ctx) => {
-    const profile = await verifyGoogleCredential(credential);
+  run: async ({ credential, nonce }, ctx) => {
+    const profile = await verifyGoogleCredential(credential, nonce);
     const store = getStore();
     const initial = freeCredits();
 
-    const isNew = await store.initCredits(profile.sub, initial);
-    if (isNew) {
-      const utcDate = new Date().toISOString().slice(0, 10).replaceAll('-', '');
-      const signups = await store.hit(`signup:${ctx.ip}:${utcDate}`, 86400);
-      if (signups > signupLimit()) {
-        await store.del(`credits:${profile.sub}`);
-        throw routeError('SIGNUP_LIMITED');
-      }
+    // Checked only after Google accepted the token, so a burst of garbage
+    // cannot fill the store.
+    const tokenKey = replayKey(profile);
+    if (!(await claimOnce(store, tokenKey, profile))) throw routeError('GOOGLE_TOKEN_REUSED');
+    try {
+      return await signInWith(profile, store, initial, ctx);
+    } catch (error) {
+      await store.del(tokenKey).catch(() => {}); // an internal failure must not burn the user's token
+      throw error;
     }
-
-    return {
-      user: {
-        id: profile.sub,
-        name: profile.name || profile.given_name || 'Usuário Google',
-        email: profile.email,
-        picture: profile.picture || '',
-      },
-      session: createSession(profile),
-      creditsRemaining: await store.getCredits(profile.sub, initial),
-    };
   },
 });

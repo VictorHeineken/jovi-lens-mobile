@@ -4,7 +4,7 @@
 // rate limits, idempotency and credits before calling `run`.
 import { createHash } from 'node:crypto';
 import { verifyIntegrity } from './attestation.js';
-import { errorBody, errorResponse, hasValidApiKey, sessionUser } from './http.js';
+import { errorBody, errorResponse, hasValidApiKey, ipKey, isJsonContentType, sessionUser } from './http.js';
 import { log, logError, userHash } from './log.js';
 import { getStore } from './store.js';
 import { getProviderByName } from './ai/providers/index.js';
@@ -52,8 +52,8 @@ export function sha256hex(value) {
 }
 
 export function clientIp(req) {
-  if (process.env.VERCEL) return String(req.headers['x-real-ip'] || 'unknown').slice(0, 80);
-  return String(req.ip || 'unknown').slice(0, 80);
+  if (process.env.VERCEL) return ipKey(req.headers['x-real-ip'] || 'unknown');
+  return ipKey(req.ip || 'unknown');
 }
 
 // Fixed-window rate-limit key: rl:{scope}:{id}:{windowIndex}.
@@ -112,7 +112,7 @@ export function defineRoute({
 }) {
   return async function handler(req, res) {
     const started = Date.now();
-    const route = routePath(req) || scope;
+    const route = routePath(req) || (typeof scope === 'string' ? scope : 'unknown');
     const reqId = req.headers?.['x-vercel-id'] ? String(req.headers['x-vercel-id']).slice(0, 120) : undefined;
     const ip = clientIp(req);
     const ctx = { req, ip, user: null, byok: null, bypass: false, log: null };
@@ -138,7 +138,7 @@ export function defineRoute({
       if (req.method !== method) return fail('METHOD_NOT_ALLOWED');
 
       // 2. Content type.
-      if (method === 'POST' && !String(req.headers['content-type'] || '').includes('application/json')) return fail('UNSUPPORTED_MEDIA_TYPE');
+      if (method === 'POST' && !isJsonContentType(req.headers['content-type'])) return fail('UNSUPPORTED_MEDIA_TYPE');
 
       // 3. Raw body (hashed as received, for the integrity request hash).
       const raw = method === 'GET' ? Buffer.alloc(0) : await readRawBody(req);
@@ -190,9 +190,12 @@ export function defineRoute({
         if (!verdict.ok) return fail('INTEGRITY_FAILED');
       }
 
-      // 9. Burst limit per user (or per IP for unauthenticated routes).
+      // 9. Burst limit per user (or per IP for unauthenticated routes). A route
+      // may pick its bucket from the body (subject-ai gives "grade" its own).
       const id = ctx.user?.sub ?? ip;
-      if (await store.hit(rateKey(scope, id, 60), 60) > burstPerMinute) return fail('RATE_LIMITED');
+      const bucket = typeof scope === 'function' ? scope(body) : scope;
+      const burstLimit = typeof burstPerMinute === 'function' ? burstPerMinute(body) : burstPerMinute;
+      if (await store.hit(rateKey(bucket, id, 60), 60) > burstLimit) return fail('RATE_LIMITED');
 
       // 10. BYOK requirement.
       if (byok === 'required' && !(ctx.bypass && !ctx.byok)) {

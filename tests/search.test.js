@@ -23,3 +23,11 @@ test('searchLibrary searches notes, history and media without duplicate entries'
   assert.deepEqual(new Set(results.map((result) => result.kind)), new Set(['nota', 'historico', 'foto']));
   assert.equal(new Set(results.map((result) => result.id)).size, results.length);
 });
+
+test('searchLibrary matches every word of a multi-word query in any order', () => {
+  // Regression: the whole query had to appear as one contiguous phrase, so
+  // "fabricas revolucao" (or "revolução trabalhadores") found nothing.
+  assert.equal(searchLibrary('fabricas revolucao', { notes })[0]?.id, 'nota-n1');
+  assert.equal(searchLibrary('revolução trabalhadores', { notes })[0]?.id, 'nota-n1');
+  assert.equal(searchLibrary('revolução python', { notes }).length, 0, 'all words must match');
+});

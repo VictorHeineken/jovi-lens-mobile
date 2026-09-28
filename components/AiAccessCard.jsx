@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import Icon from './Icon.jsx';
-import { useTopInset } from '../hooks/safeArea.js';
-import { useAnnounce } from '../hooks/announce.js';
 import { useAppData } from '../context/AppDataContext.jsx';
 import { BYOK_PROVIDERS, refresh, removeByok, saveByok, useAiAccess } from '../services/aiAccess.js';
+import { confirmAction } from '../services/confirm.js';
 import { isDemoMode } from '../services/env.js';
-import { signIn } from '../services/googleAuth.js';
 
 const FREE_CREDITS = 3;
 
@@ -18,52 +16,10 @@ const PROVIDER_HELP = {
   minimax: 'Use uma chave dedicada e mantenha um saldo baixo. Transcrição por voz usa o reconhecimento do aparelho.',
 };
 
-// The "AI access" screen: free credits left on the Google account, or the
-// user's own AI key (BYOK). The tab keeps its "Copilot" title and icon.
-export default function CopilotView({ embedded = false }) {
-  const topInset = useTopInset();
-  const [message, setMessage] = useState('');
-  useAnnounce(message);
-  const demo = isDemoMode();
-
-  const content = (
-    <>
-      <View className="gap-1">
-        <View className="flex-row items-center gap-1.5">
-          <Icon name="sparkle" size={13} color="#4f46e5" />
-          <Text className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Inteligência avançada</Text>
-        </View>
-        <Text className="text-[24px] font-bold text-slate-900">Copilot</Text>
-      </View>
-
-      {demo ? (
-        <View className="flex-row items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-          <Icon name="info" size={18} color="#b45309" />
-          <Text className="flex-1 text-[13px] text-amber-800">Modo demonstração — a IA é simulada e não usa créditos.</Text>
-        </View>
-      ) : (
-        <AiAccessCards onMessage={setMessage} />
-      )}
-
-      {message ? (
-        <View className="flex-row items-center gap-2 rounded-xl bg-slate-100 px-3 py-2.5">
-          <Icon name="info" size={15} color="#64748b" />
-          <Text className="flex-1 text-[13px] text-slate-600">{message}</Text>
-        </View>
-      ) : null}
-    </>
-  );
-
-  if (embedded) return <View className="gap-5 px-4 pb-6">{content}</View>;
-
-  return (
-    <View className="flex-1 bg-white">
-      <ScrollView contentContainerClassName="gap-5 px-4 pb-10" contentContainerStyle={{ paddingTop: topInset }} keyboardShouldPersistTaps="handled">{content}</ScrollView>
-    </View>
-  );
-}
-
-function AiAccessCards({ onMessage }) {
+// Perfil's "Sua IA" section: free credits left on the Google account, or the
+// user's own AI key (BYOK). Sign-in lives in the account card above it, so
+// this renders only while signed in (and never in the demo build).
+export default function AiAccessCard({ onMessage }) {
   const { user } = useAppData();
   const { creditsRemaining, byok } = useAiAccess();
 
@@ -71,29 +27,13 @@ function AiAccessCards({ onMessage }) {
     if (user) refresh();
   }, [user]);
 
-  async function handleSignIn() {
-    try {
-      const signedIn = await signIn();
-      if (signedIn) onMessage('Login com Google realizado.');
-    } catch (error) {
-      onMessage(error.message || 'Não foi possível entrar com o Google.');
-    }
-  }
+  if (!user || isDemoMode()) return null;
 
   return (
     <>
       <View className="gap-3 rounded-2xl border border-slate-200 bg-white p-5">
         <Text className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Sua IA</Text>
-        {!user ? (
-          <>
-            <Text className="text-[16px] font-bold text-slate-900">Entre para usar a IA</Text>
-            <Text className="text-[13px] text-slate-600">Cada conta Google ganha 3 análises gratuitas.</Text>
-            <Pressable accessibilityRole="button" onPress={handleSignIn} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
-              <Icon name="user" size={16} color="#ffffff" />
-              <Text className="text-[14px] font-semibold text-white">Entrar com Google</Text>
-            </Pressable>
-          </>
-        ) : byok ? (
+        {byok ? (
           <>
             <Text className="text-[16px] font-bold text-slate-900">Usando sua chave · {PROVIDER_LABELS[byok.provider] || byok.provider} · {byok.masked}</Text>
             <Text className="text-[13px] text-slate-600">Sem limite de créditos do JOVI Lens — o uso é cobrado na sua conta do provedor.</Text>
@@ -104,12 +44,12 @@ function AiAccessCards({ onMessage }) {
             <View className="h-2 overflow-hidden rounded-full bg-slate-100" accessibilityLabel={`${creditsRemaining ?? 0} de ${FREE_CREDITS} análises gratuitas restantes`}>
               <View className="h-2 rounded-full bg-indigo-600" style={{ width: `${(Math.max(0, creditsRemaining ?? 0) / FREE_CREDITS) * 100}%` }} />
             </View>
-            <Text className="text-[13px] text-slate-600">Cada análise de foto, pergunta, plano, prova, podcast, aula ou recomendação usa 1.</Text>
+            <Text className="text-[13px] text-slate-600">Cada análise de foto, pergunta, plano, prova, podcast, aula, recomendação ou correção de resposta usa 1.</Text>
           </>
         )}
       </View>
 
-      {user ? <ByokCard byok={byok} onMessage={onMessage} /> : null}
+      <ByokCard byok={byok} onMessage={onMessage} />
     </>
   );
 }
@@ -138,19 +78,12 @@ function ByokCard({ byok, onMessage }) {
     }
   }
 
-  function handleRemove() {
-    Alert.alert('Remover chave', 'Remover sua chave de IA deste aparelho?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Remover',
-        style: 'destructive',
-        onPress: async () => {
-          await removeByok();
-          setEditing(false);
-          onMessage('Chave removida deste aparelho.');
-        },
-      },
-    ]);
+  async function handleRemove() {
+    const confirmed = await confirmAction({ title: 'Remover chave', message: 'Remover sua chave de IA deste aparelho?', confirmLabel: 'Remover', destructive: true });
+    if (!confirmed) return;
+    await removeByok();
+    setEditing(false);
+    onMessage('Chave removida deste aparelho.');
   }
 
   return (

@@ -7,7 +7,6 @@ import { asAiError } from '../services/apiErrors.js';
 import { generateSubjectContent } from '../services/subjectStudy.js';
 import { DEMO_SUBJECT_ARTIFACTS } from '../shared/demoSubjectArtifacts.js';
 import { buildExamReport } from '../shared/studentDashboard.js';
-import { isDemoMode } from '../services/env.js';
 
 function formatClock(seconds) {
   const m = Math.floor(Math.max(0, seconds) / 60);
@@ -26,7 +25,7 @@ function computeByTopic(questions, answers) {
   return byTopic;
 }
 
-export default function SubjectExam({ subject, savedExam, savedResult, onResult, onLeave }) {
+export default function SubjectExam({ subject, savedExam, savedResult, onResult, presentation = false, onLeave }) {
   const [phase, setPhase] = useState('idle'); // idle | loading | running | done
   const [exam, setExam] = useState(null);
   const [error, setError] = useState(null);
@@ -34,7 +33,9 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult,
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
+  const [loadingLabel, setLoadingLabel] = useState('');
   const timerRef = useRef(null);
+  const deadlineRef = useRef(0);
   const generationTimeoutRef = useRef(null);
   const answersRef = useRef({});
   const examRef = useRef(null);
@@ -70,6 +71,7 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult,
       byTopic: computeByTopic(questions, picked),
       answers: picked,
       questions,
+      retry: Boolean(examRef.current?.retry),
       takenAt: new Date().toISOString(),
     };
     setResult(summary);
@@ -77,26 +79,39 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult,
     onResult?.(summary);
   }
 
-  async function start() {
-    if (!requireAI()) return;
-    setPhase('loading');
+  // The clock counts down from a fixed deadline: JS timers pause while the app
+  // is in the background, so decrementing a counter every second let the
+  // student leave the app and come back with the same time left.
+  function run(examData) {
+    clearInterval(timerRef.current);
+    clearTimeout(generationTimeoutRef.current);
     setError(null);
     setAnswers({});
     answersRef.current = {};
     finishedRef.current = false;
     setResult(null);
     setCurrent(0);
+    setExam(examData);
+    examRef.current = examData;
+    const totalSeconds = Math.max(60, Math.round((examData.durationMinutes || 10) * 60));
+    deadlineRef.current = Date.now() + totalSeconds * 1000;
+    setSecondsLeft(totalSeconds);
+    setPhase('running');
+    timerRef.current = setInterval(() => {
+      setSecondsLeft(Math.max(0, Math.round((deadlineRef.current - Date.now()) / 1000)));
+    }, 1000);
+  }
+
+  async function generateNew() {
+    if (!requireAI()) return;
+    setPhase('loading');
+    setLoadingLabel(`Gerando novo simulado de ${subject.name}...`);
+    setError(null);
     try {
       const generated = await generateSubjectContent(subject, { action: 'exam' });
       if (!mountedRef.current) return; // unmounted during the request — don't start a leaked timer
       if (!generated.questions?.length) throw new Error('Não foi possível montar o simulado agora.');
-      setExam(generated);
-      examRef.current = generated;
-      setSecondsLeft((generated.durationMinutes || 10) * 60);
-      setPhase('running');
-      timerRef.current = setInterval(() => {
-        setSecondsLeft((value) => Math.max(0, value - 1));
-      }, 1000);
+      run(generated);
     } catch (err) {
       setError(asAiError(err, 'Falha ao gerar o simulado.'));
       setPhase('idle');
@@ -106,41 +121,48 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult,
   function openReadyResult() {
     if (!savedResult) return;
     clearInterval(timerRef.current);
-    setExam(savedExam || { subject: subject.name, durationMinutes: 10, questions: savedResult.questions || [] });
-    examRef.current = savedExam || { subject: subject.name, durationMinutes: 10, questions: savedResult.questions || [] };
+    const readyExam = savedExam || { subject: subject.name, durationMinutes: 10, questions: savedResult.questions || [] };
+    setExam(readyExam);
+    examRef.current = readyExam;
     setResult(savedResult);
     setPhase('done');
   }
 
+  // The exam the student last took comes first, so "Refazer este simulado"
+  // repeats what they just saw — not an older seeded one.
   function getReadyExam() {
-    return savedExam
-      || (savedResult?.questions?.length ? { subject: subject.name, durationMinutes: 10, questions: savedResult.questions } : null)
-      || (isDemoMode() ? DEMO_SUBJECT_ARTIFACTS[subject.name]?.exam?.data : null)
+    return (savedResult?.questions?.length && !savedResult.retry ? { subject: subject.name, durationMinutes: 10, questions: savedResult.questions } : null)
+      || savedExam
+      || (presentation ? DEMO_SUBJECT_ARTIFACTS[subject.name]?.exam?.data : null)
       || null;
   }
 
-  function practiceReadyExam() {
+  // Pitch-only: opens the prepared exam behind a short "generating" beat so the
+  // demo never depends on a live call. Outside presentation mode the UI offers
+  // the honest pair instead: retake the saved exam, or generate a new one.
+  function stagedPresentationExam() {
     const readyExam = getReadyExam();
-    if (!readyExam?.questions?.length) return start();
-    clearInterval(timerRef.current);
-    clearTimeout(generationTimeoutRef.current);
-    setError(null);
-    setAnswers({});
-    answersRef.current = {};
-    finishedRef.current = false;
-    setResult(null);
-    setCurrent(0);
+    if (!readyExam?.questions?.length) { generateNew(); return; }
     setPhase('loading');
+    setLoadingLabel(`Gerando novo simulado de ${subject.name}...`);
     generationTimeoutRef.current = setTimeout(() => {
-      if (!mountedRef.current) return;
-      setExam(readyExam);
-      examRef.current = readyExam;
-      setSecondsLeft((readyExam.durationMinutes || 10) * 60);
-      setPhase('running');
-      timerRef.current = setInterval(() => {
-        setSecondsLeft((value) => Math.max(0, value - 1));
-      }, 1000);
+      if (mountedRef.current) run(readyExam);
     }, 1200);
+  }
+
+  function retakeSaved() {
+    const readyExam = getReadyExam();
+    if (readyExam?.questions?.length) run(readyExam);
+    else generateNew();
+  }
+
+  // Targeted practice: only the questions answered wrong (or left blank), with
+  // time scaled to their count.
+  function retryMistakes() {
+    const source = result?.questions || [];
+    const wrong = source.filter((q, index) => result.answers?.[index] !== q.answerIndex);
+    if (!wrong.length) return;
+    run({ subject: subject.name, retry: true, durationMinutes: Math.max(2, Math.ceil(wrong.length * 1.5)), questions: wrong });
   }
 
   if (phase === 'idle') {
@@ -163,7 +185,7 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult,
         {error ? (
           <View className="rounded-xl bg-red-50 px-3 py-2.5" accessibilityRole="alert">
             <Text className="text-[13px] text-red-600">{error.message}</Text>
-            <AiErrorActions error={error} onRetry={start} onNavigateAway={onLeave} />
+            <AiErrorActions error={error} onRetry={generateNew} onNavigateAway={onLeave} />
           </View>
         ) : null}
         {savedResult ? (
@@ -172,10 +194,25 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult,
             <Text className="text-[14px] font-semibold text-slate-600">Ver último resultado</Text>
           </Pressable>
         ) : null}
-        <Pressable accessibilityRole="button" onPress={getReadyExam() ? practiceReadyExam : start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
-          <Icon name="target" size={16} color="#ffffff" />
-          <Text className="text-[14px] font-semibold text-white">Fazer simulado</Text>
-        </Pressable>
+        {presentation ? (
+          <Pressable accessibilityRole="button" onPress={stagedPresentationExam} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+            <Icon name="target" size={16} color="#ffffff" />
+            <Text className="text-[14px] font-semibold text-white">Fazer simulado</Text>
+          </Pressable>
+        ) : (
+          <>
+            {getReadyExam() ? (
+              <Pressable accessibilityRole="button" onPress={retakeSaved} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 py-3">
+                <Icon name="rotate" size={16} color="#4f46e5" />
+                <Text className="text-[14px] font-semibold text-indigo-700">{savedResult ? 'Refazer este simulado' : 'Fazer o simulado pronto'}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable accessibilityRole="button" onPress={generateNew} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+              <Icon name="sparkle" size={16} color="#ffffff" />
+              <Text className="text-[14px] font-semibold text-white">{getReadyExam() ? 'Gerar novo simulado' : 'Fazer simulado'}</Text>
+            </Pressable>
+          </>
+        )}
       </View>
     );
   }
@@ -184,7 +221,7 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult,
     return (
       <View className="flex-row items-center gap-2 py-4">
         <ActivityIndicator color="#4f46e5" />
-        <Text className="text-[13px] text-slate-500">Gerando novo simulado de {subject.name}...</Text>
+        <Text className="text-[13px] text-slate-500">{loadingLabel}</Text>
       </View>
     );
   }
@@ -246,9 +283,18 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult,
             );
           })}
         </View>
-        <Pressable accessibilityRole="button" onPress={getReadyExam() ? practiceReadyExam : start} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
+        {weakTopics.length ? (
+          <Pressable accessibilityRole="button" onPress={retryMistakes} className="flex-row items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 py-3">
+            <Icon name="target" size={15} color="#4f46e5" />
+            <Text className="text-[14px] font-semibold text-indigo-700">Refazer só as que errei</Text>
+          </Pressable>
+        ) : null}
+        <Pressable accessibilityRole="button" onPress={presentation ? stagedPresentationExam : generateNew} className="flex-row items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-3">
           <Icon name="rotate" size={15} color="#ffffff" />
-          <Text className="text-[14px] font-semibold text-white">Refazer simulado</Text>
+          <Text className="text-[14px] font-semibold text-white">{presentation ? 'Refazer simulado' : 'Gerar novo simulado'}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setPhase('idle')} className="items-center py-2">
+          <Text className="text-[13px] font-medium text-slate-500">Voltar</Text>
         </Pressable>
       </View>
     );
@@ -280,7 +326,9 @@ export default function SubjectExam({ subject, savedExam, savedResult, onResult,
           const isSelected = selected === index;
           return (
             <Pressable
-              accessibilityRole="button"
+              accessibilityRole="radio"
+              accessibilityState={{ checked: isSelected }}
+              accessibilityLabel={`Alternativa ${String.fromCharCode(65 + index)}: ${option}`}
               key={index}
               onPress={() => setAnswers((a) => ({ ...a, [current]: index }))}
               className={`flex-row items-center gap-3 rounded-xl border px-3 py-3 ${isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white'}`}

@@ -40,7 +40,10 @@ export default function NoteEditor({ note, onSave, onClose }) {
       title: draft.title.trim(),
       category: draft.category.trim() || 'Estudos',
       subcategory: draft.subcategory.trim() || 'Geral',
-      topicPath: [draft.subcategory.trim() || 'Geral'],
+      // Keep a deeper path unless the subtheme itself changed.
+      topicPath: (draft.subcategory.trim() || 'Geral') === (note?.subcategory || 'Geral') && Array.isArray(note?.topicPath) && note.topicPath.length
+        ? note.topicPath
+        : [draft.subcategory.trim() || 'Geral'],
       summary: draft.summary.trim(),
       text: draft.text.trim(),
       tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean).slice(0, 12),

@@ -23,7 +23,7 @@ async function call(handler, reqOptions) {
   return res;
 }
 
-const ASK = { action: 'ask', question: 'O que é fotossíntese?' };
+const ASK = { action: 'ask', question: 'O que é fotossíntese?', context: { title: 'Fotossíntese' } };
 
 function creditsTest(name, fn, env = {}) {
   test(name, () => withEnv({ ...BASE_ENV, JOVI_LENS_DEMO_MODE: 'true', ...env }, async () => {
