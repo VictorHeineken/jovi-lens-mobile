@@ -77,8 +77,8 @@ function log lists the missing names.
 
 | Variable | Value | Required |
 |---|---|---|
-| `AI_PROVIDER` | `gemini` | yes |
-| `GEMINI_API_KEY` | from §3 | yes |
+| `AI_PROVIDER` | `gemini` (or `minimax`) | yes |
+| The provider's server key | `GEMINI_API_KEY` from §3, or `MINIMAX_API_KEY` for `minimax` | yes (only the one `AI_PROVIDER` names) |
 | `GOOGLE_CLIENT_ID` | `GOOGLE_WEB_CLIENT_ID` | yes |
 | `JOVI_SESSION_SECRET` | from §5 | yes |
 | `JOVI_API_KEY` | from §5 | yes |

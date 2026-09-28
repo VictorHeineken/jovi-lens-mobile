@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { defineRoute } from '../api/_lib/guard.js';
+import { defineRoute, missingRequiredEnv } from '../api/_lib/guard.js';
 import { issueSession } from '../api/_lib/session.js';
 import { resetMemoryStore } from '../api/_lib/store.js';
 import { BASE_ENV, makeReq, makeRes, withEnv } from './helpers/http.js';
@@ -179,3 +179,22 @@ guarded('byok-forbidden routes still reject a malformed key but ignore a valid o
   assert.equal(valid.statusCode, 200);
   assert.equal(valid.body.usedKey, false);
 });
+
+test('on Vercel the required server key follows AI_PROVIDER', () => withEnv({ VERCEL: '1', AI_PROVIDER: 'minimax', MINIMAX_API_KEY: undefined, GEMINI_API_KEY: undefined, OPENAI_API_KEY: undefined, AZURE_OPENAI_ENDPOINT: undefined, AZURE_OPENAI_API_KEY: undefined, AZURE_OPENAI_DEPLOYMENT: undefined, AZURE_OPENAI_DEPLOYMENT_NAME: undefined }, () => {
+  assert.ok(missingRequiredEnv().includes('MINIMAX_API_KEY'));
+  assert.ok(!missingRequiredEnv().includes('GEMINI_API_KEY'), 'Gemini is not needed when MiniMax serves free users');
+  process.env.MINIMAX_API_KEY = 'mm-server-key';
+  assert.ok(!missingRequiredEnv().includes('MINIMAX_API_KEY'));
+
+  process.env.AI_PROVIDER = 'gemini';
+  assert.ok(missingRequiredEnv().includes('GEMINI_API_KEY'));
+
+  process.env.AI_PROVIDER = 'azure-openai';
+  process.env.AZURE_OPENAI_ENDPOINT = 'https://azure.test';
+  process.env.AZURE_OPENAI_API_KEY = 'k';
+  process.env.AZURE_OPENAI_DEPLOYMENT_NAME = 'd';
+  assert.deepEqual(missingRequiredEnv().filter((name) => name.startsWith('AZURE')), []);
+
+  process.env.AI_PROVIDER = 'claude';
+  assert.ok(missingRequiredEnv().some((name) => name.startsWith('AI_PROVIDER')));
+}));

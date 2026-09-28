@@ -20,7 +20,6 @@ const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}
 // fail closed with 503 SERVER_MISCONFIGURED (§3.1).
 const REQUIRED_IN_PROD = [
   'AI_PROVIDER',
-  'GEMINI_API_KEY',
   'GOOGLE_CLIENT_ID',
   'JOVI_SESSION_SECRET',
   'JOVI_API_KEY',
@@ -30,9 +29,24 @@ const REQUIRED_IN_PROD = [
   'PLAY_INTEGRITY_SA_JSON_B64',
 ];
 
+// The server key(s) the provider named by AI_PROVIDER needs to serve free
+// users; each entry is a list of alternatives (the Azure adapter accepts
+// either deployment variable). An unknown provider is reported as missing.
+const PROVIDER_ENV = {
+  gemini: [['GEMINI_API_KEY']],
+  minimax: [['MINIMAX_API_KEY']],
+  openai: [['OPENAI_API_KEY']],
+  'azure-openai': [['AZURE_OPENAI_ENDPOINT'], ['AZURE_OPENAI_API_KEY'], ['AZURE_OPENAI_DEPLOYMENT', 'AZURE_OPENAI_DEPLOYMENT_NAME']],
+};
+
 export function missingRequiredEnv() {
   if (!process.env.VERCEL) return [];
   const missing = REQUIRED_IN_PROD.filter((name) => !process.env[name]);
+  const provider = String(process.env.AI_PROVIDER || '').trim().toLowerCase();
+  if (provider && !PROVIDER_ENV[provider]) missing.push(`AI_PROVIDER (desconhecido: ${provider})`);
+  for (const options of PROVIDER_ENV[provider] || []) {
+    if (!options.some((name) => process.env[name])) missing.push(options.join('/'));
+  }
   const hasUpstash = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN;
   const hasKv = process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN;
   if (!hasUpstash && !hasKv) missing.push('KV_REST_API_URL/KV_REST_API_TOKEN');
